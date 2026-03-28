@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import CoreGraphics
 
 enum WindowCycleDirection {
     case forward
@@ -13,6 +14,9 @@ protocol WindowManaging {
 
 @MainActor
 struct WindowManager: WindowManaging {
+    private let windowOrdering = WindowOrdering()
+    private let cycleSessions = WindowCycleSessionStore()
+
     func perform(_ action: WindowAction, layoutEngine: WindowLayoutEngine) throws {
         DebugLog.info(DebugLog.windows, "Performing window action \(String(describing: action))")
         if action == .quitApplication {
@@ -114,7 +118,7 @@ struct WindowManager: WindowManaging {
 
         let app = try runningApplication(matching: application)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let windows = try windowElements(in: appElement).filter { !isMinimized($0) }
+        let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
         DebugLog.debug(
             DebugLog.windows,
             "Visible window candidates for \(application.logDescription): [\(windowSummary(windows))]"
@@ -126,6 +130,7 @@ struct WindowManager: WindowManaging {
         }
 
         try setMinimized(true, for: targetWindow)
+        cycleSessions.invalidate(for: app.processIdentifier)
         DebugLog.info(DebugLog.windows, "Minimized one visible window for \(application.logDescription)")
         return true
     }
@@ -153,6 +158,7 @@ struct WindowManager: WindowManaging {
 
         try setMinimized(false, for: targetWindow)
         try bringWindowToFront(targetWindow, for: app)
+        cycleSessions.invalidate(for: app.processIdentifier)
         DebugLog.info(DebugLog.windows, "Restored and raised one minimized window for \(application.logDescription)")
         return true
     }
@@ -166,7 +172,7 @@ struct WindowManager: WindowManaging {
 
         let app = try runningApplication(matching: application)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let windows = try windowElements(in: appElement).filter { !isMinimized($0) }
+        let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
         DebugLog.debug(
             DebugLog.windows,
             "Close-window candidates for \(application.logDescription): [\(windowSummary(windows))]"
@@ -178,12 +184,14 @@ struct WindowManager: WindowManaging {
         }
 
         if try closeWindow(targetWindow, owningApp: app) {
+            cycleSessions.invalidate(for: app.processIdentifier)
             DebugLog.info(DebugLog.windows, "Closed one visible window for \(application.logDescription)")
             return true
         }
 
         for fallbackWindow in windows.dropFirst() {
             if try closeWindow(fallbackWindow, owningApp: app) {
+                cycleSessions.invalidate(for: app.processIdentifier)
                 DebugLog.info(DebugLog.windows, "Closed one fallback visible window for \(application.logDescription)")
                 return true
             }
@@ -203,6 +211,7 @@ struct WindowManager: WindowManaging {
             throw WindowManagerError.unableToQuitApplication
         }
 
+        cycleSessions.invalidate(for: app.processIdentifier)
         DebugLog.info(DebugLog.windows, "Terminated app for Dock target \(target.logDescription)")
         return true
     }
@@ -611,23 +620,22 @@ struct WindowManager: WindowManaging {
         currentWindow: AXUIElement?,
         direction: WindowCycleDirection
     ) throws {
-        let windows = try visibleWindowElements(in: appElement)
+        let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
+        let descriptors = try windows.map { try windowDescriptor(for: $0) }
 
         guard windows.count > 1 else {
+            cycleSessions.invalidate(for: app.processIdentifier)
             throw WindowManagerError.noAlternateWindow
         }
 
-        let referenceWindow = currentWindow.flatMap { currentWindow in
-            windows.first(where: { CFEqual($0, currentWindow) })
-        } ?? windows[windows.startIndex]
-        let currentIndex = windows.firstIndex(where: { CFEqual($0, referenceWindow) }) ?? 0
-        let targetIndex: Int
-
-        switch direction {
-        case .forward:
-            targetIndex = (currentIndex + 1) % windows.count
-        case .backward:
-            targetIndex = (currentIndex + windows.count - 1) % windows.count
+        let currentDescriptor = currentWindow.flatMap { try? windowDescriptor(for: $0) }
+        guard let targetDescriptor = cycleSessions.nextTarget(
+            for: app.processIdentifier,
+            liveOrder: descriptors,
+            currentWindow: currentDescriptor,
+            direction: direction
+        ), let targetIndex = descriptors.firstIndex(of: targetDescriptor) else {
+            throw WindowManagerError.noAlternateWindow
         }
 
         let targetWindow = windows[targetIndex]
@@ -652,6 +660,8 @@ struct WindowManager: WindowManaging {
         guard app.terminate() else {
             throw WindowManagerError.unableToQuitApplication
         }
+
+        cycleSessions.invalidate(for: app.processIdentifier)
     }
 
     private func performAction(_ action: CFString, on element: AXUIElement) throws {
@@ -791,6 +801,99 @@ struct WindowManager: WindowManaging {
 
     private func visibleWindowElements(in appElement: AXUIElement) throws -> [AXUIElement] {
         try windowElements(in: appElement).filter { !isMinimized($0) }
+    }
+
+    private func orderedVisibleWindowElements(
+        in app: NSRunningApplication,
+        appElement: AXUIElement
+    ) throws -> [AXUIElement] {
+        let windows = try visibleWindowElements(in: appElement)
+        guard windows.count > 1 else {
+            return windows
+        }
+
+        let orderedWindowDescriptors = frontToBackWindowDescriptors(
+            forOwnerProcessIdentifier: app.processIdentifier
+        )
+        guard orderedWindowDescriptors.isEmpty == false else {
+            DebugLog.debug(
+                DebugLog.windows,
+                "CGWindowList returned no front-to-back descriptors for \(app.localizedName ?? "unknown"); using AX window order"
+            )
+            return windows
+        }
+
+        let orderedWindows = try windowOrdering.frontToBack(
+            windows,
+            descriptor: { try windowDescriptor(for: $0) },
+            using: orderedWindowDescriptors
+        )
+
+        if sameWindowSequence(windows, orderedWindows) == false {
+            DebugLog.debug(
+                DebugLog.windows,
+                "Reordered visible windows for \(app.localizedName ?? "unknown") from AX order [\(windowSummary(windows))] to front-to-back [\(windowSummary(orderedWindows))]"
+            )
+        }
+
+        return orderedWindows
+    }
+
+    private func frontToBackWindowDescriptors(
+        forOwnerProcessIdentifier processIdentifier: pid_t
+    ) -> [WindowOrderDescriptor] {
+        guard
+            let windowInfoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
+                as? [[String: Any]]
+        else {
+            return []
+        }
+
+        return windowInfoList.compactMap { windowInfo in
+            guard
+                let ownerPID = windowInfo[kCGWindowOwnerPID as String] as? NSNumber,
+                ownerPID.int32Value == processIdentifier
+            else {
+                return nil
+            }
+
+            guard
+                let boundsDictionary = windowInfo[kCGWindowBounds as String] as? NSDictionary
+            else {
+                return nil
+            }
+
+            var frame = CGRect.null
+            guard
+                CGRectMakeWithDictionaryRepresentation(boundsDictionary, &frame),
+                frame.isNull == false,
+                frame.isEmpty == false
+            else {
+                return nil
+            }
+
+            let title = (windowInfo[kCGWindowName as String] as? String) ?? ""
+            return WindowOrderDescriptor(title: title, frame: frame.integral)
+        }
+    }
+
+    private func windowDescriptor(for window: AXUIElement) throws -> WindowOrderDescriptor {
+        WindowOrderDescriptor(
+            title: (try? stringAttribute(kAXTitleAttribute as CFString, from: window)) ?? "",
+            frame: try frame(of: window)
+        )
+    }
+
+    private func sameWindowSequence(_ lhs: [AXUIElement], _ rhs: [AXUIElement]) -> Bool {
+        guard lhs.count == rhs.count else {
+            return false
+        }
+
+        return zip(lhs, rhs).allSatisfy { sameWindow($0, $1) }
+    }
+
+    private func sameWindow(_ lhs: AXUIElement, _ rhs: AXUIElement) -> Bool {
+        CFEqual(lhs as CFTypeRef, rhs as CFTypeRef)
     }
 
     private func isMinimized(_ window: AXUIElement) -> Bool {
