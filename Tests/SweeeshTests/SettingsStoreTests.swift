@@ -13,11 +13,13 @@ struct SettingsStoreTests {
         let store = SettingsStore(userDefaults: defaults)
         store.languageOverride = .simplifiedChinese
         store.hotKeysEnabled = false
+        store.dockGesturesEnabled = false
 
         let reloadedStore = SettingsStore(userDefaults: defaults)
 
         #expect(reloadedStore.languageOverride == .simplifiedChinese)
         #expect(reloadedStore.hotKeysEnabled == false)
+        #expect(reloadedStore.dockGesturesEnabled == false)
     }
 
     @Test

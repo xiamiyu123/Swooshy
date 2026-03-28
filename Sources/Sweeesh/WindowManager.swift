@@ -77,6 +77,53 @@ struct WindowManager: WindowManaging {
         return app
     }
 
+    func minimizeVisibleWindow(ofApplicationNamed applicationName: String) throws -> Bool {
+        guard AXIsProcessTrusted() else {
+            throw WindowManagerError.accessibilityPermissionMissing
+        }
+
+        let app = try runningApplication(named: applicationName)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let windows = try windowElements(in: appElement).filter { !isMinimized($0) }
+
+        guard let targetWindow = windows.first else {
+            return false
+        }
+
+        try setMinimized(true, for: targetWindow)
+        return true
+    }
+
+    func restoreMinimizedWindow(ofApplicationNamed applicationName: String) throws -> Bool {
+        guard AXIsProcessTrusted() else {
+            throw WindowManagerError.accessibilityPermissionMissing
+        }
+
+        let app = try runningApplication(named: applicationName)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let windows = try windowElements(in: appElement).filter { isMinimized($0) }
+
+        guard let targetWindow = windows.first else {
+            _ = app.activate(options: [.activateAllWindows])
+            return false
+        }
+
+        try setMinimized(false, for: targetWindow)
+        _ = app.activate(options: [.activateAllWindows])
+        try setBooleanAttribute(kAXMainAttribute as CFString, value: true, on: targetWindow)
+        try setBooleanAttribute(kAXFocusedAttribute as CFString, value: true, on: targetWindow)
+        try performAction(kAXRaiseAction as CFString, on: targetWindow)
+        return true
+    }
+
+    private func runningApplication(named applicationName: String) throws -> NSRunningApplication {
+        if let app = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == applicationName }) {
+            return app
+        }
+
+        throw WindowManagerError.noFrontmostApplication
+    }
+
     private func focusedWindowElement(in appElement: AXUIElement) throws -> AXUIElement {
         var focusedWindowValue: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(

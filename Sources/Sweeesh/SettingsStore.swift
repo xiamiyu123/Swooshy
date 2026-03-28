@@ -27,6 +27,14 @@ final class SettingsStore {
         }
     }
 
+    var dockGesturesEnabled: Bool {
+        didSet {
+            guard oldValue != dockGesturesEnabled else { return }
+            userDefaults.set(dockGesturesEnabled, forKey: Keys.dockGesturesEnabled)
+            notifyDidChange()
+        }
+    }
+
     var hotKeyBindings: [HotKeyBinding] {
         didSet {
             guard oldValue != hotKeyBindings else { return }
@@ -48,6 +56,11 @@ final class SettingsStore {
             self.hotKeysEnabled = true
         } else {
             self.hotKeysEnabled = userDefaults.bool(forKey: Keys.hotKeysEnabled)
+        }
+        if userDefaults.object(forKey: Keys.dockGesturesEnabled) == nil {
+            self.dockGesturesEnabled = true
+        } else {
+            self.dockGesturesEnabled = userDefaults.bool(forKey: Keys.dockGesturesEnabled)
         }
         self.hotKeyBindings = Self.decodeHotKeyBindings(from: userDefaults) ?? HotKeyBindings.defaults
     }
@@ -129,6 +142,7 @@ final class SettingsStore {
     private enum Keys {
         static let languageOverride = "settings.languageOverride"
         static let hotKeysEnabled = "settings.hotKeysEnabled"
+        static let dockGesturesEnabled = "settings.dockGesturesEnabled"
         static let hotKeyBindings = "settings.hotKeyBindings"
     }
 }

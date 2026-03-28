@@ -10,8 +10,14 @@ let package = Package(
         .macOS(.v14),
     ],
     targets: [
+        .target(
+            name: "CMultitouchShim",
+            path: "Sources/CMultitouchShim",
+            publicHeadersPath: "include"
+        ),
         .executableTarget(
             name: "Sweeesh",
+            dependencies: ["CMultitouchShim"],
             resources: [
                 .process("Resources"),
             ]

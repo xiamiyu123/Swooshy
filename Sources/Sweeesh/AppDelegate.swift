@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
     private var globalHotKeyController: GlobalHotKeyController?
     private var settingsWindowController: SettingsWindowController?
+    private var dockGestureController: DockGestureController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let settingsStore = SettingsStore()
@@ -30,6 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         globalHotKeyController = GlobalHotKeyController(
             windowActionRunner: windowActionRunner,
+            alertPresenter: alertPresenter,
+            settingsStore: settingsStore
+        )
+
+        dockGestureController = DockGestureController(
+            windowManager: windowManager,
             alertPresenter: alertPresenter,
             settingsStore: settingsStore
         )

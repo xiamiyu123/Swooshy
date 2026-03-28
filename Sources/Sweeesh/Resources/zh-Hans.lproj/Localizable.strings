@@ -29,6 +29,7 @@
 "settings.language.english" = "English";
 "settings.language.simplified_chinese" = "简体中文";
 "settings.hotkeys.enabled" = "启用全局快捷键";
+"settings.dock_gestures.enabled" = "启用实验性 Dock 手势";
 "settings.shortcuts.recorder_placeholder" = "请按快捷键";
 "settings.shortcuts.reset" = "恢复默认快捷键";
 

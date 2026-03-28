@@ -12,6 +12,7 @@ to move and resize the focused window.
 - Built-in English and Simplified Chinese localization
 - Global hotkeys for all core window actions
 - Settings window for language override, hotkey enable/disable, and per-action shortcut recording
+- Experimental Dock gestures backed by private multitouch input
 - Focused-window actions:
   - snap left half
   - snap right half
@@ -37,6 +38,14 @@ core behavior is stable and useful.
 3. Grant Accessibility access when prompted.
 4. Use the menu bar icon to trigger window actions.
 5. Open `Settings…` from the menu bar menu to change language and customize shortcuts.
+6. Experimental Dock gestures can be toggled in `Settings…`.
+
+## Experimental Dock Gestures
+
+- Hover an application icon in the Dock
+- Swipe down with two fingers on the trackpad to minimize one visible window for that app
+- Swipe up with two fingers on the trackpad to restore one minimized window for that app
+- This path depends on private multitouch APIs and should be treated as experimental
 
 ## Default Hotkeys
 

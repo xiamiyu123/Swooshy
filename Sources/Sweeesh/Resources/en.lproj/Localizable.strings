@@ -29,6 +29,7 @@
 "settings.language.english" = "English";
 "settings.language.simplified_chinese" = "Simplified Chinese";
 "settings.hotkeys.enabled" = "Enable global hotkeys";
+"settings.dock_gestures.enabled" = "Enable experimental Dock gestures";
 "settings.shortcuts.recorder_placeholder" = "Press shortcut";
 "settings.shortcuts.reset" = "Reset shortcut defaults";
 

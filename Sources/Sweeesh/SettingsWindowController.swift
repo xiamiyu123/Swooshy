@@ -73,6 +73,11 @@ private struct SettingsView: View {
                     settingsStore.localized("settings.hotkeys.enabled"),
                     isOn: $settingsStore.hotKeysEnabled
                 )
+
+                Toggle(
+                    settingsStore.localized("settings.dock_gestures.enabled"),
+                    isOn: $settingsStore.dockGesturesEnabled
+                )
             }
 
             Section(settingsStore.localized("settings.section.shortcuts")) {
