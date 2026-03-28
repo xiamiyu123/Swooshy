@@ -84,65 +84,303 @@ struct WindowManager: WindowManaging {
         return app
     }
 
-    func minimizeVisibleWindow(ofApplicationNamed applicationName: String) throws -> Bool {
+    func minimizeVisibleWindow(of application: DockApplicationTarget) throws -> Bool {
         guard AXIsProcessTrusted() else {
             throw WindowManagerError.accessibilityPermissionMissing
         }
 
-        DebugLog.info(DebugLog.windows, "Attempting to minimize a visible window for \(applicationName)")
+        DebugLog.info(DebugLog.windows, "Attempting to minimize a visible window for \(application.logDescription)")
 
-        let app = try runningApplication(named: applicationName)
+        let app = try runningApplication(matching: application)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         let windows = try windowElements(in: appElement).filter { !isMinimized($0) }
         DebugLog.debug(
             DebugLog.windows,
-            "Visible window candidates for \(applicationName): [\(windowSummary(windows))]"
+            "Visible window candidates for \(application.logDescription): [\(windowSummary(windows))]"
         )
 
         guard let targetWindow = windows.first else {
-            DebugLog.debug(DebugLog.windows, "No visible window found to minimize for \(applicationName)")
+            DebugLog.debug(DebugLog.windows, "No visible window found to minimize for \(application.logDescription)")
             return false
         }
 
         try setMinimized(true, for: targetWindow)
-        DebugLog.info(DebugLog.windows, "Minimized one visible window for \(applicationName)")
+        DebugLog.info(DebugLog.windows, "Minimized one visible window for \(application.logDescription)")
         return true
     }
 
-    func restoreMinimizedWindow(ofApplicationNamed applicationName: String) throws -> Bool {
+    func restoreMinimizedWindow(of application: DockApplicationTarget) throws -> Bool {
         guard AXIsProcessTrusted() else {
             throw WindowManagerError.accessibilityPermissionMissing
         }
 
-        DebugLog.info(DebugLog.windows, "Attempting to restore a minimized window for \(applicationName)")
+        DebugLog.info(DebugLog.windows, "Attempting to restore a minimized window for \(application.logDescription)")
 
-        let app = try runningApplication(named: applicationName)
+        let app = try runningApplication(matching: application)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         let windows = try windowElements(in: appElement).filter { isMinimized($0) }
         DebugLog.debug(
             DebugLog.windows,
-            "Minimized window candidates for \(applicationName): [\(windowSummary(windows))]"
+            "Minimized window candidates for \(application.logDescription): [\(windowSummary(windows))]"
         )
 
         guard let targetWindow = windows.first else {
             _ = app.activate(options: [.activateAllWindows])
-            DebugLog.debug(DebugLog.windows, "No minimized window found for \(applicationName); activated app instead")
+            DebugLog.debug(DebugLog.windows, "No minimized window found for \(application.logDescription); activated app instead")
             return false
         }
 
         try setMinimized(false, for: targetWindow)
         try bringWindowToFront(targetWindow, for: app)
-        DebugLog.info(DebugLog.windows, "Restored and raised one minimized window for \(applicationName)")
+        DebugLog.info(DebugLog.windows, "Restored and raised one minimized window for \(application.logDescription)")
         return true
     }
 
-    private func runningApplication(named applicationName: String) throws -> NSRunningApplication {
-        if let app = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == applicationName }) {
+    private func runningApplication(matching target: DockApplicationTarget) throws -> NSRunningApplication {
+        var windowPresenceCache: [pid_t: Bool] = [:]
+        var fallbackCandidates: [NSRunningApplication] = []
+
+        if
+            let app = NSRunningApplication(processIdentifier: target.processIdentifier),
+            app.isTerminated == false
+        {
+            if isPreferredWindowTargetApplication(app, windowPresenceCache: &windowPresenceCache) {
+                return app
+            }
+
+            fallbackCandidates.append(app)
+            DebugLog.debug(
+                DebugLog.windows,
+                "Discarding pid-matched app \(app.localizedName ?? "unknown") [\(app.bundleIdentifier ?? "unknown")] as primary target because it appears to be a helper without windows"
+            )
+        }
+
+        if let bundleIdentifier = target.bundleIdentifier {
+            for candidateBundleIdentifier in canonicalBundleIdentifiers(from: bundleIdentifier) {
+                if
+                    let app = NSWorkspace.shared.runningApplications.first(where: {
+                        $0.bundleIdentifier == candidateBundleIdentifier && $0.isTerminated == false
+                    })
+                {
+                    if isPreferredWindowTargetApplication(app, windowPresenceCache: &windowPresenceCache) {
+                        return app
+                    }
+
+                    fallbackCandidates.append(app)
+                }
+            }
+        }
+
+        let targetAliases = normalizedAliases(from: target.aliases + [target.dockItemName, target.resolvedApplicationName])
+        let aliasCandidates = NSWorkspace.shared.runningApplications.filter { application in
+            let aliases = normalizedAliases(from: Array(applicationAliases(for: application)))
+            return aliases.isDisjoint(with: targetAliases) == false
+        }
+
+        if let app = bestWindowTargetApplication(
+            from: aliasCandidates,
+            windowPresenceCache: &windowPresenceCache
+        ) {
             return app
         }
 
-        DebugLog.error(DebugLog.windows, "Unable to find running application named \(applicationName)")
+        if let fallback = bestWindowTargetApplication(
+            from: fallbackCandidates,
+            windowPresenceCache: &windowPresenceCache,
+            allowHelperWithoutWindows: true
+        ) {
+            return fallback
+        }
+
+        DebugLog.error(
+            DebugLog.windows,
+            "Unable to find running application for target \(target.logDescription); pid=\(target.processIdentifier); aliases=\(target.aliases.joined(separator: "|"))"
+        )
         throw WindowManagerError.noFrontmostApplication
+    }
+
+    private func canonicalBundleIdentifiers(from bundleIdentifier: String) -> [String] {
+        var candidates: [String] = []
+
+        func appendCandidate(_ candidate: String) {
+            guard candidate.isEmpty == false else { return }
+            guard candidates.contains(candidate) == false else { return }
+            candidates.append(candidate)
+        }
+
+        appendCandidate(bundleIdentifier)
+
+        if let frameworkRange = bundleIdentifier.range(of: ".framework.") {
+            appendCandidate(String(bundleIdentifier[..<frameworkRange.lowerBound]))
+        }
+
+        if let helperRange = bundleIdentifier.range(of: ".helper", options: [.caseInsensitive]) {
+            appendCandidate(String(bundleIdentifier[..<helperRange.lowerBound]))
+        }
+
+        return candidates
+    }
+
+    private func bestWindowTargetApplication(
+        from candidates: [NSRunningApplication],
+        windowPresenceCache: inout [pid_t: Bool],
+        allowHelperWithoutWindows: Bool = false
+    ) -> NSRunningApplication? {
+        candidates.max { lhs, rhs in
+            let lhsScore = windowTargetQualityScore(
+                for: lhs,
+                windowPresenceCache: &windowPresenceCache,
+                allowHelperWithoutWindows: allowHelperWithoutWindows
+            )
+            let rhsScore = windowTargetQualityScore(
+                for: rhs,
+                windowPresenceCache: &windowPresenceCache,
+                allowHelperWithoutWindows: allowHelperWithoutWindows
+            )
+
+            if lhsScore == rhsScore {
+                return lhs.processIdentifier > rhs.processIdentifier
+            }
+
+            return lhsScore < rhsScore
+        }
+    }
+
+    private func windowTargetQualityScore(
+        for application: NSRunningApplication,
+        windowPresenceCache: inout [pid_t: Bool],
+        allowHelperWithoutWindows: Bool
+    ) -> Int {
+        var score = 0
+        let hasWindow = hasAnyWindow(for: application, windowPresenceCache: &windowPresenceCache)
+
+        switch application.activationPolicy {
+        case .regular:
+            score += 240
+        case .accessory:
+            score += 100
+        case .prohibited:
+            score += 0
+        @unknown default:
+            score += 0
+        }
+
+        if hasWindow {
+            score += 120
+        }
+
+        if application.isHidden == false {
+            score += 20
+        }
+
+        if isLikelyHelperProcess(application) {
+            score -= allowHelperWithoutWindows ? 80 : 220
+            if hasWindow == false {
+                score -= allowHelperWithoutWindows ? 30 : 300
+            }
+        }
+
+        return score
+    }
+
+    private func isPreferredWindowTargetApplication(
+        _ application: NSRunningApplication,
+        windowPresenceCache: inout [pid_t: Bool]
+    ) -> Bool {
+        if isLikelyHelperProcess(application) {
+            return hasAnyWindow(for: application, windowPresenceCache: &windowPresenceCache)
+        }
+
+        return true
+    }
+
+    private func hasAnyWindow(
+        for application: NSRunningApplication,
+        windowPresenceCache: inout [pid_t: Bool]
+    ) -> Bool {
+        if let cachedValue = windowPresenceCache[application.processIdentifier] {
+            return cachedValue
+        }
+
+        let appElement = AXUIElementCreateApplication(application.processIdentifier)
+        var value: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
+
+        let hasWindow = (error == .success) && ((value as? [AnyObject])?.isEmpty == false)
+        windowPresenceCache[application.processIdentifier] = hasWindow
+        return hasWindow
+    }
+
+    private func isLikelyHelperProcess(_ application: NSRunningApplication) -> Bool {
+        let localizedName = (application.localizedName ?? "").lowercased()
+        let bundleIdentifier = (application.bundleIdentifier ?? "").lowercased()
+        let bundlePath = (application.bundleURL?.path ?? "").lowercased()
+
+        if localizedName.contains("helper") || localizedName.contains("notification service") {
+            return true
+        }
+
+        if bundleIdentifier.contains(".framework.") || bundleIdentifier.contains(".helper") {
+            return true
+        }
+
+        if bundlePath.contains("/frameworks/") || bundlePath.contains("/helpers/") || bundlePath.contains(".appex/") {
+            return true
+        }
+
+        return false
+    }
+
+    private func applicationAliases(for application: NSRunningApplication) -> Set<String> {
+        var aliases: Set<String> = []
+
+        if let localizedName = application.localizedName, localizedName.isEmpty == false {
+            aliases.insert(localizedName)
+        }
+
+        if let bundleIdentifier = application.bundleIdentifier, bundleIdentifier.isEmpty == false {
+            aliases.insert(bundleIdentifier)
+        }
+
+        if let bundleURL = application.bundleURL {
+            aliases.insert(bundleURL.deletingPathExtension().lastPathComponent)
+
+            if
+                let bundle = Bundle(url: bundleURL),
+                let info = bundle.infoDictionary
+            {
+                let keys = [
+                    "CFBundleDisplayName",
+                    "CFBundleName",
+                    "CFBundleExecutable",
+                ]
+
+                for key in keys {
+                    if let value = info[key] as? String, value.isEmpty == false {
+                        aliases.insert(value)
+                    }
+                }
+            }
+        }
+
+        return aliases
+    }
+
+    private func normalizedAliases(from aliases: [String]) -> Set<String> {
+        Set(
+            aliases
+                .map(normalizedAlias)
+                .filter { $0.isEmpty == false }
+        )
+    }
+
+    private func normalizedAlias(_ value: String) -> String {
+        let folded = value.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+        let scalars = folded.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+        return String(String.UnicodeScalarView(scalars))
     }
 
     private func focusedWindowElement(in appElement: AXUIElement) throws -> AXUIElement {

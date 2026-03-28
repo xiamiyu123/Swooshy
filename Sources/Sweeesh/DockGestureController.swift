@@ -65,25 +65,25 @@ final class DockGestureController {
         let touchSummary = frame.touches
             .map { "#\($0.identifier)=\(NSStringFromPoint($0.position))" }
             .joined(separator: ", ")
-        let hoveredApplication = dockProbe.hoveredApplicationName(at: mouseLocation)
+        let hoveredApplication = dockProbe.hoveredApplication(at: mouseLocation)
         if shouldLogFrame(touchCount: frame.touches.count, hoveredApplication: hoveredApplication) {
             DebugLog.debug(
                 DebugLog.dock,
-                "Received touch frame with \(frame.touches.count) touches at mouse \(NSStringFromPoint(mouseLocation)); hovered application = \(hoveredApplication ?? "nil"); touches = [\(touchSummary)]"
+                "Received touch frame with \(frame.touches.count) touches at mouse \(NSStringFromPoint(mouseLocation)); hovered application = \(hoveredApplication?.logDescription ?? "nil"); touches = [\(touchSummary)]"
             )
         }
-        guard let event = recognizer.process(frame: frame, hoveredApplicationName: hoveredApplication) else {
+        guard let event = recognizer.process(frame: frame, hoveredApplication: hoveredApplication) else {
             return
         }
 
         do {
             switch event {
-            case .minimize(let applicationName):
-                DebugLog.info(DebugLog.dock, "Dock swipe minimize for \(applicationName)")
-                _ = try windowManager.minimizeVisibleWindow(ofApplicationNamed: applicationName)
-            case .restore(let applicationName):
-                DebugLog.info(DebugLog.dock, "Dock swipe restore for \(applicationName)")
-                _ = try windowManager.restoreMinimizedWindow(ofApplicationNamed: applicationName)
+            case .minimize(let application):
+                DebugLog.info(DebugLog.dock, "Dock swipe minimize for \(application.logDescription)")
+                _ = try windowManager.minimizeVisibleWindow(of: application)
+            case .restore(let application):
+                DebugLog.info(DebugLog.dock, "Dock swipe restore for \(application.logDescription)")
+                _ = try windowManager.restoreMinimizedWindow(of: application)
             }
         } catch let error as WindowManagerError {
             handleWindowManagerError(error)
@@ -93,16 +93,17 @@ final class DockGestureController {
         }
     }
 
-    private func shouldLogFrame(touchCount: Int, hoveredApplication: String?) -> Bool {
+    private func shouldLogFrame(touchCount: Int, hoveredApplication: DockApplicationTarget?) -> Bool {
+        let hoveredApplicationLogValue = hoveredApplication?.logDescription
         let now = Date()
         let shouldLog = touchCount != lastLoggedTouchCount ||
-            hoveredApplication != lastLoggedHover ||
+            hoveredApplicationLogValue != lastLoggedHover ||
             now.timeIntervalSince(lastFrameLogAt) >= 0.25
 
         if shouldLog {
             lastFrameLogAt = now
             lastLoggedTouchCount = touchCount
-            lastLoggedHover = hoveredApplication
+            lastLoggedHover = hoveredApplicationLogValue
         }
 
         return shouldLog
@@ -133,7 +134,7 @@ private final class DockAccessibilityProbe {
     private var lastProbeLogAt = Date.distantPast
     private var lastProbeLogKey = ""
 
-    func hoveredApplicationName(at appKitPoint: CGPoint) -> String? {
+    func hoveredApplication(at appKitPoint: CGPoint) -> DockApplicationTarget? {
         let candidates = dockCandidates().map { candidate in
             var candidate = candidate
             candidate.distance = distanceFromPoint(appKitPoint, to: candidate.frame)
@@ -143,10 +144,10 @@ private final class DockAccessibilityProbe {
         for candidate in candidates {
             if candidate.frame.contains(appKitPoint) {
                 logProbeIfNeeded(
-                    key: "hit:\(candidate.name):\(NSStringFromPoint(appKitPoint))",
-                    message: "Pointer hit Dock item \(candidate.name) mapped to app \(candidate.matchedApplicationName) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(candidate.frame)); distance = \(String(format: "%.2f", candidate.distance)); aliases = \(candidate.aliases.joined(separator: "|"))"
+                    key: "hit:\(candidate.target.dockItemName):\(candidate.target.processIdentifier):\(NSStringFromPoint(appKitPoint))",
+                    message: "Pointer hit Dock item \(candidate.target.dockItemName) mapped to app \(candidate.target.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(candidate.frame)); distance = \(String(format: "%.2f", candidate.distance)); aliases = \(candidate.target.aliases.joined(separator: "|"))"
                 )
-                return candidate.name
+                return candidate.target
             }
         }
 
@@ -154,7 +155,7 @@ private final class DockAccessibilityProbe {
             .sorted { $0.distance < $1.distance }
             .prefix(4)
             .map {
-                "\($0.name){app=\($0.matchedApplicationName), frame=\(NSStringFromRect($0.frame)), distance=\(String(format: "%.2f", $0.distance)), aliases=\($0.aliases.joined(separator: "|"))}"
+                "\($0.target.dockItemName){app=\($0.target.logDescription), frame=\(NSStringFromRect($0.frame)), distance=\(String(format: "%.2f", $0.distance)), aliases=\($0.target.aliases.joined(separator: "|"))}"
             }
             .joined(separator: ", ")
 
@@ -187,13 +188,17 @@ private final class DockAccessibilityProbe {
 
         let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
         var candidates: [DockItemCandidate] = []
+        var qualityScoreCache: [pid_t: Int] = [:]
 
         for item in childElements(attribute: kAXChildrenAttribute as CFString, from: dockList) {
             guard let itemName = stringAttribute(kAXTitleAttribute as CFString, from: item) else {
                 continue
             }
 
-            guard let matchedApplication = matchingRunningApplication(forDockItemNamed: itemName) else {
+            guard let matchedApplication = matchingRunningApplication(
+                forDockItemNamed: itemName,
+                qualityScoreCache: &qualityScoreCache
+            ) else {
                 continue
             }
 
@@ -207,12 +212,18 @@ private final class DockAccessibilityProbe {
             let appKitFrame = geometry.appKitFrame(
                 fromAXFrame: CGRect(origin: axPosition, size: axSize)
             )
+            let aliases = applicationAliases(for: matchedApplication)
+            let target = DockApplicationTarget(
+                dockItemName: itemName,
+                resolvedApplicationName: matchedApplication.localizedName ?? itemName,
+                processIdentifier: matchedApplication.processIdentifier,
+                bundleIdentifier: matchedApplication.bundleIdentifier,
+                aliases: aliases
+            )
             let candidate = DockItemCandidate(
-                name: itemName,
+                target: target,
                 frame: appKitFrame,
-                distance: 0,
-                matchedApplicationName: matchedApplication.localizedName ?? itemName,
-                aliases: applicationAliases(for: matchedApplication)
+                distance: 0
             )
             candidates.append(candidate)
         }
@@ -232,10 +243,108 @@ private final class DockAccessibilityProbe {
         return sqrt((dx * dx) + (dy * dy))
     }
 
-    private func matchingRunningApplication(forDockItemNamed dockItemName: String) -> NSRunningApplication? {
-        NSWorkspace.shared.runningApplications.first { application in
-            applicationAliases(for: application).contains(dockItemName)
+    private func matchingRunningApplication(
+        forDockItemNamed dockItemName: String,
+        qualityScoreCache: inout [pid_t: Int]
+    ) -> NSRunningApplication? {
+        let scoredMatches = NSWorkspace.shared.runningApplications.compactMap { application -> (NSRunningApplication, Int, Int)? in
+            let aliasScore = appMatchScore(forDockItemNamed: dockItemName, aliases: applicationAliases(for: application))
+            guard aliasScore > 0 else {
+                return nil
+            }
+
+            let qualityScore = cachedApplicationQualityScore(
+                for: application,
+                qualityScoreCache: &qualityScoreCache
+            )
+            return (application, aliasScore, qualityScore)
         }
+
+        return scoredMatches.max {
+            let lhsCombinedScore = ($0.1 * 1_000) + $0.2
+            let rhsCombinedScore = ($1.1 * 1_000) + $1.2
+
+            if lhsCombinedScore == rhsCombinedScore {
+                // Lower pid usually represents the long-lived primary app process.
+                return $0.0.processIdentifier > $1.0.processIdentifier
+            }
+
+            return lhsCombinedScore < rhsCombinedScore
+        }?.0
+    }
+
+    private func cachedApplicationQualityScore(
+        for application: NSRunningApplication,
+        qualityScoreCache: inout [pid_t: Int]
+    ) -> Int {
+        if let cachedScore = qualityScoreCache[application.processIdentifier] {
+            return cachedScore
+        }
+
+        let score = applicationQualityScore(for: application)
+        qualityScoreCache[application.processIdentifier] = score
+        return score
+    }
+
+    private func applicationQualityScore(for application: NSRunningApplication) -> Int {
+        var score = 0
+
+        switch application.activationPolicy {
+        case .regular:
+            score += 240
+        case .accessory:
+            score += 100
+        case .prohibited:
+            score += 0
+        @unknown default:
+            score += 0
+        }
+
+        if hasAnyWindow(for: application) {
+            score += 120
+        }
+
+        if application.isHidden == false {
+            score += 20
+        }
+
+        if isLikelyHelperProcess(application) {
+            score -= 220
+        }
+
+        return score
+    }
+
+    private func hasAnyWindow(for application: NSRunningApplication) -> Bool {
+        let appElement = AXUIElementCreateApplication(application.processIdentifier)
+        var value: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
+
+        guard error == .success, let windows = value as? [AnyObject] else {
+            return false
+        }
+
+        return windows.isEmpty == false
+    }
+
+    private func isLikelyHelperProcess(_ application: NSRunningApplication) -> Bool {
+        let localizedName = (application.localizedName ?? "").lowercased()
+        let bundleIdentifier = (application.bundleIdentifier ?? "").lowercased()
+        let bundlePath = (application.bundleURL?.path ?? "").lowercased()
+
+        if localizedName.contains("helper") || localizedName.contains("notification service") {
+            return true
+        }
+
+        if bundleIdentifier.contains(".framework.") || bundleIdentifier.contains(".helper") {
+            return true
+        }
+
+        if bundlePath.contains("/frameworks/") || bundlePath.contains("/helpers/") || bundlePath.contains(".appex/") {
+            return true
+        }
+
+        return false
     }
 
     private func logProbeIfNeeded(key: String, message: String) {
@@ -254,6 +363,10 @@ private final class DockAccessibilityProbe {
 
         if let localizedName = application.localizedName, localizedName.isEmpty == false {
             aliases.insert(localizedName)
+        }
+
+        if let bundleIdentifier = application.bundleIdentifier, bundleIdentifier.isEmpty == false {
+            aliases.insert(bundleIdentifier)
         }
 
         if let bundleURL = application.bundleURL {
@@ -278,6 +391,38 @@ private final class DockAccessibilityProbe {
         }
 
         return Array(aliases)
+    }
+
+    private func appMatchScore(forDockItemNamed dockItemName: String, aliases: [String]) -> Int {
+        let normalizedDockName = normalizedAlias(dockItemName)
+        guard normalizedDockName.isEmpty == false else {
+            return 0
+        }
+
+        var bestScore = 0
+        for alias in aliases {
+            let normalizedAlias = normalizedAlias(alias)
+            guard normalizedAlias.isEmpty == false else {
+                continue
+            }
+
+            if normalizedAlias == normalizedDockName {
+                bestScore = max(bestScore, 3)
+            } else if normalizedAlias.contains(normalizedDockName) || normalizedDockName.contains(normalizedAlias) {
+                bestScore = max(bestScore, 2)
+            }
+        }
+
+        return bestScore
+    }
+
+    private func normalizedAlias(_ value: String) -> String {
+        let folded = value.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+        let scalars = folded.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+        return String(String.UnicodeScalarView(scalars))
     }
 
     private func childElements(attribute: CFString, from element: AXUIElement) -> [AXUIElement] {
@@ -330,11 +475,9 @@ private final class DockAccessibilityProbe {
     }
 
     private struct DockItemCandidate {
-        let name: String
+        let target: DockApplicationTarget
         let frame: CGRect
         var distance: CGFloat
-        let matchedApplicationName: String
-        let aliases: [String]
     }
 }
 

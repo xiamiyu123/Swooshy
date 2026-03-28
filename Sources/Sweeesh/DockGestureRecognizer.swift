@@ -11,14 +11,30 @@ struct TrackpadTouchFrame: Equatable {
     let timestamp: TimeInterval
 }
 
+struct DockApplicationTarget: Equatable {
+    let dockItemName: String
+    let resolvedApplicationName: String
+    let processIdentifier: pid_t
+    let bundleIdentifier: String?
+    let aliases: [String]
+
+    var logDescription: String {
+        if let bundleIdentifier, bundleIdentifier.isEmpty == false {
+            return "\(resolvedApplicationName) [\(bundleIdentifier)]"
+        }
+
+        return resolvedApplicationName
+    }
+}
+
 enum DockSwipeEvent: Equatable {
-    case minimize(applicationName: String)
-    case restore(applicationName: String)
+    case minimize(application: DockApplicationTarget)
+    case restore(application: DockApplicationTarget)
 }
 
 struct DockSwipeGestureRecognizer {
     private struct Session: Equatable {
-        let applicationName: String
+        let application: DockApplicationTarget
         let startAveragePoint: CGPoint
         var hasTriggered = false
     }
@@ -29,7 +45,7 @@ struct DockSwipeGestureRecognizer {
 
     mutating func process(
         frame: TrackpadTouchFrame,
-        hoveredApplicationName: String?
+        hoveredApplication: DockApplicationTarget?
     ) -> DockSwipeEvent? {
         guard frame.touches.count == 2 else {
             session = nil
@@ -42,12 +58,12 @@ struct DockSwipeGestureRecognizer {
         )
 
         guard let session else {
-            guard let hoveredApplicationName else {
+            guard let hoveredApplication else {
                 return nil
             }
 
             self.session = Session(
-                applicationName: hoveredApplicationName,
+                application: hoveredApplication,
                 startAveragePoint: averagePoint
             )
             return nil
@@ -71,9 +87,9 @@ struct DockSwipeGestureRecognizer {
         self.session?.hasTriggered = true
 
         if deltaY < 0 {
-            return .minimize(applicationName: session.applicationName)
+            return .minimize(application: session.application)
         }
 
-        return .restore(applicationName: session.applicationName)
+        return .restore(application: session.application)
     }
 }

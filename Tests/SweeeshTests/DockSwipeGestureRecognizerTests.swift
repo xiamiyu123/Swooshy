@@ -3,9 +3,31 @@ import Testing
 @testable import Sweeesh
 
 struct DockSwipeGestureRecognizerTests {
+    private func target(
+        dockItemName: String,
+        resolvedApplicationName: String? = nil,
+        processIdentifier: pid_t = 42,
+        bundleIdentifier: String? = nil,
+        aliases: [String] = []
+    ) -> DockApplicationTarget {
+        DockApplicationTarget(
+            dockItemName: dockItemName,
+            resolvedApplicationName: resolvedApplicationName ?? dockItemName,
+            processIdentifier: processIdentifier,
+            bundleIdentifier: bundleIdentifier,
+            aliases: aliases
+        )
+    }
+
     @Test
     func downwardTwoFingerSwipeMinimizesHoveredApplication() {
         var recognizer = DockSwipeGestureRecognizer()
+        let finder = target(
+            dockItemName: "Finder",
+            processIdentifier: 100,
+            bundleIdentifier: "com.apple.finder",
+            aliases: ["Finder", "com.apple.finder"]
+        )
 
         #expect(
             recognizer.process(
@@ -16,7 +38,7 @@ struct DockSwipeGestureRecognizerTests {
                     ],
                     timestamp: 0
                 ),
-                hoveredApplicationName: "Finder"
+                hoveredApplication: finder
             ) == nil
         )
 
@@ -29,14 +51,20 @@ struct DockSwipeGestureRecognizerTests {
                     ],
                     timestamp: 0.1
                 ),
-                hoveredApplicationName: "Finder"
-            ) == .minimize(applicationName: "Finder")
+                hoveredApplication: finder
+            ) == .minimize(application: finder)
         )
     }
 
     @Test
     func upwardTwoFingerSwipeRestoresHoveredApplication() {
         var recognizer = DockSwipeGestureRecognizer()
+        let ghostty = target(
+            dockItemName: "Ghostty",
+            processIdentifier: 101,
+            bundleIdentifier: "com.mitchellh.ghostty",
+            aliases: ["Ghostty", "com.mitchellh.ghostty"]
+        )
 
         _ = recognizer.process(
             frame: TrackpadTouchFrame(
@@ -46,7 +74,7 @@ struct DockSwipeGestureRecognizerTests {
                 ],
                 timestamp: 0
             ),
-            hoveredApplicationName: "Ghostty"
+            hoveredApplication: ghostty
         )
 
         #expect(
@@ -58,8 +86,8 @@ struct DockSwipeGestureRecognizerTests {
                     ],
                     timestamp: 0.1
                 ),
-                hoveredApplicationName: "Ghostty"
-            ) == .restore(applicationName: "Ghostty")
+                hoveredApplication: ghostty
+            ) == .restore(application: ghostty)
         )
     }
 
@@ -76,7 +104,7 @@ struct DockSwipeGestureRecognizerTests {
                     ],
                     timestamp: 0
                 ),
-                hoveredApplicationName: nil
+                hoveredApplication: nil
             ) == nil
         )
     }
