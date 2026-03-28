@@ -243,4 +243,37 @@ struct DockSwipeGestureRecognizerTests {
             ) == nil
         )
     }
+
+    @Test
+    func recognizerOnlyRequiresHoveredApplicationBeforeSessionStarts() {
+        var recognizer = DockGestureRecognizer()
+        let finder = target(dockItemName: "Finder")
+
+        #expect(recognizer.requiresHoveredApplication)
+
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.3, y: 0.3)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.5, y: 0.3)),
+                ],
+                timestamp: 0
+            ),
+            hoveredApplication: finder
+        )
+
+        #expect(recognizer.requiresHoveredApplication == false)
+
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.35, y: 0.35)),
+                ],
+                timestamp: 0.1
+            ),
+            hoveredApplication: nil
+        )
+
+        #expect(recognizer.requiresHoveredApplication)
+    }
 }

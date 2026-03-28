@@ -75,6 +75,10 @@ struct DockGestureRecognizer {
     private let pinchBiasRatio: CGFloat = 1.15
     private var session: Session?
 
+    var requiresHoveredApplication: Bool {
+        session == nil
+    }
+
     mutating func process(
         frame: TrackpadTouchFrame,
         hoveredApplication: DockApplicationTarget?
