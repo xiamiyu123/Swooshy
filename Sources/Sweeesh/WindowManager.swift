@@ -30,7 +30,7 @@ struct WindowManager: WindowManaging {
             return
         case .closeWindow:
             let window = try focusedWindowElement(in: appElement)
-            guard try closeWindow(window) else {
+            guard try closeWindow(window, owningApp: app) else {
                 throw WindowManagerError.unableToPerformAction
             }
             return
@@ -158,13 +158,13 @@ struct WindowManager: WindowManaging {
             return false
         }
 
-        if try closeWindow(targetWindow) {
+        if try closeWindow(targetWindow, owningApp: app) {
             DebugLog.info(DebugLog.windows, "Closed one visible window for \(application.logDescription)")
             return true
         }
 
         for fallbackWindow in windows.dropFirst() {
-            if try closeWindow(fallbackWindow) {
+            if try closeWindow(fallbackWindow, owningApp: app) {
                 DebugLog.info(DebugLog.windows, "Closed one fallback visible window for \(application.logDescription)")
                 return true
             }
@@ -492,17 +492,34 @@ struct WindowManager: WindowManaging {
         throw WindowManagerError.unableToPerformAction
     }
 
-    private func closeWindow(_ window: AXUIElement) throws -> Bool {
+    private func closeWindow(
+        _ window: AXUIElement,
+        owningApp: NSRunningApplication
+    ) throws -> Bool {
+        _ = owningApp.activate(options: [.activateAllWindows])
+        try? performAction(kAXRaiseAction as CFString, on: window)
+        try? setBooleanAttribute(kAXMainAttribute as CFString, value: true, on: window)
+        try? setBooleanAttribute(kAXFocusedAttribute as CFString, value: true, on: window)
+
         if
             let closeButton = try? childElement(attribute: kAXCloseButtonAttribute as CFString, from: window),
-            tryPerformAction(kAXPressAction as CFString, on: closeButton)
+            tryPerformAction(kAXPressAction as CFString, on: closeButton, context: "AXCloseButton")
         {
             DebugLog.debug(DebugLog.windows, "Closed window via AXCloseButton: \(windowSummary([window]))")
             return true
         }
 
-        if tryPerformAction("AXClose" as CFString, on: window) {
+        if tryPerformAction("AXClose" as CFString, on: window, context: "AXClose") {
             DebugLog.debug(DebugLog.windows, "Closed window via AXClose action: \(windowSummary([window]))")
+            return true
+        }
+
+        // Some apps expose only Press on the close control but not AXClose on the window node.
+        if
+            let closeButton = try? childElement(attribute: kAXCloseButtonAttribute as CFString, from: window),
+            tryPerformAction(kAXPressAction as CFString, on: closeButton, context: "AXCloseButtonRetry")
+        {
+            DebugLog.debug(DebugLog.windows, "Closed window via AXCloseButton retry: \(windowSummary([window]))")
             return true
         }
 
@@ -510,8 +527,21 @@ struct WindowManager: WindowManaging {
         return false
     }
 
-    private func tryPerformAction(_ action: CFString, on element: AXUIElement) -> Bool {
-        AXUIElementPerformAction(element, action) == .success
+    private func tryPerformAction(
+        _ action: CFString,
+        on element: AXUIElement,
+        context: String
+    ) -> Bool {
+        let error = AXUIElementPerformAction(element, action)
+        guard error == .success else {
+            DebugLog.debug(
+                DebugLog.accessibility,
+                "AX action \(action as String) failed with error \(error.rawValue) while \(context)"
+            )
+            return false
+        }
+
+        return true
     }
 
     private func focusNextWindow(
