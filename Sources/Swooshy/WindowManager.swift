@@ -151,7 +151,7 @@ struct WindowManager: WindowManaging {
         )
 
         guard let targetWindow = windows.first else {
-            _ = app.activate(options: [.activateAllWindows])
+            requestForegroundActivation(for: app)
             DebugLog.debug(DebugLog.windows, "No minimized window found for \(application.logDescription); activated app instead")
             return false
         }
@@ -624,7 +624,7 @@ struct WindowManager: WindowManaging {
 
     private func bringWindowToFront(_ window: AXUIElement, for app: NSRunningApplication) throws {
         DebugLog.debug(DebugLog.windows, "Bringing window to front for app \(app.localizedName ?? "unknown"): \(windowSummary([window]))")
-        _ = app.activate(options: [.activateAllWindows])
+        requestForegroundActivation(for: app)
 
         // Restored windows can take a moment to become orderable, so raise twice
         // around the focus attributes to make the behavior more reliable.
@@ -632,8 +632,26 @@ struct WindowManager: WindowManaging {
         try setBooleanAttribute(kAXMainAttribute as CFString, value: true, on: window)
         try setBooleanAttribute(kAXFocusedAttribute as CFString, value: true, on: window)
         try performAction(kAXRaiseAction as CFString, on: window)
-        NSApp.activate(ignoringOtherApps: true)
+        requestForegroundActivation(for: app)
         DebugLog.debug(DebugLog.windows, "Finished bring-to-front sequence for window \(windowSummary([window]))")
+    }
+
+    private func requestForegroundActivation(for app: NSRunningApplication) {
+        _ = app.activate(options: [.activateAllWindows])
+
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let error = AXUIElementSetAttributeValue(
+            appElement,
+            kAXFrontmostAttribute as CFString,
+            kCFBooleanTrue
+        )
+
+        if error != .success {
+            DebugLog.debug(
+                DebugLog.accessibility,
+                "Failed to request AXFrontmost for app \(app.localizedName ?? "unknown") with error \(error.rawValue)"
+            )
+        }
     }
 
     private func setBooleanAttribute(_ attribute: CFString, value: Bool, on element: AXUIElement) throws {
