@@ -125,9 +125,29 @@ struct DockGestureRecognizer {
     }
 
     private func averagePoint(for touches: [TrackpadTouchSample]) -> CGPoint {
-        CGPoint(
-            x: touches.map(\.position.x).reduce(0, +) / CGFloat(touches.count),
-            y: touches.map(\.position.y).reduce(0, +) / CGFloat(touches.count)
+        guard let firstTouch = touches.first else {
+            return .zero
+        }
+
+        if touches.count == 2 {
+            let secondTouch = touches[1]
+            return CGPoint(
+                x: (firstTouch.position.x + secondTouch.position.x) / 2,
+                y: (firstTouch.position.y + secondTouch.position.y) / 2
+            )
+        }
+
+        var totalX = firstTouch.position.x
+        var totalY = firstTouch.position.y
+
+        for touch in touches.dropFirst() {
+            totalX += touch.position.x
+            totalY += touch.position.y
+        }
+
+        return CGPoint(
+            x: totalX / CGFloat(touches.count),
+            y: totalY / CGFloat(touches.count)
         )
     }
 

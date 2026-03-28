@@ -150,13 +150,13 @@ private final class DockAccessibilityProbe {
     private var lastProbeLogKey = ""
 
     func hoveredApplication(at appKitPoint: CGPoint) -> DockApplicationTarget? {
-        let candidates = dockCandidates().map { candidate in
-            var candidate = candidate
-            candidate.distance = distanceFromPoint(appKitPoint, to: candidate.frame)
-            return candidate
-        }
+        let candidates = dockCandidates()
+        var nearestCandidates: [DockItemCandidate] = []
 
         for candidate in candidates {
+            var candidate = candidate
+            candidate.distance = distanceFromPoint(appKitPoint, to: candidate.frame)
+
             if candidate.frame.contains(appKitPoint) {
                 logProbeIfNeeded(
                     key: "hit:\(candidate.target.dockItemName):\(candidate.target.processIdentifier):\(NSStringFromPoint(appKitPoint))",
@@ -164,11 +164,11 @@ private final class DockAccessibilityProbe {
                 )
                 return candidate.target
             }
+
+            insertNearestCandidate(candidate, into: &nearestCandidates)
         }
 
-        let nearestSummary = candidates
-            .sorted { $0.distance < $1.distance }
-            .prefix(4)
+        let nearestSummary = nearestCandidates
             .map {
                 "\($0.target.dockItemName){app=\($0.target.logDescription), frame=\(NSStringFromRect($0.frame)), distance=\(String(format: "%.2f", $0.distance)), aliases=\($0.target.aliases.joined(separator: "|"))}"
             }
@@ -204,6 +204,7 @@ private final class DockAccessibilityProbe {
         let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
         var candidates: [DockItemCandidate] = []
         var qualityScoreCache: [pid_t: Int] = [:]
+        var aliasCache: [pid_t: [String]] = [:]
 
         for item in childElements(attribute: kAXChildrenAttribute as CFString, from: dockList) {
             guard let itemName = stringAttribute(kAXTitleAttribute as CFString, from: item) else {
@@ -212,7 +213,8 @@ private final class DockAccessibilityProbe {
 
             guard let matchedApplication = matchingRunningApplication(
                 forDockItemNamed: itemName,
-                qualityScoreCache: &qualityScoreCache
+                qualityScoreCache: &qualityScoreCache,
+                aliasCache: &aliasCache
             ) else {
                 continue
             }
@@ -260,10 +262,14 @@ private final class DockAccessibilityProbe {
 
     private func matchingRunningApplication(
         forDockItemNamed dockItemName: String,
-        qualityScoreCache: inout [pid_t: Int]
+        qualityScoreCache: inout [pid_t: Int],
+        aliasCache: inout [pid_t: [String]]
     ) -> NSRunningApplication? {
         let scoredMatches = NSWorkspace.shared.runningApplications.compactMap { application -> (NSRunningApplication, Int, Int)? in
-            let aliasScore = appMatchScore(forDockItemNamed: dockItemName, aliases: applicationAliases(for: application))
+            let aliasScore = appMatchScore(
+                forDockItemNamed: dockItemName,
+                aliases: cachedApplicationAliases(for: application, aliasCache: &aliasCache)
+            )
             guard aliasScore > 0 else {
                 return nil
             }
@@ -286,6 +292,19 @@ private final class DockAccessibilityProbe {
 
             return lhsCombinedScore < rhsCombinedScore
         }?.0
+    }
+
+    private func cachedApplicationAliases(
+        for application: NSRunningApplication,
+        aliasCache: inout [pid_t: [String]]
+    ) -> [String] {
+        if let aliases = aliasCache[application.processIdentifier] {
+            return aliases
+        }
+
+        let aliases = applicationAliases(for: application)
+        aliasCache[application.processIdentifier] = aliases
+        return aliases
     }
 
     private func cachedApplicationQualityScore(
@@ -371,6 +390,18 @@ private final class DockAccessibilityProbe {
         lastProbeLogKey = key
         lastProbeLogAt = now
         DebugLog.debug(DebugLog.dock, message)
+    }
+
+    private func insertNearestCandidate(
+        _ candidate: DockItemCandidate,
+        into nearestCandidates: inout [DockItemCandidate]
+    ) {
+        let insertionIndex = nearestCandidates.firstIndex { candidate.distance < $0.distance } ?? nearestCandidates.endIndex
+        nearestCandidates.insert(candidate, at: insertionIndex)
+
+        if nearestCandidates.count > 4 {
+            nearestCandidates.removeLast()
+        }
     }
 
     private func applicationAliases(for application: NSRunningApplication) -> [String] {

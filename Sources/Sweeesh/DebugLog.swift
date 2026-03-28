@@ -53,14 +53,9 @@ enum DebugLog {
     }
 
     private static func writeToFile(level: String, channel: Channel, message: String) {
-        let line = "\(timestamp()) [\(level)] [\(channel.name)] \(message)\n"
         Task {
-            await fileSink.append(line: line)
+            await fileSink.append(level: level, channel: channel.name, message: message)
         }
-    }
-
-    private static func timestamp() -> String {
-        ISO8601DateFormatter().string(from: Date())
     }
     #else
     static func debug(_ channel: Channel, _ message: @autoclosure () -> String) {}
@@ -73,6 +68,8 @@ enum DebugLog {
 #if DEBUG
 private actor DebugLogFileSink {
     let logFileURL: URL
+    private let timestampFormatter = ISO8601DateFormatter()
+    private var fileHandle: FileHandle?
 
     init() {
         let logsDirectory = FileManager.default
@@ -81,26 +78,39 @@ private actor DebugLogFileSink {
         self.logFileURL = logsDirectory.appendingPathComponent("debug.log")
     }
 
-    func append(line: String) {
+    deinit {
+        try? fileHandle?.close()
+    }
+
+    func append(level: String, channel: String, message: String) {
         do {
-            let directoryURL = logFileURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(
-                at: directoryURL,
-                withIntermediateDirectories: true
-            )
-
-            if FileManager.default.fileExists(atPath: logFileURL.path) == false {
-                FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
-            }
-
-            let data = Data(line.utf8)
-            let handle = try FileHandle(forWritingTo: logFileURL)
-            defer { try? handle.close() }
+            let line = "\(timestampFormatter.string(from: Date())) [\(level)] [\(channel)] \(message)\n"
+            let handle = try logFileHandle()
             try handle.seekToEnd()
-            try handle.write(contentsOf: data)
+            try handle.write(contentsOf: Data(line.utf8))
         } catch {
             NSLog("Sweeesh debug log file write failed: %@", error.localizedDescription)
         }
+    }
+
+    private func logFileHandle() throws -> FileHandle {
+        if let fileHandle {
+            return fileHandle
+        }
+
+        let directoryURL = logFileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+
+        if FileManager.default.fileExists(atPath: logFileURL.path) == false {
+            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+        }
+
+        let handle = try FileHandle(forWritingTo: logFileURL)
+        self.fileHandle = handle
+        return handle
     }
 }
 #endif

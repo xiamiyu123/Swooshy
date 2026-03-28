@@ -1,6 +1,8 @@
 .DS_Store
 /.build
 /Packages
+/.vscode/
+/.idea/
 xcuserdata/
 DerivedData/
 .swiftpm/configuration/registries.json
