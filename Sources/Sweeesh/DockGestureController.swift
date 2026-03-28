@@ -141,43 +141,136 @@ final class DockGestureController {
 
 @MainActor
 private final class DockAccessibilityProbe {
-    private let cacheTTL: TimeInterval = 0.25
+    private let cacheTTL: TimeInterval = 0.75
     private let logTTL: TimeInterval = 0.4
+    private let probeMargin: CGFloat = 24
     private var cachedCandidates: [DockItemCandidate] = []
+    private var cachedDockBounds: CGRect = .null
     private var cacheExpiresAt = Date.distantPast
     private var lastProbeLogAt = Date.distantPast
     private var lastProbeLogKey = ""
+    private var lastResolvedPoint: CGPoint?
+    private var lastResolvedTarget: DockApplicationTarget?
+    private var lastResolvedCandidateFrame: CGRect?
+    private var invalidationObservers: [NSObjectProtocol] = []
+
+    init() {
+        let workspaceNotificationCenter = NSWorkspace.shared.notificationCenter
+        invalidationObservers = [
+            workspaceNotificationCenter.addObserver(
+                forName: NSWorkspace.didLaunchApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.invalidateCache()
+                }
+            },
+            workspaceNotificationCenter.addObserver(
+                forName: NSWorkspace.didTerminateApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.invalidateCache()
+                }
+            },
+            workspaceNotificationCenter.addObserver(
+                forName: NSWorkspace.didHideApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.invalidateCache()
+                }
+            },
+            workspaceNotificationCenter.addObserver(
+                forName: NSWorkspace.didUnhideApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.invalidateCache()
+                }
+            },
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.invalidateCache()
+                }
+            },
+        ]
+    }
 
     func hoveredApplication(at appKitPoint: CGPoint) -> DockApplicationTarget? {
+        if lastResolvedPoint == appKitPoint {
+            return lastResolvedTarget
+        }
+
+        if let lastResolvedCandidateFrame, lastResolvedCandidateFrame.contains(appKitPoint) {
+            lastResolvedPoint = appKitPoint
+            return lastResolvedTarget
+        }
+
+        let now = Date()
+        if
+            cachedDockBounds.isNull == false,
+            now < cacheExpiresAt,
+            expandedDockBounds().contains(appKitPoint) == false
+        {
+            cacheResolvedTarget(nil, frame: nil, for: appKitPoint)
+            return nil
+        }
+
         let candidates = dockCandidates()
+        guard candidates.isEmpty == false else {
+            cacheResolvedTarget(nil, frame: nil, for: appKitPoint)
+            return nil
+        }
+
+        guard expandedDockBounds().contains(appKitPoint) else {
+            cacheResolvedTarget(nil, frame: nil, for: appKitPoint)
+            return nil
+        }
+
         var nearestCandidates: [DockItemCandidate] = []
+        let shouldCollectNearestCandidates = DebugLog.isEnabled
 
         for candidate in candidates {
             var candidate = candidate
-            candidate.distance = distanceFromPoint(appKitPoint, to: candidate.frame)
 
             if candidate.frame.contains(appKitPoint) {
                 logProbeIfNeeded(
-                    key: "hit:\(candidate.target.dockItemName):\(candidate.target.processIdentifier):\(NSStringFromPoint(appKitPoint))",
-                    message: "Pointer hit Dock item \(candidate.target.dockItemName) mapped to app \(candidate.target.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(candidate.frame)); distance = \(String(format: "%.2f", candidate.distance)); aliases = \(candidate.target.aliases.joined(separator: "|"))"
+                    key: "hit:\(candidate.target.dockItemName):\(candidate.target.processIdentifier):\(NSStringFromRect(candidate.frame))",
+                    message: "Pointer hit Dock item \(candidate.target.dockItemName) mapped to app \(candidate.target.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(candidate.frame)); aliases = \(candidate.target.aliases.joined(separator: "|"))"
                 )
+                cacheResolvedTarget(candidate.target, frame: candidate.frame, for: appKitPoint)
                 return candidate.target
             }
 
+            guard shouldCollectNearestCandidates else { continue }
+
+            candidate.distance = distanceFromPoint(appKitPoint, to: candidate.frame)
             insertNearestCandidate(candidate, into: &nearestCandidates)
         }
 
-        let nearestSummary = nearestCandidates
-            .map {
-                "\($0.target.dockItemName){app=\($0.target.logDescription), frame=\(NSStringFromRect($0.frame)), distance=\(String(format: "%.2f", $0.distance)), aliases=\($0.target.aliases.joined(separator: "|"))}"
-            }
-            .joined(separator: ", ")
+        if shouldCollectNearestCandidates {
+            let nearestSummary = nearestCandidates
+                .map {
+                    "\($0.target.dockItemName){app=\($0.target.logDescription), frame=\(NSStringFromRect($0.frame)), distance=\(String(format: "%.2f", $0.distance)), aliases=\($0.target.aliases.joined(separator: "|"))}"
+                }
+                .joined(separator: ", ")
 
-        logProbeIfNeeded(
-            key: "miss:\(nearestSummary)",
-            message: "Pointer missed all Dock items at \(NSStringFromPoint(appKitPoint)); evaluated \(candidates.count) candidates; nearest = [\(nearestSummary)]"
-        )
+            logProbeIfNeeded(
+                key: "miss:\(NSStringFromRect(cachedDockBounds))",
+                message: "Pointer missed all Dock items at \(NSStringFromPoint(appKitPoint)); evaluated \(candidates.count) candidates; nearest = [\(nearestSummary)]"
+            )
+        }
 
+        cacheResolvedTarget(nil, frame: nil, for: appKitPoint)
         return nil
     }
 
@@ -204,6 +297,7 @@ private final class DockAccessibilityProbe {
         var candidates: [DockItemCandidate] = []
         var qualityScoreCache: [pid_t: Int] = [:]
         var aliasCache: [pid_t: [String]] = [:]
+        var dockBounds: CGRect = .null
 
         for item in childElements(attribute: kAXChildrenAttribute as CFString, from: dockList) {
             guard let itemName = stringAttribute(kAXTitleAttribute as CFString, from: item) else {
@@ -228,7 +322,7 @@ private final class DockAccessibilityProbe {
             let appKitFrame = geometry.appKitFrame(
                 fromAXFrame: CGRect(origin: axPosition, size: axSize)
             )
-            let aliases = applicationAliases(for: matchedApplication)
+            let aliases = cachedApplicationAliases(for: matchedApplication, aliasCache: &aliasCache)
             let target = DockApplicationTarget(
                 dockItemName: itemName,
                 resolvedApplicationName: matchedApplication.localizedName ?? itemName,
@@ -242,11 +336,17 @@ private final class DockAccessibilityProbe {
                 distance: 0
             )
             candidates.append(candidate)
+            dockBounds = dockBounds.union(appKitFrame)
         }
 
         cachedCandidates = candidates
+        cachedDockBounds = dockBounds
         cacheExpiresAt = now.addingTimeInterval(cacheTTL)
         return candidates
+    }
+
+    private func expandedDockBounds() -> CGRect {
+        cachedDockBounds.insetBy(dx: -probeMargin, dy: -probeMargin)
     }
 
     private func distanceFromPoint(_ point: CGPoint, to frame: CGRect) -> CGFloat {
@@ -380,7 +480,7 @@ private final class DockAccessibilityProbe {
         return false
     }
 
-    private func logProbeIfNeeded(key: String, message: String) {
+    private func logProbeIfNeeded(key: String, message: @autoclosure () -> String) {
         let now = Date()
         guard key != lastProbeLogKey || now.timeIntervalSince(lastProbeLogAt) >= logTTL else {
             return
@@ -388,7 +488,26 @@ private final class DockAccessibilityProbe {
 
         lastProbeLogKey = key
         lastProbeLogAt = now
-        DebugLog.debug(DebugLog.dock, message)
+        DebugLog.debug(DebugLog.dock, message())
+    }
+
+    private func cacheResolvedTarget(
+        _ target: DockApplicationTarget?,
+        frame: CGRect?,
+        for point: CGPoint
+    ) {
+        lastResolvedPoint = point
+        lastResolvedTarget = target
+        lastResolvedCandidateFrame = frame
+    }
+
+    private func invalidateCache() {
+        cachedCandidates = []
+        cachedDockBounds = .null
+        cacheExpiresAt = .distantPast
+        lastResolvedPoint = nil
+        lastResolvedTarget = nil
+        lastResolvedCandidateFrame = nil
     }
 
     private func insertNearestCandidate(
