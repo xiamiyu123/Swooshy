@@ -32,7 +32,7 @@ enum GestureHUDStyle: CaseIterable, Codable, Identifiable, Sendable {
         case "minimal_v2", Self.legacyMinimalStorageValue:
             self = .minimal
         default:
-            self = .classic
+            self = .elegant
         }
     }
 
