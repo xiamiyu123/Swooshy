@@ -1,0 +1,44 @@
+"menu.app_name" = "Sweeesh";
+"menu.permission.ready" = "Accessibility Access Ready";
+"menu.permission.grant" = "Grant Accessibility Access";
+"menu.permission.refresh" = "Refresh Permission State";
+"menu.settings" = "Settings…";
+"menu.help" = "How This Works";
+"menu.quit" = "Quit Sweeesh";
+
+"action.left_half" = "Snap Left Half";
+"action.right_half" = "Snap Right Half";
+"action.maximize" = "Maximize to Visible Frame";
+"action.center" = "Center Large Window";
+"action.minimize" = "Minimize to Dock";
+"action.close_window" = "Close Window";
+"action.quit_application" = "Quit Application";
+"action.cycle_same_app_windows" = "Cycle Same-App Windows";
+
+"alert.permission_required.title" = "Accessibility Permission Required";
+"alert.permission_required.message" = "Sweeesh needs Accessibility permission to read and move the focused window.\nOpen System Settings > Privacy & Security > Accessibility, enable Sweeesh, then refresh this menu.";
+"alert.window_action_failed.title" = "Unable to Execute Action";
+"alert.about.title" = "Sweeesh v1";
+"alert.about.message" = "This first version is a focused menubar MVP:\n- It reads the frontmost window through Accessibility.\n- It applies snap and move layouts.\n- Trackpad-native gestures are intentionally deferred until the window engine is stable.";
+
+"settings.window.title" = "Settings";
+"settings.section.general" = "General";
+"settings.section.shortcuts" = "Shortcuts";
+"settings.language.label" = "Language";
+"settings.language.system" = "Follow System";
+"settings.language.english" = "English";
+"settings.language.simplified_chinese" = "Simplified Chinese";
+"settings.hotkeys.enabled" = "Enable global hotkeys";
+"settings.shortcuts.recorder_placeholder" = "Press shortcut";
+"settings.shortcuts.reset" = "Reset shortcut defaults";
+
+"error.permission_missing" = "Accessibility permission is missing. Enable Sweeesh in System Settings and try again.";
+"error.no_frontmost_app" = "Unable to find the frontmost application.";
+"error.no_focused_window" = "The frontmost application does not expose a focused window.";
+"error.read_window_frame_failed" = "Unable to read the current window frame.";
+"error.set_window_frame_failed" = "Unable to update the window frame. Some apps do not allow resizing or moving.";
+"error.resolve_screen_failed" = "Unable to match the focused window to a display.";
+"error.perform_action_failed" = "Unable to perform the selected window action.";
+"error.quit_application_failed" = "Unable to quit the frontmost application.";
+"error.enumerate_windows_failed" = "Unable to inspect windows for the frontmost application.";
+"error.no_alternate_window" = "No alternate window was found for the current application.";
