@@ -51,6 +51,7 @@ core behavior is stable and useful.
 
 - Debug builds can enable detailed logs from `Settings… > Enable debug logging`
 - You can also force logs on at launch with `SWEEESH_DEBUG_LOGS=1 swift run`
+- When enabled, logs are also persisted to `~/Library/Logs/Sweeesh/debug.log`
 - Release builds keep these verbose logs compiled out for a lighter runtime path
 
 ## Default Hotkeys

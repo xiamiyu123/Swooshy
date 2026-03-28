@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let settingsStore = SettingsStore()
         DebugLog.info(DebugLog.app, "Sweeesh launch sequence started")
+        DebugLog.info(DebugLog.app, "Debug log file path: \(DebugLog.logFilePathDescription)")
         let permissionManager = AccessibilityPermissionManager()
         let windowManager = WindowManager()
         let layoutEngine = WindowLayoutEngine()
