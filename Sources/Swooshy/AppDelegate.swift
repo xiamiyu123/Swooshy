@@ -54,5 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         globalHotKeyController?.shutdown()
         statusBarController?.shutdown()
         settingsWindowController?.shutdown()
+
+        dockGestureController = nil
+        globalHotKeyController = nil
+        statusBarController = nil
+        settingsWindowController = nil
     }
 }

@@ -109,7 +109,14 @@ private actor DebugLogFileSink {
         )
 
         if FileManager.default.fileExists(atPath: logFileURL.path) == false {
-            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+            let created = FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+            guard created else {
+                throw NSError(
+                    domain: NSCocoaErrorDomain,
+                    code: NSFileWriteUnknownError,
+                    userInfo: [NSFilePathErrorKey: logFileURL.path]
+                )
+            }
         }
 
         let handle = try FileHandle(forWritingTo: logFileURL)

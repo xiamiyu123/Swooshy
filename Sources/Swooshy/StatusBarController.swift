@@ -11,6 +11,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
     private var settingsObserver: NSObjectProtocol?
+    private var isShuttingDown = false
 
     init(
         permissionManager: AccessibilityPermissionManaging,
@@ -32,6 +33,9 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     func shutdown() {
+        guard isShuttingDown == false else { return }
+        isShuttingDown = true
+
         if let settingsObserver {
             NotificationCenter.default.removeObserver(settingsObserver)
             self.settingsObserver = nil
@@ -39,6 +43,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
         menu.delegate = nil
         statusItem.menu = nil
+        NSStatusBar.system.removeStatusItem(statusItem)
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -48,11 +53,18 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
 
-        button.image = NSImage(
+        if let image = NSImage(
             systemSymbolName: "rectangle.3.group",
             accessibilityDescription: "Swooshy"
-        )
-        button.imagePosition = .imageOnly
+        ) {
+            button.image = image
+            button.title = ""
+            button.imagePosition = .imageOnly
+        } else {
+            button.image = nil
+            button.title = "S"
+            button.imagePosition = .imageLeading
+        }
 
         menu.delegate = self
         statusItem.menu = menu
