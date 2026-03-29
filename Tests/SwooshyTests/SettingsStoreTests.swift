@@ -13,6 +13,7 @@ struct SettingsStoreTests {
         let store = SettingsStore(userDefaults: defaults)
         store.languageOverride = .simplifiedChinese
         store.hotKeysEnabled = false
+        store.statusItemIcon = .windowGrid
         store.dockGesturesEnabled = false
         store.titleBarGesturesEnabled = false
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
@@ -24,6 +25,7 @@ struct SettingsStoreTests {
 
         #expect(reloadedStore.languageOverride == .simplifiedChinese)
         #expect(reloadedStore.hotKeysEnabled == false)
+        #expect(reloadedStore.statusItemIcon == .windowGrid)
         #expect(reloadedStore.dockGesturesEnabled == false)
         #expect(reloadedStore.titleBarGesturesEnabled == false)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .closeWindow)

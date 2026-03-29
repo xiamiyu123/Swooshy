@@ -56,21 +56,38 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             return
         }
 
-        if let image = NSImage(
-            systemSymbolName: "rectangle.3.group",
-            accessibilityDescription: "Swooshy"
+        button.imageScaling = .scaleProportionallyDown
+        updateStatusItemAppearance(using: button)
+
+        menu.delegate = self
+        statusItem.menu = menu
+    }
+
+    private func updateStatusItemAppearance(using button: NSStatusBarButton? = nil) {
+        guard let button = button ?? statusItem.button else {
+            DebugLog.error(DebugLog.app, "Status item button is unavailable; menu icon refresh skipped")
+            return
+        }
+
+        let accessibilityDescription = settingsStore.localized("menu.app_name")
+
+        if let image = settingsStore.statusItemIcon.makeImage(
+            accessibilityDescription: accessibilityDescription
         ) {
             button.image = image
             button.title = ""
             button.imagePosition = .imageOnly
         } else {
+            DebugLog.error(
+                DebugLog.app,
+                "Unable to load status item icon \(settingsStore.statusItemIcon.storageValue); falling back to text"
+            )
             button.image = nil
             button.title = "S"
             button.imagePosition = .imageLeading
         }
 
-        menu.delegate = self
-        statusItem.menu = menu
+        button.toolTip = accessibilityDescription
     }
 
     private func rebuildMenu() {
@@ -95,6 +112,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
+                self?.updateStatusItemAppearance()
                 self?.rebuildMenu()
             }
         }
@@ -143,7 +161,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     @objc
-    private func showAboutPanel() {
+    private func showHelpPanel() {
         alertPresenter.show(
             title: settingsStore.localized("alert.about.title"),
             message: settingsStore.localized("alert.about.message")
@@ -197,7 +215,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         case .help:
             let item = NSMenuItem(
                 title: entry.title,
-                action: #selector(showAboutPanel),
+                action: #selector(showHelpPanel),
                 keyEquivalent: ""
             )
             item.target = self

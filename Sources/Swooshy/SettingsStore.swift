@@ -56,6 +56,15 @@ final class SettingsStore {
         }
     }
 
+    var statusItemIcon: StatusItemIcon {
+        didSet {
+            guard oldValue != statusItemIcon else { return }
+            userDefaults.set(statusItemIcon.storageValue, forKey: Keys.statusItemIcon)
+            DebugLog.info(DebugLog.settings, "Status item icon set to \(statusItemIcon.storageValue)")
+            notifyDidChange()
+        }
+    }
+
     #if DEBUG
     var debugLoggingEnabled: Bool {
         didSet {
@@ -120,6 +129,9 @@ final class SettingsStore {
         )
         self.gestureHUDStyle = GestureHUDStyle(
             storageValue: userDefaults.string(forKey: Keys.gestureHUDStyle)
+        )
+        self.statusItemIcon = StatusItemIcon(
+            storageValue: userDefaults.string(forKey: Keys.statusItemIcon)
         )
         #if DEBUG
         self.debugLoggingEnabled = Self.boolValue(
@@ -391,6 +403,7 @@ final class SettingsStore {
         static let dockGesturesEnabled = "settings.dockGesturesEnabled"
         static let titleBarGesturesEnabled = "settings.titleBarGesturesEnabled"
         static let gestureHUDStyle = "settings.gestureHUDStyle"
+        static let statusItemIcon = "settings.statusItemIcon"
         #if DEBUG
         static let debugLoggingEnabled = "settings.debugLoggingEnabled"
         #endif

@@ -20,8 +20,8 @@
 "alert.permission_required.title" = "需要辅助功能权限";
 "alert.permission_required.message" = "Swooshy 需要辅助功能权限来读取和移动当前窗口。\n请打开“系统设置” > “隐私与安全性” > “辅助功能”，启用 Swooshy，然后回到菜单中刷新权限状态。";
 "alert.window_action_failed.title" = "无法执行操作";
-"alert.about.title" = "Swooshy v1";
-"alert.about.message" = "这是一个聚焦于菜单栏的第一版应用：\n- 通过辅助功能接口读取当前前台窗口。\n- 执行贴靠、移动和调整大小布局。\n- 支持 Dock 和标题栏触控板手势。";
+"alert.about.title" = "使用说明";
+"alert.about.message" = "开始使用：\n1. 点击菜单栏图标并先确认已授予辅助功能权限。\n2. 打开“设置…”，按需调整手势映射和全局快捷键。\n3. 鼠标悬停在 Dock 项目上后，使用双指手势操作对应应用窗口。\n4. 鼠标悬停在最前窗口标题栏后，使用双指手势操作当前窗口。\n\n如果权限或行为异常，可在设置中删除Swooshy后重新授予权限，并在菜单中点击“刷新权限状态”后重试。";
 
 "settings.window.title" = "设置";
 "settings.section.general" = "通用";
@@ -34,6 +34,15 @@
 "settings.language.english" = "English";
 "settings.language.simplified_chinese" = "简体中文";
 "settings.hotkeys.enabled" = "启用全局快捷键";
+"settings.status_item_icon.label" = "菜单栏图标";
+"settings.status_item_icon.footer" = "";
+"settings.status_item_icon.swooshy" = "Swooshy";
+"settings.status_item_icon.gale" = "狂风";
+"settings.status_item_icon.grouped_windows" = "窗口分组";
+"settings.status_item_icon.split_view" = "左右分栏";
+"settings.status_item_icon.stacked_windows" = "窗口叠放";
+"settings.status_item_icon.focused_window" = "当前窗口";
+"settings.status_item_icon.window_grid" = "窗口网格";
 "settings.gestures.footer" = "Dock 和标题栏手势共用同一个触控板监控。";
 "settings.dock_gestures.enabled" = "启用 Dock 手势";
 "settings.title_bar_gestures.enabled" = "启用标题栏手势";

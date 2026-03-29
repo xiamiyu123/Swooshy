@@ -20,8 +20,8 @@
 "alert.permission_required.title" = "Accessibility Permission Required";
 "alert.permission_required.message" = "Swooshy needs Accessibility permission to read and move the focused window.\nOpen System Settings > Privacy & Security > Accessibility, enable Swooshy, then refresh this menu.";
 "alert.window_action_failed.title" = "Unable to Execute Action";
-"alert.about.title" = "Swooshy v1";
-"alert.about.message" = "This first version is a focused menubar app:\n- It reads the frontmost window through Accessibility.\n- It applies snap and move layouts.\n- It supports Dock and title-bar trackpad gestures.";
+"alert.about.title" = "How to Use Swooshy";
+"alert.about.message" = "Quick start:\n1. Click the menu bar icon and make sure Accessibility permission is granted.\n2. Open Settings… to customize gesture mappings and global hotkeys.\n3. Hover the pointer over a Dock item, then use two-finger gestures to control that app's windows.\n4. Hover the pointer over the frontmost window's title bar, then use two-finger gestures to control the current window.\n\nIf permissions or behavior are abnormal, remove Swooshy from Accessibility settings, grant permission again, then choose Refresh Permission State from the menu and try again.";
 
 "settings.window.title" = "Settings";
 "settings.section.general" = "General";
@@ -34,6 +34,15 @@
 "settings.language.english" = "English";
 "settings.language.simplified_chinese" = "Simplified Chinese";
 "settings.hotkeys.enabled" = "Enable global hotkeys";
+"settings.status_item_icon.label" = "Menu bar icon";
+"settings.status_item_icon.footer" = "";
+"settings.status_item_icon.swooshy" = "Swooshy";
+"settings.status_item_icon.gale" = "Gale";
+"settings.status_item_icon.grouped_windows" = "Grouped windows";
+"settings.status_item_icon.split_view" = "Split view";
+"settings.status_item_icon.stacked_windows" = "Stacked windows";
+"settings.status_item_icon.focused_window" = "Focused window";
+"settings.status_item_icon.window_grid" = "Window grid";
 "settings.gestures.footer" = "Dock and title-bar gestures share the same trackpad monitor.";
 "settings.dock_gestures.enabled" = "Enable Dock gestures";
 "settings.title_bar_gestures.enabled" = "Enable title-bar gestures";

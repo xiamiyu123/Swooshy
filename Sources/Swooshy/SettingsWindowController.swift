@@ -83,6 +83,16 @@ private struct SettingsView: View {
                     isOn: $settingsStore.hotKeysEnabled
                 )
 
+                Picker(
+                    settingsStore.localized("settings.status_item_icon.label"),
+                    selection: $settingsStore.statusItemIcon
+                ) {
+                    ForEach(StatusItemIcon.allCases) { icon in
+                        statusItemIconLabel(for: icon).tag(icon)
+                    }
+                }
+                .pickerStyle(.menu)
+
                 #if DEBUG
                 Toggle(
                     settingsStore.localized("settings.debug_logging.enabled"),
@@ -91,6 +101,13 @@ private struct SettingsView: View {
                 #endif
             } header: {
                 Text(settingsStore.localized("settings.section.general"))
+            } footer: {
+                let footerText = settingsStore.localized("settings.status_item_icon.footer")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if footerText.isEmpty == false {
+                    Text(footerText)
+                }
             }
 
             Section {
@@ -174,6 +191,24 @@ private struct SettingsView: View {
             return settingsStore.localized("settings.language.english")
         case .simplifiedChinese:
             return settingsStore.localized("settings.language.simplified_chinese")
+        }
+    }
+
+    @ViewBuilder
+    private func statusItemIconLabel(for icon: StatusItemIcon) -> some View {
+        let title = icon.title(preferredLanguages: settingsStore.preferredLanguages)
+
+        if let symbolName = icon.symbolName {
+            Label(title, systemImage: symbolName)
+        } else if let image = icon.makeImage(accessibilityDescription: title) {
+            Label {
+                Text(title)
+            } icon: {
+                Image(nsImage: image)
+                    .renderingMode(.template)
+            }
+        } else {
+            Text(title)
         }
     }
 }
