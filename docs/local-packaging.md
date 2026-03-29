@@ -44,6 +44,7 @@ You can customize packaging with environment variables:
 - `ZIP_NAME` (default: `Swooshy-macOS.zip`)
 - `APP_VERSION` (default: `0.1.0`)
 - `BUNDLE_ID` (default: `com.xiamiyu123.swooshy`)
+- `REQUIRE_APP_ICON` (default: `1`, fail packaging when app icon is missing)
 - `SKIP_CODESIGN=1` to skip ad-hoc signing
 
 Example:
@@ -51,3 +52,18 @@ Example:
 ```bash
 APP_VERSION=0.2.0 BUNDLE_ID=com.example.swooshy ./scripts/package-macos-app.sh
 ```
+
+## Update Launchpad Icon
+
+Launchpad reads the app bundle in `/Applications`, not `dist/`.
+
+If your icon looks unchanged in Launchpad after local packaging, replace the
+installed app and restart Dock:
+
+```bash
+rm -rf /Applications/Swooshy.app
+cp -R dist/Swooshy.app /Applications/Swooshy.app
+killall Dock
+```
+
+After Dock restarts, Launchpad should pick up the updated app icon.
