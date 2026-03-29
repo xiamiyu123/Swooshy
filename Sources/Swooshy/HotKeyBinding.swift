@@ -60,23 +60,23 @@ enum ShortcutModifierSet: String, CaseIterable, Codable, Identifiable, Sendable 
             return nil
         }
 
-        let supportedFlags: [ShortcutModifierSet: NSEvent.ModifierFlags] = [
-            .commandOnly: [.command],
-            .commandShift: [.command, .shift],
-            .commandOption: [.command, .option],
-            .commandControl: [.command, .control],
-            .commandOptionControl: [.command, .option, .control],
-            .commandShiftControl: [.command, .shift, .control],
-            .commandShiftOption: [.command, .shift, .option],
-            .commandShiftOptionControl: [.command, .shift, .option, .control],
-        ]
-
-        guard let match = supportedFlags.first(where: { $0.value == normalizedFlags })?.key else {
+        guard let match = Self.supportedFlagsByEventMask[normalizedFlags.rawValue] else {
             return nil
         }
 
         self = match
     }
+
+    private static let supportedFlagsByEventMask: [NSEvent.ModifierFlags.RawValue: ShortcutModifierSet] = [
+        NSEvent.ModifierFlags.command.rawValue: .commandOnly,
+        NSEvent.ModifierFlags([.command, .shift]).rawValue: .commandShift,
+        NSEvent.ModifierFlags([.command, .option]).rawValue: .commandOption,
+        NSEvent.ModifierFlags([.command, .control]).rawValue: .commandControl,
+        NSEvent.ModifierFlags([.command, .option, .control]).rawValue: .commandOptionControl,
+        NSEvent.ModifierFlags([.command, .shift, .control]).rawValue: .commandShiftControl,
+        NSEvent.ModifierFlags([.command, .shift, .option]).rawValue: .commandShiftOption,
+        NSEvent.ModifierFlags([.command, .shift, .option, .control]).rawValue: .commandShiftOptionControl,
+    ]
 }
 
 enum ShortcutKey: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -386,8 +386,15 @@ enum ShortcutKey: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 
     init?(keyCode: UInt16) {
-        self.init(rawValue: Self.allCases.first(where: { $0.keyCode == UInt32(keyCode) })?.rawValue ?? "")
+        guard let key = Self.keysByCode[UInt32(keyCode)] else {
+            return nil
+        }
+        self = key
     }
+
+    private static let keysByCode: [UInt32: ShortcutKey] = {
+        Dictionary(uniqueKeysWithValues: allCases.map { ($0.keyCode, $0) })
+    }()
 }
 
 struct HotKeyBinding: Codable, Equatable, Sendable {
