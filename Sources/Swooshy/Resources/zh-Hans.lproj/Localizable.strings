@@ -30,6 +30,7 @@
 "welcome.step.settings" = "随后会自动打开设置窗口，方便你检查手势映射和快捷键。";
 "welcome.permission.granted" = "辅助功能权限已授予。";
 "welcome.permission.missing" = "尚未授予辅助功能权限。";
+"welcome.permission.troubleshooting" = "如果你曾经以其他方式安装过 Swooshy，可能出现权限无法获取的问题。此时请在系统设置的“辅助功能”列表中将 Swooshy 移出后重新授权。";
 "welcome.grant_permission_action" = "授予权限";
 "welcome.refresh_permission_action" = "刷新权限状态";
 "welcome.open_settings_action" = "打开设置";

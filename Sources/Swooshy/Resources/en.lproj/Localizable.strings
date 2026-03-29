@@ -30,6 +30,7 @@
 "welcome.step.settings" = "Swooshy will then open Settings so you can review gesture mappings and shortcuts.";
 "welcome.permission.granted" = "Accessibility permission is granted.";
 "welcome.permission.missing" = "Accessibility permission has not been granted yet.";
+"welcome.permission.troubleshooting" = "If you installed Swooshy in a different way before, Accessibility permission may fail to stick. In that case, remove Swooshy from the Accessibility list in System Settings and authorize it again.";
 "welcome.grant_permission_action" = "Grant Permission";
 "welcome.refresh_permission_action" = "Refresh Permission Status";
 "welcome.open_settings_action" = "Open Settings";

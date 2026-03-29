@@ -88,6 +88,7 @@ private final class WelcomeGuideViewModel: ObservableObject {
     let settingsStep: String
     let permissionGrantedText: String
     let permissionMissingText: String
+    let permissionTroubleshootingText: String
     let grantPermissionActionTitle: String
     let refreshPermissionActionTitle: String
     let openSettingsActionTitle: String
@@ -118,6 +119,7 @@ private final class WelcomeGuideViewModel: ObservableObject {
         self.settingsStep = settingsStore.localized("welcome.step.settings")
         self.permissionGrantedText = settingsStore.localized("welcome.permission.granted")
         self.permissionMissingText = settingsStore.localized("welcome.permission.missing")
+        self.permissionTroubleshootingText = settingsStore.localized("welcome.permission.troubleshooting")
         self.grantPermissionActionTitle = settingsStore.localized("welcome.grant_permission_action")
         self.refreshPermissionActionTitle = settingsStore.localized("welcome.refresh_permission_action")
         self.openSettingsActionTitle = settingsStore.localized("welcome.open_settings_action")
@@ -351,6 +353,7 @@ private struct WelcomeGuideView: View {
             }
 
             permissionStatus
+            permissionTroubleshootingNotice
             launchAtLoginSection
 
             Spacer(minLength: 0)
@@ -462,6 +465,26 @@ private struct WelcomeGuideView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+    }
+
+    private var permissionTroubleshootingNotice: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+
+            Text(viewModel.permissionTroubleshootingText)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
         }
         .padding(14)
         .background(
