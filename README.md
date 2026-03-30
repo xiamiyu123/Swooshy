@@ -1,119 +1,131 @@
 # <img src="artwork/app-icon/AppIcon-1024.png" width="48" height="48" alt="Swooshy Icon" style="vertical-align: middle;"> Swooshy
 
-更轻量化，开源，可自定义的macOS 触控板增强工具。
+[English](./README.md) | [简体中文](./README.zh-CN.md)
 
-通过触控板手势和全局快捷键快速完成窗口操作
+A lightweight, open source, customizable trackpad enhancement tool for macOS.
 
-- 通过辅助功能接口操作当前窗口
-- Dock 区域与标题栏区域的触控板手势
-- 多语言支持
-- 自定义手势动作与快捷键
+Manage windows quickly with trackpad gestures and global shortcuts.
 
-## 目录
+- Control the current window through Accessibility APIs
+- Trigger gestures over Dock icons and window title bars
+- Support multilingual UI and documentation
+- Customize gesture mappings and hotkeys
 
-- [操作方式](#操作方式)
-- [安装与运行](#安装与运行)
-- [与 Swish 的关系](#与-swish-的关系)
-- [许可证](#许可证)
+## Table of Contents
 
-## 操作方式
+- [How It Works](#how-it-works)
+- [Install and Run](#install-and-run)
+- [Permissions and Limitations](#permissions-and-limitations)
+- [Relationship to Swish](#relationship-to-swish)
+- [License](#license)
 
-Swooshy 通过**直觉化的双指手势**来管理窗口。所有手势都建立在两个特定的触发区域：**窗口标题栏** 和 **Dock栏图标**。
+## How It Works
+
+Swooshy manages windows with intuitive two-finger gestures. Every gesture is
+anchored to one of two trigger regions: the window title bar and Dock icons.
 
 <details open>
-<summary><b>第一页：Dock 图标手势 - 切换同应用窗口</b></summary>
+<summary><b>Page 1: Dock icon gesture - cycle windows of the same app</b></summary>
 
-当鼠标悬停在 **Dock 上的应用图标** 时:
+When the pointer is hovering over an app icon in the Dock:
 
-* **双指左滑 / 右滑**：在该应用的多个窗口之间快速前后切换。
-* 适合 Finder、浏览器、编辑器等应用快速切换窗口。
+* **Two-finger swipe left / right**: Quickly switch backward or forward between
+  windows of that app.
+* Great for Finder, browsers, editors, and any app with multiple windows.
 
 <br>
-<img src="docs/images/step1.jpg" width="600" alt="Dock 图标手势-切换同应用窗口" style="border-radius: 8px;">
+<img src="docs/images/step1.jpg" width="600" alt="Dock icon gesture for cycling windows of the same app" style="border-radius: 8px;">
 
 </details>
 
 <details>
-<summary><b>第二页：Dock 图标手势 - 显示与隐藏</b></summary>
+<summary><b>Page 2: Dock icon gesture - hide and restore windows</b></summary>
 
-悬停在 **Dock 的应用图标** 上，使用触控板上下滑动：
+Hover over an app icon in the Dock and swipe vertically on the trackpad:
 
-* **双指下滑**：最小化该应用的一个可见窗口。
-* **双指上滑**：恢复/拉起该应用的一个处于最小化状态的窗口。
-
+* **Two-finger swipe down**: Minimize one visible window of that app.
+* **Two-finger swipe up**: Restore one minimized window of that app.
 
 <br>
-<img src="docs/images/step4.jpg" width="600" alt="Dock 图标手势-最小化与恢复" style="border-radius: 8px;">
+<img src="docs/images/step4.jpg" width="600" alt="Dock icon gesture for minimizing and restoring windows" style="border-radius: 8px;">
 
 </details>
 
 <details>
-<summary><b>第三页：Dock 图标手势 - 捏合退出应用</b></summary>
+<summary><b>Page 3: Dock icon gesture - pinch to quit the app</b></summary>
 
-悬停在 **Dock 的应用图标** 上，可直接用捏合手势结束该应用：
+Hover over an app icon in the Dock and use a pinch gesture:
 
-* **双指捏合**：退出当前应用。
-* 这个动作针对的是应用本身，不只是关闭单个窗口。
-* 若只想关闭单个窗口，可在设置中自定义修改
+* **Two-finger pinch**: Quit the current app.
+* This targets the application itself, not just a single window.
+* If you would rather close one window, you can remap the gesture in Settings.
 
 <br>
-<img src="docs/images/step5.jpg" width="600" alt="Dock 图标手势-捏合退出应用" style="border-radius: 8px;">
+<img src="docs/images/step5.jpg" width="600" alt="Dock icon gesture for quitting an app" style="border-radius: 8px;">
 
 </details>
 
 <details>
-<summary><b>第四页：标题栏手势 - 快速全屏与快速最小化</b></summary>
+<summary><b>Page 4: Title bar gesture - fill screen and minimize fast</b></summary>
 
-将鼠标悬停在 **最前窗口的标题栏区域**，这里就是标题栏手势的触发带：
+Move the pointer over the title bar area of the frontmost window, which acts as
+the gesture trigger band:
 
-* **双指上滑**：让当前窗口填充整个屏幕可视区域。
-* **双指下滑**：把当前窗口最小化到 Dock。
-* 先把指针停在标题栏，再做手势，识别会更稳定。
+* **Two-finger swipe up**: Expand the current window to fill the visible screen
+  area.
+* **Two-finger swipe down**: Minimize the current window to the Dock.
+* Recognition is more reliable when you pause the pointer over the title bar
+  before swiping.
 
 <br>
-<img src="docs/images/step2.jpg" width="600" alt="标题栏手势-触发区域与上下滑" style="border-radius: 8px;">
+<img src="docs/images/step2.jpg" width="600" alt="Title bar gesture trigger area with vertical swipes" style="border-radius: 8px;">
 
 </details>
 
 <details>
-<summary><b>第五页：标题栏手势 - 左右贴靠窗口</b></summary>
+<summary><b>Page 5: Title bar gesture - snap windows left and right</b></summary>
 
-将鼠标悬停在 **窗口标题栏区域**，使用左右滑动即可快速整理当前窗口布局：
+Hover over the window title bar and swipe horizontally to organize the current
+layout:
 
-* **双指左滑**：将当前窗口贴靠到屏幕左半边。
-* **双指右滑**：将当前窗口贴靠到屏幕右半边。
-* 适合和另一个窗口并排对照查看。
+* **Two-finger swipe left**: Snap the current window to the left half.
+* **Two-finger swipe right**: Snap the current window to the right half.
+* Great for side-by-side comparison with another window.
 
 <br>
-<img src="docs/images/step3.jpg" width="600" alt="标题栏手势-左右贴靠窗口" style="border-radius: 8px;">
+<img src="docs/images/step3.jpg" width="600" alt="Title bar gesture for snapping windows left and right" style="border-radius: 8px;">
 
 </details>
 
 <details>
-<summary><b>第六页：自定义设置与全局快捷键</b></summary>
+<summary><b>Page 6: Custom settings and global shortcuts</b></summary>
 
-如果你习惯使用键盘，Swooshy 也提供了全局快捷键；所有手势映射和快捷键都可以在菜单栏点击 `Settings…` 后自由录制和修改。
+If you prefer the keyboard, Swooshy also ships with global shortcuts. Every
+gesture mapping and hotkey can be re-recorded and edited from `Settings...` in
+the menu bar app.
 
-* **停靠左右屏**：`Control + Option + Command + 左/右方向键`
-* **填充可视区域**：`Control + Option + Command + 上方向键 / C`
-* **应用内窗口切换**：`Control + Option + Command + \`` （配合 `Shift` 反向）
-* **关闭 / 最小化**：`Control + Option + Command + W / M`
-* **退出当前应用**：`Control + Option + Command + Q`
+* **Snap left / right**: `Control + Option + Command + Left/Right Arrow`
+* **Fill visible area**: `Control + Option + Command + Up Arrow / C`
+* **Cycle windows in the same app**: `Control + Option + Command + \`` with
+  `Shift` to reverse the direction
+* **Close / minimize**: `Control + Option + Command + W / M`
+* **Quit current app**: `Control + Option + Command + Q`
 
 </details>
 
-## 安装与运行
+## Install and Run
 
-运行条件：
+Requirements:
 
-- macOS 14 或更高版本
-- 已授予辅助功能权限
-- 如果通过 Homebrew 或 Release 安装，首次打开可能触发 Apple 安全警告，请先阅读 [遇到 Apple 安全警告时](#apple-security-warning)
-- 本项目为开源软件，不会危害到您的电脑
+- macOS 14 or later
+- Accessibility permission granted to Swooshy
+- If you install through Homebrew or Releases, the first launch may trigger an
+  Apple security warning. See [Apple security warning](#apple-security-warning)
+- This project is open source software and is not designed to harm your Mac
 
-### 使用 Homebrew 安装
+### Install with Homebrew
 
-如果你已经安装了 [Homebrew](https://brew.sh)，推荐优先使用：
+If you already have [Homebrew](https://brew.sh), this is the recommended path:
 
 ```bash
 brew tap xiamiyu123/swooshy
@@ -121,108 +133,128 @@ brew update
 brew install --cask swooshy
 ```
 
-安装完成后，可以直接从 Launchpad / Spotlight 启动 `Swooshy`，也可以执行：
+After installation, launch `Swooshy` from Launchpad or Spotlight, or run:
 
 ```bash
 open /Applications/Swooshy.app
 ```
-[遇到 Apple 安全警告时](#apple-security-warning)
 
-### 从 Release 下载
+See [Apple security warning](#apple-security-warning) if macOS blocks the app
+on first launch.
 
-1. 打开 [Releases](https://github.com/xiamiyu123/Swooshy/releases/latest) 页面
-2. 下载最新版本的 `.zip` 安装包
-3. 解压后将 `Swooshy.app` 拖到 `/Applications`
-4. 双击 `Swooshy.app` 启动
+### Download from Releases
 
-首次启动后，请按提示为 Swooshy 授予“辅助功能”权限。
+1. Open the [Releases](https://github.com/xiamiyu123/Swooshy/releases/latest)
+   page
+2. Download the latest `.zip` package
+3. Extract it and drag `Swooshy.app` into `/Applications`
+4. Double-click `Swooshy.app` to launch
+
+After the first launch, follow the prompt to grant Accessibility permission.
 
 <a id="apple-security-warning"></a>
 
-### 遇到 Apple 安全警告时
+### Apple Security Warning
 
-如果你是通过 Homebrew 或 Release 下载的方式安装，首次打开时 macOS 可能会提示应用已被阻止或无法验证开发者身份，可以用下面两种方式放行。
+If you install via Homebrew or Releases, macOS may initially say the app is
+blocked or from an unidentified developer. You can allow it in either of these
+ways.
 
-#### 方式 A：命令行（推荐）
+#### Option A: Terminal (recommended)
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Swooshy.app
 open /Applications/Swooshy.app
 ```
 
-#### 方式 B：系统设置
+#### Option B: System Settings
 
-1. 先尝试打开一次 `Swooshy.app`
-2. 打开“系统设置” → “隐私与安全性”
-3. 滚动到页面底部，找到 Swooshy 被阻止的提示
-4. 点击“仍要打开”，然后再次确认启动
+1. Try opening `Swooshy.app` once
+2. Open `System Settings` -> `Privacy & Security`
+3. Scroll to the bottom and find the blocked-app message for Swooshy
+4. Click `Open Anyway`, then confirm again
 
-### 从源码运行
+### Run from Source
 
-在仓库根目录执行：
+From the repository root:
 
 ```bash
 swift run
 ```
 
-首次启动后，请按提示为 Swooshy 授予“辅助功能”权限。
+After launch, follow the prompt to grant Accessibility permission.
 
-### 本地打包 `.app`
+### Package a Local `.app`
 
-在仓库根目录执行：
-此操作会在本地生成一个可直接打开的本地应用包
+From the repository root:
 
 ```bash
 ./scripts/package-macos-app.sh
 ```
 
-打包说明见 [docs/local-packaging.md](docs/local-packaging.md)。
+This produces a runnable local app bundle. Packaging notes are available in
+[docs/local-packaging.md](docs/local-packaging.md).
 
-## 权限与限制
+## Permissions and Limitations
 
-- Swooshy 依赖 macOS 辅助功能接口来读取和移动窗口
-- 某些应用可能不暴露可操作的窗口信息，或不允许被移动、缩放、关闭
-- Dock 和标题栏手势依赖私有多点触控输入路径
-- 当前版本主要聚焦于窗口操作效率，而不是完整的平铺窗口管理
-- 这是一个轻量化的首发版本，优先保证常用路径顺手、稳定、可理解
+- Swooshy relies on macOS Accessibility APIs to read and move windows
+- Some apps may not expose operable window information, or may not allow moving,
+  resizing, or closing
+- Dock and title bar gestures rely on a private multitouch input path
+- The current version focuses on fast window actions rather than full tiling
+  window management
+- This is a lightweight first release that prioritizes common flows being
+  smooth, stable, and easy to understand
 
-## 与 Swish 的关系
+## Relationship to Swish
 
-Swooshy 受 Swish 的产品思路启发，但它是一个独立实现的开源项目，定位也更明确：
+Swooshy is inspired by the product direction of Swish, but it is an independent
+open source implementation with a more explicit focus:
 
-- 更轻量
-- 更偏向菜单栏工具
-- 更容易自行构建和修改
-- 更强调“可自定义”的开源体验
+- Lighter weight
+- Centered around a menu bar utility
+- Easier to build and modify yourself
+- More focused on a customizable open source experience
 
-为喜欢 Swish 交互方式，但追求更可自定义，更自由的用户打造
+It is built for people who like the interaction style of Swish but want a more
+open and hackable alternative.
 
-## 项目结构
+## Project Structure
 
-- [Sources/Swooshy/SwooshyApp.swift](Sources/Swooshy/SwooshyApp.swift)：应用入口
-- [Sources/Swooshy/AppDelegate.swift](Sources/Swooshy/AppDelegate.swift)：生命周期与控制器装配
-- [Sources/Swooshy/StatusBarController.swift](Sources/Swooshy/StatusBarController.swift)：菜单栏 UI 与动作入口
-- [Sources/Swooshy/SettingsWindowController.swift](Sources/Swooshy/SettingsWindowController.swift)：设置窗口
-- [Sources/Swooshy/WindowManager.swift](Sources/Swooshy/WindowManager.swift)：基于辅助功能接口的窗口读写
-- [Sources/Swooshy/DockGestureController.swift](Sources/Swooshy/DockGestureController.swift)：Dock 与标题栏手势调度
-- [Sources/Swooshy/GestureFeedbackController.swift](Sources/Swooshy/GestureFeedbackController.swift)：手势 HUD 提示
-- [ATTRIBUTION.md](ATTRIBUTION.md)：参考项目与归因说明
+- [Sources/Swooshy/SwooshyApp.swift](Sources/Swooshy/SwooshyApp.swift): App
+  entry point
+- [Sources/Swooshy/AppDelegate.swift](Sources/Swooshy/AppDelegate.swift):
+  Lifecycle wiring and controller setup
+- [Sources/Swooshy/StatusBarController.swift](Sources/Swooshy/StatusBarController.swift):
+  Menu bar UI and action entry points
+- [Sources/Swooshy/SettingsWindowController.swift](Sources/Swooshy/SettingsWindowController.swift):
+  Settings window
+- [Sources/Swooshy/WindowManager.swift](Sources/Swooshy/WindowManager.swift):
+  Window read/write powered by Accessibility APIs
+- [Sources/Swooshy/DockGestureController.swift](Sources/Swooshy/DockGestureController.swift):
+  Dock and title bar gesture routing
+- [Sources/Swooshy/GestureFeedbackController.swift](Sources/Swooshy/GestureFeedbackController.swift):
+  Gesture HUD feedback
+- [ATTRIBUTION.md](ATTRIBUTION.md): References and attribution notes
 
-## 开发说明
+## Development Notes
 
-- `swift test`：运行测试
-- `SWOOSHY_DEBUG_LOGS=1 swift run`：启动时强制开启调试日志
-- `swift run Swooshy --reset-user-config`：启动前清空用户配置
-- `open /Applications/Swooshy.app --args --reset-user-config`：已安装 `.app` 时以同样方式清空配置后启动
-- 调试日志开启后会写入 `~/Library/Logs/Swooshy/debug.log`
+- `swift test`: run the test suite
+- `SWOOSHY_DEBUG_LOGS=1 swift run`: force-enable debug logs at launch
+- `swift run Swooshy --reset-user-config`: clear user config before launch
+- `open /Applications/Swooshy.app --args --reset-user-config`: clear config and
+  launch the installed `.app`
+- With debug logging enabled, logs are written to
+  `~/Library/Logs/Swooshy/debug.log`
 
-## 许可证
+## License
 
-本项目使用 GNU General Public License v3.0 许可证。
+This project is licensed under GNU General Public License v3.0.
 
-详见 [LICENSE](LICENSE) 与 [ATTRIBUTION.md](ATTRIBUTION.md)。
+See [LICENSE](LICENSE) and [ATTRIBUTION.md](ATTRIBUTION.md) for details.
 
-## 欢迎PR与提出Issue，二次开发
+## Contributions and Issues
 
-让Swooshy变得更好
-如果Swooshy帮到了你，请点击Star，谢谢喵💓
+Pull requests, issues, and forks are welcome.
+
+If Swooshy helps you, a GitHub star would mean a lot.

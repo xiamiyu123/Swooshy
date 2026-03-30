@@ -1,5 +1,7 @@
 # Local Packaging (macOS)
 
+[English](./local-packaging.md) | [简体中文](./zh-CN/local-packaging.md)
+
 This document explains how to build and package Swooshy locally into a runnable
 `.app` bundle and a distributable zip archive.
 
