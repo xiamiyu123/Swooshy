@@ -48,7 +48,8 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.reloadLocalizedContent()
+                guard let self else { return }
+                self.reloadLocalizedContent(preservingPageIndex: self.viewModel.currentPageIndex)
             }
         }
     }
@@ -224,6 +225,14 @@ struct WelcomeGuideContent {
             ),
             Page(
                 id: 6,
+                kind: .preference,
+                title: settingsStore.localized("guide.page.interaction.title"),
+                message: settingsStore.localized("guide.page.interaction.message"),
+                bullets: [],
+                imageName: nil
+            ),
+            Page(
+                id: 7,
                 kind: .tutorial,
                 title: settingsStore.localized("guide.page.shortcuts.title"),
                 message: settingsStore.localized("guide.page.shortcuts.message"),
@@ -246,6 +255,7 @@ final class WelcomeGuideViewModel: ObservableObject {
     enum PageKind {
         case welcome
         case tutorial
+        case preference
     }
 
     @Published var currentPageIndex: Int = 0
@@ -270,6 +280,11 @@ final class WelcomeGuideViewModel: ObservableObject {
         self.onOpenSettings = onOpenSettings
         self.onDismiss = onDismiss
         self.permissionGranted = permissionManager.isTrusted(promptIfNeeded: false)
+    }
+
+    var executeGestureOnRelease: Bool {
+        get { settingsStore.executeGestureOnRelease }
+        set { settingsStore.executeGestureOnRelease = newValue }
     }
 
     var windowTitle: String { content.windowTitle }
@@ -373,6 +388,8 @@ private struct WelcomeGuideView: View {
                     welcomeContent
                 case .tutorial:
                     tutorialContent(page: viewModel.currentPage)
+                case .preference:
+                    preferenceContent
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -431,6 +448,35 @@ private struct WelcomeGuideView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .bottomTrailing) {
             tutorialPreview
+        }
+    }
+
+    private var preferenceContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text(viewModel.currentPage.message)
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 20) {
+                InteractionStyleCard(
+                    title: viewModel.localized("guide.page.interaction.immediate.title"),
+                    description: viewModel.localized("guide.page.interaction.immediate.description"),
+                    systemImage: "bolt.fill",
+                    isSelected: !viewModel.executeGestureOnRelease,
+                    action: { viewModel.executeGestureOnRelease = false }
+                )
+
+                InteractionStyleCard(
+                    title: viewModel.localized("guide.page.interaction.on_release.title"),
+                    description: viewModel.localized("guide.page.interaction.on_release.description"),
+                    systemImage: "hand.raised.fill",
+                    isSelected: viewModel.executeGestureOnRelease,
+                    action: { viewModel.executeGestureOnRelease = true }
+                )
+            }
+            .frame(maxWidth: .infinity)
+
+            Spacer(minLength: 0)
         }
     }
 
@@ -718,3 +764,57 @@ private final class GuideImageCache {
         return image
     }
 }
+
+private struct InteractionStyleCard: View {
+    let title: String
+    let description: String
+    let systemImage: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 24))
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+
+                    Spacer()
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                    } else {
+                        Circle()
+                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                            .frame(width: 20, height: 20)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                    Text(description)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .padding(18)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.06) : Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.1), lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+    }
+}
+

@@ -131,6 +131,30 @@ private struct SettingsView: View {
                     settingsStore.localized("settings.title_bar_gestures.enabled"),
                     isOn: $settingsStore.titleBarGesturesEnabled
                 )
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(settingsStore.localized("guide.page.interaction.title"))
+                        .font(.subheadline.weight(.medium))
+
+                    HStack(spacing: 12) {
+                        CompactInteractionStyleCard(
+                            title: settingsStore.localized("guide.page.interaction.immediate.title"),
+                            description: settingsStore.localized("guide.page.interaction.immediate.description"),
+                            systemImage: "bolt.fill",
+                            isSelected: !settingsStore.executeGestureOnRelease,
+                            action: { settingsStore.executeGestureOnRelease = false }
+                        )
+
+                        CompactInteractionStyleCard(
+                            title: settingsStore.localized("guide.page.interaction.on_release.title"),
+                            description: settingsStore.localized("guide.page.interaction.on_release.description"),
+                            systemImage: "hand.raised.fill",
+                            isSelected: settingsStore.executeGestureOnRelease,
+                            action: { settingsStore.executeGestureOnRelease = true }
+                        )
+                    }
+                }
+                .padding(.vertical, 4)
+
                 Picker(
                     settingsStore.localized("settings.gesture_hud.style.label"),
                     selection: $settingsStore.gestureHUDStyle
@@ -140,11 +164,6 @@ private struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
-
-                Toggle(
-                    settingsStore.localized("settings.gesture_execute_on_release.enabled"),
-                    isOn: $settingsStore.executeGestureOnRelease
-                )
 
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.gesture_hud.footer"))
@@ -790,3 +809,61 @@ private final class ShortcutRecorderControl: NSControl {
         layer?.borderColor = (isRecording ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
     }
 }
+
+private struct CompactInteractionStyleCard: View {
+    let title: String
+    let description: String
+    let systemImage: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+
+                    Spacer()
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.accentColor)
+                    } else {
+                        Circle()
+                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                            .frame(width: 14, height: 14)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+
+                    Text(description)
+                        .font(.system(size: 11))
+                        .lineLimit(2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.06) : Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.08), lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+

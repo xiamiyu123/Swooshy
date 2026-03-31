@@ -78,7 +78,13 @@
 "guide.page.shortcuts.bullet3" = "Cycle same-app windows: Control + Option + Command + ` (hold Shift to reverse)";
 "guide.page.shortcuts.bullet4" = "Close / minimize: Control + Option + Command + W / M";
 "guide.page.shortcuts.bullet5" = "Quit current app: Control + Option + Command + Q";
-"guide.page.shortcuts.bullet6" = "Open Settings to remap any gesture or shortcut to fit your workflow.";
+"guide.page.shortcuts.bullet6" = "After opening the settings, you can re-record all shortcuts and gesture actions according to your own habits.";
+"guide.page.interaction.title" = "Interaction Style: When to Trigger";
+"guide.page.interaction.message" = "Swooshy supports two different gesture interaction styles. Choose the one that feels most intuitive to you; you can also change this later in 'Advanced Settings'.";
+"guide.page.interaction.immediate.title" = "Trigger Immediately";
+"guide.page.interaction.immediate.description" = "Action performs as soon as the gesture threshold is met. Fast, direct, and responsive.";
+"guide.page.interaction.on_release.title" = "Trigger on Release";
+"guide.page.interaction.on_release.description" = "Preview the action via HUD during the gesture; the action only triggers when you lift your fingers. Supports cancellation via reverse motion or Esc.";
 
 "settings.window.title" = "Settings";
 "settings.section.general" = "General";
