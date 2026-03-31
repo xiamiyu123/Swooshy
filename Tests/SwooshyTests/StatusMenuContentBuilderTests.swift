@@ -11,15 +11,16 @@ struct StatusMenuContentBuilderTests {
             preferredLanguages: ["zh-Hans-CN"]
         )
 
-        #expect(entries[0].title == "Swooshy")
-        #expect(entries[1].title == "授予辅助功能权限")
-        #expect(entries[2].title == "刷新权限状态")
-        #expect(entries[4].title == "贴靠到左半屏")
-        #expect(entries[11].title == "向前切换当前应用窗口")
-        #expect(entries[12].title == "向后切换当前应用窗口")
-        #expect(entries[14].title == "设置…")
-        #expect(entries[16].title == "使用说明")
-        #expect(entries[17].title == "退出 Swooshy")
+        #expect(entries.first(where: { $0.kind == .title })?.title == "Swooshy")
+        #expect(entries.first(where: { $0.kind == .permission })?.title == "授予辅助功能权限")
+        #expect(entries.first(where: { $0.kind == .refresh })?.title == "刷新权限状态")
+        #expect(entries.first(where: { $0.kind == .windowAction(.leftHalf) })?.title == "贴靠到左半屏")
+        #expect(entries.first(where: { $0.kind == .windowAction(.cycleSameAppWindowsForward) })?.title == "向前切换当前应用窗口")
+        #expect(entries.first(where: { $0.kind == .windowAction(.cycleSameAppWindowsBackward) })?.title == "向后切换当前应用窗口")
+        #expect(entries.first(where: { $0.kind == .windowAction(.toggleFullScreen) })?.title == "最大化全屏")
+        #expect(entries.first(where: { $0.kind == .settings })?.title == "设置…")
+        #expect(entries.first(where: { $0.kind == .help })?.title == "使用说明")
+        #expect(entries.first(where: { $0.kind == .quit })?.title == "退出 Swooshy")
     }
 
     @Test
@@ -29,11 +30,11 @@ struct StatusMenuContentBuilderTests {
             preferredLanguages: ["en-US"]
         )
 
-        #expect(entries[1].title == "Accessibility Access Ready")
-        #expect(entries[1].isEnabled == false)
-        #expect(entries[4].isEnabled == true)
-        #expect(entries[11].isEnabled == true)
-        #expect(entries[12].isEnabled == true)
+        #expect(entries.first(where: { $0.kind == .permission })?.title == "Accessibility Access Ready")
+        #expect(entries.first(where: { $0.kind == .permission })?.isEnabled == false)
+        #expect(entries.first(where: { $0.kind == .windowAction(.leftHalf) })?.isEnabled == true)
+        #expect(entries.first(where: { $0.kind == .windowAction(.cycleSameAppWindowsForward) })?.isEnabled == true)
+        #expect(entries.first(where: { $0.kind == .windowAction(.cycleSameAppWindowsBackward) })?.isEnabled == true)
     }
 
     @Test
@@ -57,8 +58,8 @@ struct StatusMenuContentBuilderTests {
             preferredLanguages: ["fr-FR"]
         )
 
-        #expect(entries[1].title == "Grant Accessibility Access")
-        #expect(entries[14].title == "Settings…")
-        #expect(entries[16].title == "How This Works")
+        #expect(entries.first(where: { $0.kind == .permission })?.title == "Grant Accessibility Access")
+        #expect(entries.first(where: { $0.kind == .settings })?.title == "Settings…")
+        #expect(entries.first(where: { $0.kind == .help })?.title == "How This Works")
     }
 }

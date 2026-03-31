@@ -424,6 +424,7 @@ enum HotKeyBindings {
         HotKeyBinding(action: .quitApplication, key: .q, modifiers: .commandOptionControl),
         HotKeyBinding(action: .cycleSameAppWindowsForward, key: .grave, modifiers: .commandOptionControl),
         HotKeyBinding(action: .cycleSameAppWindowsBackward, key: .grave, modifiers: .commandShiftOptionControl),
+        HotKeyBinding(action: .toggleFullScreen, key: .f, modifiers: .commandOptionControl),
     ]
 
     static func binding(for action: WindowAction, in bindings: [HotKeyBinding] = defaults) -> HotKeyBinding? {
