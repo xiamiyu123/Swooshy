@@ -37,7 +37,12 @@ final class DockGestureController {
 
     private enum PendingReleaseAction {
         case dock(action: DockGestureAction, application: DockApplicationTarget)
-        case titleBar(action: WindowAction, event: DockGestureEvent, anchorPoint: CGPoint)
+        case titleBar(
+            action: WindowAction,
+            event: DockGestureEvent,
+            anchorPoint: CGPoint,
+            replacesWithTabClose: Bool
+        )
     }
 
     private struct MonitoringState: Equatable {
@@ -208,7 +213,8 @@ final class DockGestureController {
                 titleBarProbe.hoveredApplication(
                     at: $0,
                     requireFrontmostOwnership: settingsStore.titleBarOverlayProtectionEnabled,
-                    allowFullScreen: settingsStore.smartPinchExitFullScreenEnabled
+                    allowFullScreen: settingsStore.smartPinchExitFullScreenEnabled,
+                    allowBrowserTabFallback: settingsStore.smartBrowserTabCloseEnabled
                 )
             }
             : nil
@@ -349,7 +355,20 @@ final class DockGestureController {
             }
         }
 
+        let replacesWithTabClose = shouldReplaceWithBrowserTabClose(
+            action: action,
+            event: event,
+            anchorPoint: anchorPoint,
+            isInFullScreen: isInFullScreen
+        )
+
         var actionTitle = action.title(preferredLanguages: settingsStore.preferredLanguages)
+        if replacesWithTabClose {
+            actionTitle = L10n.string(
+                "action.close_tab",
+                preferredLanguages: settingsStore.preferredLanguages
+            )
+        }
         if isInFullScreen, event.gesture == .pinchIn {
             actionTitle = L10n.string(
                 "action.exit_full_screen",
@@ -371,16 +390,31 @@ final class DockGestureController {
         )
 
         if persistent {
-            pendingReleaseAction = .titleBar(action: action, event: event, anchorPoint: anchorPoint)
+            pendingReleaseAction = .titleBar(
+                action: action,
+                event: event,
+                anchorPoint: anchorPoint,
+                replacesWithTabClose: replacesWithTabClose
+            )
             storeTouchAnchor(gesture: event.gesture, touches: touches)
             installEscMonitor()
             DebugLog.info(DebugLog.dock, "Deferred title-bar action \(String(describing: action)) until finger release")
         } else {
-            executeTitleBarAction(action, event: event, anchorPoint: anchorPoint)
+            executeTitleBarAction(
+                action,
+                event: event,
+                anchorPoint: anchorPoint,
+                replacesWithTabClose: replacesWithTabClose
+            )
         }
     }
 
-    private func executeTitleBarAction(_ action: WindowAction, event: DockGestureEvent, anchorPoint: CGPoint) {
+    private func executeTitleBarAction(
+        _ action: WindowAction,
+        event: DockGestureEvent,
+        anchorPoint: CGPoint,
+        replacesWithTabClose: Bool = false
+    ) {
         do {
             if settingsStore.smartPinchExitFullScreenEnabled, event.gesture == .pinchIn {
                 let app = try windowManager.runningApplication(matching: event.application)
@@ -391,6 +425,21 @@ final class DockGestureController {
                     DebugLog.info(DebugLog.dock, "Smart intercept: pinched in on full screen window, forced exit.")
                     return
                 }
+            }
+
+            if replacesWithTabClose {
+                if BrowserTabProbe.simulateMiddleClick(at: anchorPoint) {
+                    DebugLog.info(
+                        DebugLog.dock,
+                        "Smart browser tab close replaced \(String(describing: action)) for \(event.application.logDescription)"
+                    )
+                    return
+                }
+
+                DebugLog.error(
+                    DebugLog.dock,
+                    "Smart browser tab close simulation failed; falling back to \(String(describing: action)) for \(event.application.logDescription)"
+                )
             }
 
             try windowManager.perform(
@@ -408,6 +457,39 @@ final class DockGestureController {
 
     private func titleBarAction(for gesture: DockGestureKind) -> WindowAction? {
         settingsStore.titleBarGestureAction(for: gesture)
+    }
+
+    private func shouldReplaceWithBrowserTabClose(
+        action: WindowAction,
+        event: DockGestureEvent,
+        anchorPoint: CGPoint,
+        isInFullScreen: Bool
+    ) -> Bool {
+        guard settingsStore.smartBrowserTabCloseEnabled else {
+            DebugLog.debug(DebugLog.dock, "Smart browser tab close disabled; skip replacement")
+            return false
+        }
+
+        guard isInFullScreen == false else {
+            DebugLog.debug(DebugLog.dock, "Smart browser tab close skipped in full screen")
+            return false
+        }
+
+        guard action == .closeWindow || action == .quitApplication else {
+            DebugLog.debug(DebugLog.dock, "Smart browser tab close skipped for non-close action \(String(describing: action))")
+            return false
+        }
+
+        let isBrowserTab = BrowserTabProbe.isBrowserTab(
+            at: anchorPoint,
+            processIdentifier: event.application.processIdentifier
+        )
+
+        DebugLog.debug(
+            DebugLog.dock,
+            "Smart browser tab probe for \(event.application.logDescription) at \(NSStringFromPoint(anchorPoint)) => \(isBrowserTab)"
+        )
+        return isBrowserTab
     }
 
     // MARK: - Execute on Release
@@ -454,9 +536,14 @@ final class DockGestureController {
         case .dock(let dockAction, let application):
             DebugLog.info(DebugLog.dock, "Executing deferred dock action \(dockAction.rawValue) on finger release")
             scheduleDockGestureAction(dockAction, for: application)
-        case .titleBar(let windowAction, let event, let anchorPoint):
+        case .titleBar(let windowAction, let event, let anchorPoint, let replacesWithTabClose):
             DebugLog.info(DebugLog.dock, "Executing deferred title-bar action \(String(describing: windowAction)) on finger release")
-            executeTitleBarAction(windowAction, event: event, anchorPoint: anchorPoint)
+            executeTitleBarAction(
+                windowAction,
+                event: event,
+                anchorPoint: anchorPoint,
+                replacesWithTabClose: replacesWithTabClose
+            )
         }
     }
 
@@ -654,7 +741,8 @@ private final class TitleBarAccessibilityProbe {
     func hoveredApplication(
         at appKitPoint: CGPoint,
         requireFrontmostOwnership: Bool,
-        allowFullScreen: Bool = false
+        allowFullScreen: Bool = false,
+        allowBrowserTabFallback: Bool = false
     ) -> DockApplicationTarget? {
         let now = Date()
 
@@ -675,7 +763,10 @@ private final class TitleBarAccessibilityProbe {
                 )
                 return cachedHitRegion.application
             }
-            return nil
+
+            guard allowBrowserTabFallback else {
+                return nil
+            }
         }
 
         guard AXIsProcessTrusted() else {
@@ -700,7 +791,8 @@ private final class TitleBarAccessibilityProbe {
             return nil
         }
 
-        if isFullScreen(window), !allowFullScreen {
+        let windowIsFullScreen = isFullScreen(window)
+        if windowIsFullScreen, !allowFullScreen {
             cachedHitRegion = nil
             return nil
         }
@@ -740,6 +832,28 @@ private final class TitleBarAccessibilityProbe {
                 key: "hit:\(target.processIdentifier):\(Int(titleBarFrame.minX)):\(Int(titleBarFrame.minY)):\(Int(titleBarFrame.width)):\(Int(titleBarFrame.height))",
                 message: {
                     "Pointer hit title-bar region for \(target.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(titleBarFrame))"
+                }
+            )
+            return target
+        }
+
+        if
+            allowBrowserTabFallback,
+            windowIsFullScreen == false,
+            pointBelongsToFrontmostApplication(
+                appKitPoint,
+                processIdentifier: target.processIdentifier,
+                required: requireFrontmostOwnership
+            ),
+            BrowserTabProbe.isBrowserTab(
+                at: appKitPoint,
+                processIdentifier: target.processIdentifier
+            )
+        {
+            logProbeIfNeeded(
+                key: "hit-browser-tab:\(target.processIdentifier):\(Int(appKitPoint.x)):\(Int(appKitPoint.y))",
+                message: {
+                    "Pointer hit browser-tab fallback region for \(target.logDescription) at \(NSStringFromPoint(appKitPoint))"
                 }
             )
             return target

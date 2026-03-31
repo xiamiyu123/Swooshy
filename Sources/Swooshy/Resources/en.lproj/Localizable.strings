@@ -16,6 +16,7 @@
 "action.quit_application" = "Quit Application";
 "action.toggle_full_screen" = "Maximize";
 "action.exit_full_screen" = "Exit Full Screen";
+"action.close_tab" = "Close Tab";
 "action.cycle_same_app_windows_forward" = "Cycle Same-App Windows Forward";
 "action.cycle_same_app_windows_backward" = "Cycle Same-App Windows Backward";
 
@@ -154,6 +155,16 @@
 "settings.advanced.section.other" = "Other";
 "settings.advanced.reset_defaults" = "Reset Advanced Settings";
 "settings.advanced.done" = "Done";
+
+"settings.experimental.section" = "Experimental";
+"settings.experimental.smart_browser_tab_close.enabled" = "Smart browser tab close";
+"settings.experimental.smart_browser_tab_close.footer" = "When performing a 'Close Window' or 'Quit Application' gesture on a browser, if the pointer is hovering over a specific tab, Swooshy will close only that tab instead. If the pointer is not over any tab, the gesture falls back to the normal close/quit behavior. Supports Safari, Chrome, Edge, Firefox, Arc, Brave, Vivaldi, Opera, and more.\n\nPrinciple: Swooshy simulates a middle-click (button 3) at the pointer location. Ensure your browser has 'middle-click to close tabs' enabled and no third-party button remapping conflicts.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
+
+"guide.page.experimental.title" = "Experimental Features";
+"guide.page.experimental.message" = "Swooshy includes a few experimental features you can opt into. These are disabled by default but can be turned on in Advanced Settings.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
+"guide.page.experimental.bullet1" = "Smart browser tab close: when gesturing to close or quit on a browser, Swooshy detects if the pointer is over a specific tab and closes only that tab via a simulated middle-click.";
+"guide.page.experimental.bullet2" = "If the pointer is not over any tab, the gesture falls back to the normal close-window or quit behavior.";
+"guide.page.experimental.bullet3" = "Supports all major browsers including Safari, Chrome, Edge, Firefox, Arc, Brave, and more.";
 
 "error.permission_missing" = "Accessibility permission is missing. Enable Swooshy in System Settings and try again.";
 "error.no_frontmost_app" = "Unable to find the frontmost application.";

@@ -72,6 +72,18 @@ final class SettingsStore {
         }
     }
 
+    var smartBrowserTabCloseEnabled: Bool {
+        didSet {
+            guard oldValue != smartBrowserTabCloseEnabled else { return }
+            userDefaults.set(smartBrowserTabCloseEnabled, forKey: Keys.smartBrowserTabCloseEnabled)
+            DebugLog.info(
+                DebugLog.settings,
+                "Smart browser tab close enabled set to \(smartBrowserTabCloseEnabled)"
+            )
+            notifyDidChange()
+        }
+    }
+
     var executeGestureOnRelease: Bool {
         didSet {
             guard oldValue != executeGestureOnRelease else { return }
@@ -209,6 +221,11 @@ final class SettingsStore {
             defaultValue: true,
             in: userDefaults
         )
+        self.smartBrowserTabCloseEnabled = Self.boolValue(
+            forKey: Keys.smartBrowserTabCloseEnabled,
+            defaultValue: false,
+            in: userDefaults
+        )
         self.titleBarOverlayProtectionEnabled = Self.boolValue(
             forKey: Keys.titleBarOverlayProtectionEnabled,
             defaultValue: true,
@@ -272,6 +289,7 @@ final class SettingsStore {
             Keys.dockGesturesEnabled,
             Keys.titleBarGesturesEnabled,
             Keys.titleBarOverlayProtectionEnabled,
+            Keys.smartBrowserTabCloseEnabled,
             Keys.executeGestureOnRelease,
             Keys.reverseCancelEnabled,
             Keys.reverseCancelSensitivity,
@@ -517,6 +535,7 @@ final class SettingsStore {
         pinchSensitivity = 0.5
         titleBarOverlayProtectionEnabled = true
         smartPinchExitFullScreenEnabled = true
+        smartBrowserTabCloseEnabled = false
     }
 
     private func persistHotKeyBindings() {
@@ -583,6 +602,7 @@ final class SettingsStore {
         static let titleBarGesturesEnabled = "settings.titleBarGesturesEnabled"
         static let titleBarOverlayProtectionEnabled = "settings.titleBarOverlayProtectionEnabled"
         static let smartPinchExitFullScreenEnabled = "settings.smartPinchExitFullScreenEnabled"
+        static let smartBrowserTabCloseEnabled = "settings.smartBrowserTabCloseEnabled"
         static let executeGestureOnRelease = "settings.executeGestureOnRelease"
         static let reverseCancelEnabled = "settings.reverseCancelEnabled"
         static let reverseCancelSensitivity = "settings.reverseCancelSensitivity"

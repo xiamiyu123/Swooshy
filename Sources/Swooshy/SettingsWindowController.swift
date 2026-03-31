@@ -345,6 +345,19 @@ private struct AdvancedSettingsSheet: View {
                 } header: {
                     Text(settingsStore.localized("settings.advanced.section.other"))
                 }
+
+                Section {
+                    Toggle(
+                        settingsStore.localized("settings.experimental.smart_browser_tab_close.enabled"),
+                        isOn: $settingsStore.smartBrowserTabCloseEnabled
+                    )
+
+                    SettingsHintGroup {
+                        Text(settingsStore.localized("settings.experimental.smart_browser_tab_close.footer"))
+                    }
+                } header: {
+                    Text(settingsStore.localized("settings.experimental.section"))
+                }
             }
             .formStyle(.grouped)
 

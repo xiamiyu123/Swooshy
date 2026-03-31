@@ -17,6 +17,7 @@ struct SettingsStoreTests {
         store.dockGesturesEnabled = false
         store.titleBarGesturesEnabled = false
         store.titleBarOverlayProtectionEnabled = true
+        store.smartBrowserTabCloseEnabled = true
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
         store.updateDockGestureEnabled(false, for: .pinchIn)
         store.updateTitleBarGestureAction(.maximize, for: .swipeLeft)
@@ -30,6 +31,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.dockGesturesEnabled == false)
         #expect(reloadedStore.titleBarGesturesEnabled == false)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
+        #expect(reloadedStore.smartBrowserTabCloseEnabled == true)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .closeWindow)
         #expect(reloadedStore.dockGestureIsEnabled(for: .pinchIn) == false)
         #expect(reloadedStore.titleBarGestureAction(for: .swipeLeft) == .maximize)
@@ -114,6 +116,7 @@ struct SettingsStoreTests {
         store.dockGesturesEnabled = false
         store.titleBarGesturesEnabled = false
         store.titleBarOverlayProtectionEnabled = true
+        store.smartBrowserTabCloseEnabled = true
         store.statusItemIcon = .windowGrid
         _ = store.consumeWelcomeGuidePresentationFlag()
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
@@ -126,6 +129,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.dockGesturesEnabled == true)
         #expect(reloadedStore.titleBarGesturesEnabled == true)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
+        #expect(reloadedStore.smartBrowserTabCloseEnabled == false)
         #expect(reloadedStore.statusItemIcon == .gale)
         #expect(reloadedStore.hasSeenWelcomeGuide == false)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .quitApplication)

@@ -246,6 +246,18 @@ struct WelcomeGuideContent {
                 ],
                 imageName: nil
             ),
+            Page(
+                id: 8,
+                kind: .experimental,
+                title: settingsStore.localized("guide.page.experimental.title"),
+                message: settingsStore.localized("guide.page.experimental.message"),
+                bullets: [
+                    settingsStore.localized("guide.page.experimental.bullet1"),
+                    settingsStore.localized("guide.page.experimental.bullet2"),
+                    settingsStore.localized("guide.page.experimental.bullet3"),
+                ],
+                imageName: nil
+            ),
         ]
     }
 }
@@ -256,6 +268,7 @@ final class WelcomeGuideViewModel: ObservableObject {
         case welcome
         case tutorial
         case preference
+        case experimental
     }
 
     @Published var currentPageIndex: Int = 0
@@ -285,6 +298,11 @@ final class WelcomeGuideViewModel: ObservableObject {
     var executeGestureOnRelease: Bool {
         get { settingsStore.executeGestureOnRelease }
         set { settingsStore.executeGestureOnRelease = newValue }
+    }
+
+    var smartBrowserTabCloseEnabled: Bool {
+        get { settingsStore.smartBrowserTabCloseEnabled }
+        set { settingsStore.smartBrowserTabCloseEnabled = newValue }
     }
 
     var windowTitle: String { content.windowTitle }
@@ -390,6 +408,8 @@ private struct WelcomeGuideView: View {
                     tutorialContent(page: viewModel.currentPage)
                 case .preference:
                     preferenceContent
+                case .experimental:
+                    experimentalContent(page: viewModel.currentPage)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -477,6 +497,40 @@ private struct WelcomeGuideView: View {
             .frame(maxWidth: .infinity)
 
             Spacer(minLength: 0)
+        }
+    }
+
+    private func experimentalContent(page: WelcomeGuideContent.Page) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text(page.message)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle(
+                    viewModel.localized("settings.experimental.smart_browser_tab_close.enabled"),
+                    isOn: $viewModel.smartBrowserTabCloseEnabled
+                )
+                .controlSize(.large)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                )
+                .padding(.vertical, 8)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(page.bullets.enumerated()), id: \.offset) { _, bullet in
+                        bulletRow(text: bullet)
+                    }
+                }
+            }
+            .padding(.trailing, 10)
         }
     }
 
