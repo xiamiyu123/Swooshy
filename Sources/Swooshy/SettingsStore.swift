@@ -17,6 +17,7 @@ final class SettingsStore {
         didSet {
             guard oldValue != languageOverride else { return }
             userDefaults.set(languageOverride.rawValue, forKey: Keys.languageOverride)
+            L10n.setPreferredLanguagesOverride(preferredLanguages)
             notifyDidChange()
         }
     }
@@ -260,6 +261,8 @@ final class SettingsStore {
         self.hotKeyBindings = Self.decodeHotKeyBindings(from: userDefaults) ?? HotKeyBindings.defaults
         self.dockGestureBindings = Self.decodeDockGestureBindings(from: userDefaults) ?? DockGestureBindings.defaults
         self.titleBarGestureBindings = Self.decodeTitleBarGestureBindings(from: userDefaults) ?? TitleBarGestureBindings.defaults
+
+        L10n.setPreferredLanguagesOverride(self.preferredLanguages)
     }
 
     static func resetPersistedConfiguration(in userDefaults: UserDefaults = .standard) {

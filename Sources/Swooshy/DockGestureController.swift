@@ -353,7 +353,6 @@ final class DockGestureController {
         if isInFullScreen, event.gesture == .pinchIn {
             actionTitle = L10n.string(
                 "action.exit_full_screen",
-                localeIdentifier: Locale.current.identifier,
                 preferredLanguages: settingsStore.preferredLanguages
             )
         }

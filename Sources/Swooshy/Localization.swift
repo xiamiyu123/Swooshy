@@ -3,10 +3,16 @@ import Foundation
 enum L10n {
     private static let resourceBundleName = "Swooshy_Swooshy.bundle"
 
+    nonisolated(unsafe) private static var preferredLanguagesOverride: [String]?
+
+    static func setPreferredLanguagesOverride(_ languages: [String]?) {
+        preferredLanguagesOverride = languages
+    }
+
     static func string(
         _ key: String,
         localeIdentifier: String? = nil,
-        preferredLanguages: [String] = Locale.preferredLanguages
+        preferredLanguages: [String]? = nil
     ) -> String {
         let bundle = bundle(
             for: localeIdentifier,
@@ -22,25 +28,31 @@ enum L10n {
 
     static func bundle(
         for localeIdentifier: String?,
-        preferredLanguages: [String] = Locale.preferredLanguages
+        preferredLanguages: [String]? = nil
     ) -> Bundle {
-        guard
-            let localization = localization(
-                for: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            ),
-            let path = resourcesBundle.path(forResource: localization, ofType: "lproj"),
-            let bundle = Bundle(path: path)
-        else {
-            return resourcesBundle
+        let preferences = localePreferences(
+            explicitLocaleIdentifier: localeIdentifier,
+            preferredLanguages: preferredLanguages
+        )
+
+        let candidates = preferences + ["en", resourcesBundle.localizations.first].compactMap { $0 }
+        
+        for candidate in candidates {
+            if let match = resourcesBundle.localizations.first(where: {
+                $0.compare(candidate, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+            }),
+            let path = resourcesBundle.path(forResource: match, ofType: "lproj"),
+            let bundle = Bundle(path: path) {
+                return bundle
+            }
         }
 
-        return bundle
+        return resourcesBundle
     }
 
     static func localization(
         for localeIdentifier: String?,
-        preferredLanguages: [String] = Locale.preferredLanguages
+        preferredLanguages: [String]? = nil
     ) -> String? {
         let preferences = localePreferences(
             explicitLocaleIdentifier: localeIdentifier,
@@ -67,9 +79,9 @@ enum L10n {
 
     private static func localePreferences(
         explicitLocaleIdentifier: String?,
-        preferredLanguages: [String]
+        preferredLanguages: [String]?
     ) -> [String] {
-        let basePreferences = explicitLocaleIdentifier.map { [$0] } ?? preferredLanguages
+        let basePreferences = explicitLocaleIdentifier.map { [$0] } ?? preferredLanguages ?? preferredLanguagesOverride ?? Locale.preferredLanguages
 
         return basePreferences.flatMap { identifier in
             let normalizedIdentifier = identifier.replacingOccurrences(of: "_", with: "-")
