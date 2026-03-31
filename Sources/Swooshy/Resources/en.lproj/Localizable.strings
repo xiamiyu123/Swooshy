@@ -15,6 +15,7 @@
 "action.close_window" = "Close Window";
 "action.quit_application" = "Quit Application";
 "action.toggle_full_screen" = "Maximize";
+"action.exit_full_screen" = "Exit Full Screen";
 "action.cycle_same_app_windows_forward" = "Cycle Same-App Windows Forward";
 "action.cycle_same_app_windows_backward" = "Cycle Same-App Windows Backward";
 
@@ -125,7 +126,9 @@
 "settings.dock_gestures.reset" = "Reset gesture actions";
 "settings.title_bar_gestures.reset" = "Reset title-bar actions";
 "settings.advanced.title_bar_overlay_protection.enabled" = "Ignore gestures when another overlay covers the pointer";
-"settings.advanced.title_bar_overlay_protection.footer" = "When enabled, Swooshy verifies that the pointer is still hitting the intended app before triggering Dock or title-bar gestures. This can help avoid accidental triggers while interacting with notifications or other floating overlays.";
+"settings.advanced.title_bar_overlay_protection.footer" = "Enabling this reduces unintended gestures by checking that Swooshy only targets the intended app when triggering a Dock or Title-bar gesture. This prevents accidentally swiping on unrelated pop-ups, notifications, or overlay-based app windows.";
+"settings.advanced.smart_pinch_exit_full_screen.enabled" = "Smart Pinch In to Exit Full Screen";
+"settings.advanced.smart_pinch_exit_full_screen.footer" = "When the app is in Native Full Screen (with the Title-bar hovering down), Title-bar 'Pinch In' gestures will be intelligently intercepted as 'Exit Full Screen', regardless of their actual mapping in the Settings. This prevents unintended app closure when you actually just meant to leave the Virtual Desktop space.";
 "settings.debug_logging.enabled" = "Enable debug logging";
 "settings.shortcuts.recorder_placeholder" = "Press shortcut";
 "settings.shortcuts.reset" = "Reset shortcut defaults";

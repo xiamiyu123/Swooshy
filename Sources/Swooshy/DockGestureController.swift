@@ -207,7 +207,8 @@ final class DockGestureController {
             ? mouseLocation.flatMap {
                 titleBarProbe.hoveredApplication(
                     at: $0,
-                    requireFrontmostOwnership: settingsStore.titleBarOverlayProtectionEnabled
+                    requireFrontmostOwnership: settingsStore.titleBarOverlayProtectionEnabled,
+                    allowFullScreen: settingsStore.smartPinchExitFullScreenEnabled
                 )
             }
             : nil
@@ -337,17 +338,37 @@ final class DockGestureController {
             return
         }
 
+        let window = try? windowManager.focusedWindowElement(in: AXUIElementCreateApplication(frontmostApplication.processIdentifier))
+        let isInFullScreen = window.map { windowManager.isFullScreen($0) } ?? false
+
+        // Whitelist: In Full Screen, ONLY Pinch In is allowed (for smart exit).
+        if isInFullScreen {
+            guard settingsStore.smartPinchExitFullScreenEnabled, event.gesture == .pinchIn else {
+                DebugLog.debug(DebugLog.dock, "Ignoring title-bar gesture \(event.gesture.rawValue) in Full Screen because it is not Pinch In")
+                return
+            }
+        }
+
+        var actionTitle = action.title(preferredLanguages: settingsStore.preferredLanguages)
+        if isInFullScreen, event.gesture == .pinchIn {
+            actionTitle = L10n.string(
+                "action.exit_full_screen",
+                localeIdentifier: Locale.current.identifier,
+                preferredLanguages: settingsStore.preferredLanguages
+            )
+        }
+
         let persistent = settingsStore.executeGestureOnRelease
         gestureFeedbackPresenter.show(
             gesture: event.gesture,
             gestureTitle: event.gesture.title(preferredLanguages: settingsStore.preferredLanguages),
-            actionTitle: action.title(preferredLanguages: settingsStore.preferredLanguages),
+            actionTitle: actionTitle,
             anchor: anchorPoint,
             persistent: persistent
         )
         DebugLog.info(
             DebugLog.dock,
-            "Title-bar gesture \(event.gesture.rawValue) mapped to \(String(describing: action)) for \(event.application.logDescription)"
+            "Title-bar gesture \(event.gesture.rawValue) mapped to \(actionTitle) for \(event.application.logDescription)"
         )
 
         if persistent {
@@ -362,6 +383,17 @@ final class DockGestureController {
 
     private func executeTitleBarAction(_ action: WindowAction, event: DockGestureEvent, anchorPoint: CGPoint) {
         do {
+            if settingsStore.smartPinchExitFullScreenEnabled, event.gesture == .pinchIn {
+                let app = try windowManager.runningApplication(matching: event.application)
+                let appElement = AXUIElementCreateApplication(app.processIdentifier)
+                if let window = try? windowManager.focusedWindowElement(in: appElement),
+                   windowManager.isFullScreen(window) {
+                    try windowManager.setFullScreen(false, for: window)
+                    DebugLog.info(DebugLog.dock, "Smart intercept: pinched in on full screen window, forced exit.")
+                    return
+                }
+            }
+
             try windowManager.perform(
                 action,
                 layoutEngine: layoutEngine,
@@ -622,7 +654,8 @@ private final class TitleBarAccessibilityProbe {
 
     func hoveredApplication(
         at appKitPoint: CGPoint,
-        requireFrontmostOwnership: Bool
+        requireFrontmostOwnership: Bool,
+        allowFullScreen: Bool = false
     ) -> DockApplicationTarget? {
         let now = Date()
 
@@ -668,7 +701,7 @@ private final class TitleBarAccessibilityProbe {
             return nil
         }
 
-        guard isFullScreen(window) == false else {
+        if isFullScreen(window), !allowFullScreen {
             cachedHitRegion = nil
             return nil
         }

@@ -15,6 +15,7 @@
 "action.close_window" = "关闭窗口";
 "action.quit_application" = "退出应用";
 "action.toggle_full_screen" = "最大化全屏";
+"action.exit_full_screen" = "退出全屏";
 "action.cycle_same_app_windows_forward" = "向前切换当前应用窗口";
 "action.cycle_same_app_windows_backward" = "向后切换当前应用窗口";
 
@@ -125,7 +126,9 @@
 "settings.dock_gestures.reset" = "恢复默认手势动作";
 "settings.title_bar_gestures.reset" = "恢复标题栏默认动作";
 "settings.advanced.title_bar_overlay_protection.enabled" = "当指针被其他覆盖层遮挡时忽略手势";
-"settings.advanced.title_bar_overlay_protection.footer" = "启用后，Swooshy 会在触发 Dock 或标题栏手势前确认指针当前命中的仍是目标应用本身。这样在操作通知或其他浮层时，可以减少误触。";
+"settings.advanced.title_bar_overlay_protection.footer" = "启用保护能避免 Swooshy 在其它独立菜单浮窗或其它基于叠加层窗口控制界面的 App 上产生不必要的手势误触。Swooshy 会确保在你开始手势前应用已被完全激活，并且没有其它叠加层挡住你的操作区域。但在偶尔某些特定边缘情况下，系统未及时上报正确的鼠标位置时，这也许会阻挡个别正常的手势。如果你想不计前提始终强行触发标题栏手势，可以关闭该选项。";
+"settings.advanced.smart_pinch_exit_full_screen.enabled" = "全屏状态下捏合退出全屏";
+"settings.advanced.smart_pinch_exit_full_screen.footer" = "在原生的 macOS 虚拟桌面全屏状态下（标题栏下拉时），不论你为标题栏的「捏合」手势绑定了什么动作，系统都会将其智能识别拦截为「退出全屏桌面」。这能避免在此直觉操作下不小心触发关闭窗口。";
 "settings.debug_logging.enabled" = "启用调试日志";
 "settings.shortcuts.recorder_placeholder" = "请按快捷键";
 "settings.shortcuts.reset" = "恢复默认快捷键";

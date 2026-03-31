@@ -59,6 +59,18 @@ final class SettingsStore {
         }
     }
 
+    var smartPinchExitFullScreenEnabled: Bool {
+        didSet {
+            guard oldValue != smartPinchExitFullScreenEnabled else { return }
+            userDefaults.set(smartPinchExitFullScreenEnabled, forKey: Keys.smartPinchExitFullScreenEnabled)
+            DebugLog.info(
+                DebugLog.settings,
+                "Smart pinch out of Full Screen enabled set to \(smartPinchExitFullScreenEnabled)"
+            )
+            notifyDidChange()
+        }
+    }
+
     var executeGestureOnRelease: Bool {
         didSet {
             guard oldValue != executeGestureOnRelease else { return }
@@ -181,21 +193,23 @@ final class SettingsStore {
             defaultValue: true,
             in: userDefaults
         )
-        self.dockGesturesEnabled = Self.boolValue(
-            forKey: Keys.dockGesturesEnabled,
-            defaultValue: true,
-            in: userDefaults
-        )
-        self.titleBarGesturesEnabled = Self.boolValue(
-            forKey: Keys.titleBarGesturesEnabled,
-            defaultValue: true,
-            in: userDefaults
-        )
-        self.titleBarOverlayProtectionEnabled = Self.boolValue(
-            forKey: Keys.titleBarOverlayProtectionEnabled,
-            defaultValue: true,
-            in: userDefaults
-        )
+        self.dockGesturesEnabled = userDefaults.bool(forKey: Keys.dockGesturesEnabled)
+
+        if userDefaults.object(forKey: Keys.titleBarGesturesEnabled) == nil {
+            userDefaults.set(true, forKey: Keys.titleBarGesturesEnabled)
+        }
+        self.titleBarGesturesEnabled = userDefaults.bool(forKey: Keys.titleBarGesturesEnabled)
+        
+        if userDefaults.object(forKey: Keys.smartPinchExitFullScreenEnabled) == nil {
+            userDefaults.set(true, forKey: Keys.smartPinchExitFullScreenEnabled)
+        }
+        self.smartPinchExitFullScreenEnabled = userDefaults.bool(forKey: Keys.smartPinchExitFullScreenEnabled)
+
+        if userDefaults.object(forKey: Keys.titleBarOverlayProtectionEnabled) == nil {
+            userDefaults.set(true, forKey: Keys.titleBarOverlayProtectionEnabled)
+        }
+        self.titleBarOverlayProtectionEnabled = userDefaults.bool(forKey: Keys.titleBarOverlayProtectionEnabled)
+        
         self.executeGestureOnRelease = Self.boolValue(
             forKey: Keys.executeGestureOnRelease,
             defaultValue: false,
@@ -495,6 +509,7 @@ final class SettingsStore {
         swipeSensitivity = 0.5
         pinchSensitivity = 0.5
         titleBarOverlayProtectionEnabled = true
+        smartPinchExitFullScreenEnabled = true
     }
 
     private func persistHotKeyBindings() {
@@ -560,6 +575,7 @@ final class SettingsStore {
         static let dockGesturesEnabled = "settings.dockGesturesEnabled"
         static let titleBarGesturesEnabled = "settings.titleBarGesturesEnabled"
         static let titleBarOverlayProtectionEnabled = "settings.titleBarOverlayProtectionEnabled"
+        static let smartPinchExitFullScreenEnabled = "settings.smartPinchExitFullScreenEnabled"
         static let executeGestureOnRelease = "settings.executeGestureOnRelease"
         static let reverseCancelEnabled = "settings.reverseCancelEnabled"
         static let reverseCancelSensitivity = "settings.reverseCancelSensitivity"

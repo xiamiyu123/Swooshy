@@ -311,6 +311,18 @@ private struct AdvancedSettingsSheet: View {
                     SettingsHintGroup {
                         Text(settingsStore.localized("settings.advanced.title_bar_overlay_protection.footer"))
                     }
+
+                    Divider()
+
+                    Toggle(
+                        settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.enabled"),
+                        isOn: $settingsStore.smartPinchExitFullScreenEnabled
+                    )
+                    .disabled(settingsStore.titleBarGesturesEnabled == false)
+
+                    SettingsHintGroup {
+                        Text(settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.footer"))
+                    }
                 } header: {
                     Text(settingsStore.localized("settings.advanced.section.other"))
                 }

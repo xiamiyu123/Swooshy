@@ -344,7 +344,7 @@ struct WindowManager: WindowManaging {
         return true
     }
 
-    private func runningApplication(matching target: DockApplicationTarget) throws -> NSRunningApplication {
+    func runningApplication(matching target: DockApplicationTarget) throws -> NSRunningApplication {
         var windowPresenceCache: [pid_t: Bool] = [:]
         var fallbackCandidates: [NSRunningApplication] = []
 
@@ -532,7 +532,7 @@ struct WindowManager: WindowManaging {
         return hasWindow
     }
 
-    private func focusedWindowElement(in appElement: AXUIElement) throws -> AXUIElement {
+    func focusedWindowElement(in appElement: AXUIElement) throws -> AXUIElement {
         var focusedWindowValue: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(
             appElement,
@@ -677,11 +677,11 @@ struct WindowManager: WindowManaging {
         }
     }
 
-    private func isFullScreen(_ window: AXUIElement) -> Bool {
+    func isFullScreen(_ window: AXUIElement) -> Bool {
         AXAttributeReader.bool("AXFullScreen" as CFString, from: window) ?? false
     }
 
-    private func setFullScreen(_ fullScreen: Bool, for window: AXUIElement) throws {
+    func setFullScreen(_ fullScreen: Bool, for window: AXUIElement) throws {
         let value: CFTypeRef = fullScreen ? kCFBooleanTrue : kCFBooleanFalse
         let setError = AXUIElementSetAttributeValue(
             window,
