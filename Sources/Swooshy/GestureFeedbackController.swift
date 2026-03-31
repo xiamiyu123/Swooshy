@@ -7,8 +7,11 @@ protocol GestureFeedbackPresenting {
         gesture: DockGestureKind,
         gestureTitle: String,
         actionTitle: String,
-        anchor: CGPoint?
+        anchor: CGPoint?,
+        persistent: Bool
     )
+    func dismiss()
+    func scheduleDismiss()
 }
 
 struct GestureHUDRenderModel: Equatable {
@@ -296,7 +299,8 @@ final class GestureFeedbackController: GestureFeedbackPresenting {
         gesture: DockGestureKind,
         gestureTitle: String,
         actionTitle: String,
-        anchor: CGPoint? = nil
+        anchor: CGPoint? = nil,
+        persistent: Bool = false
     ) {
         let style = settingsStore.gestureHUDStyle
         renderView.render(
@@ -319,6 +323,11 @@ final class GestureFeedbackController: GestureFeedbackPresenting {
         panel.orderFrontRegardless()
 
         panel.animator().alphaValue = 1
+
+        guard persistent == false else {
+            // In persistent mode the HUD stays visible until dismiss() is called.
+            return
+        }
 
         let delay = self.dismissalDelay
         let generation = hideGeneration
@@ -379,6 +388,40 @@ final class GestureFeedbackController: GestureFeedbackPresenting {
         }
     }
 
+    func dismiss() {
+        dismissTask?.cancel()
+        dismissTask = nil
+        hideGeneration &+= 1
+        panel.animator().alphaValue = 0
+        let gen = hideGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, gen == self.hideGeneration else { return }
+                self.panel.orderOut(nil)
+            }
+        }
+    }
+
+    func scheduleDismiss() {
+        dismissTask?.cancel()
+        let delay = self.dismissalDelay
+        let generation = hideGeneration
+
+        dismissTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                self?.hide(expectedGeneration: generation)
+            }
+        }
+    }
 }
 
 private final class GestureGlyphView: NSView {

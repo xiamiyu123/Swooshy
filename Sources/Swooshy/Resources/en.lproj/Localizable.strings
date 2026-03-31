@@ -108,6 +108,8 @@
 "settings.title_bar_gestures.enabled" = "Enable title-bar gestures";
 "settings.gesture_hud.style.label" = "Gesture HUD style";
 "settings.gesture_hud.footer" = "Dock and title-bar gestures share the same trackpad monitor. Choose how the on-screen gesture HUD should look.";
+"settings.gesture_execute_on_release.enabled" = "Execute gesture on release";
+"settings.gesture_execute_on_release.footer" = "When enabled, gestures are recognized and previewed immediately, but the action is only executed after you lift your fingers. Press Esc to cancel a pending gesture.";
 "settings.gesture_hud.style.classic" = "Detailed";
 "settings.gesture_hud.style.elegant" = "Elegant";
 "settings.gesture_hud.style.minimal" = "Minimal";
@@ -125,6 +127,22 @@
 "settings.debug_logging.enabled" = "Enable debug logging";
 "settings.shortcuts.recorder_placeholder" = "Press shortcut";
 "settings.shortcuts.reset" = "Reset shortcut defaults";
+
+"settings.advanced.open" = "Advanced Settings…";
+"settings.advanced.footer" = "Fine-tune gesture trigger sensitivity, reverse-swipe cancellation, and overlay protection.";
+"settings.advanced.title" = "Advanced Settings";
+"settings.advanced.section.sensitivity" = "Gesture Sensitivity";
+"settings.advanced.swipe_sensitivity.label" = "Swipe sensitivity";
+"settings.advanced.pinch_sensitivity.label" = "Pinch sensitivity";
+"settings.advanced.section.cancel" = "Gesture Cancellation";
+"settings.advanced.reverse_cancel.enabled" = "Cancel gesture on reverse movement";
+"settings.advanced.reverse_cancel.footer" = "When enabled and \"Execute on release\" is active, moving your fingers back in the opposite direction will cancel the pending gesture.";
+"settings.advanced.reverse_cancel_sensitivity.label" = "Cancel sensitivity";
+"settings.advanced.sensitivity.low" = "Low";
+"settings.advanced.sensitivity.high" = "High";
+"settings.advanced.section.other" = "Other";
+"settings.advanced.reset_defaults" = "Reset Advanced Settings";
+"settings.advanced.done" = "Done";
 
 "error.permission_missing" = "Accessibility permission is missing. Enable Swooshy in System Settings and try again.";
 "error.no_frontmost_app" = "Unable to find the frontmost application.";

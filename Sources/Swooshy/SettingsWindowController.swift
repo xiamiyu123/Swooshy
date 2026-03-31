@@ -65,6 +65,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 private struct SettingsView: View {
     @Bindable var settingsStore: SettingsStore
     @State private var launchAtLoginController = LaunchAtLoginController()
+    @State private var showingAdvancedSettings = false
 
     var body: some View {
         Form {
@@ -140,8 +141,14 @@ private struct SettingsView: View {
                 }
                 .pickerStyle(.menu)
 
+                Toggle(
+                    settingsStore.localized("settings.gesture_execute_on_release.enabled"),
+                    isOn: $settingsStore.executeGestureOnRelease
+                )
+
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.gesture_hud.footer"))
+                    Text(settingsStore.localized("settings.gesture_execute_on_release.footer"))
                 }
 
                 GestureHUDPreviewStrip(settingsStore: settingsStore)
@@ -149,18 +156,6 @@ private struct SettingsView: View {
                 Text(settingsStore.localized("settings.section.gestures"))
             } footer: {
                 Text(settingsStore.localized("settings.gestures.footer"))
-            }
-
-            Section {
-                Toggle(
-                    settingsStore.localized("settings.advanced.title_bar_overlay_protection.enabled"),
-                    isOn: $settingsStore.titleBarOverlayProtectionEnabled
-                )
-                .disabled(settingsStore.titleBarGesturesEnabled == false)
-            } header: {
-                Text(settingsStore.localized("settings.section.advanced"))
-            } footer: {
-                Text(settingsStore.localized("settings.advanced.title_bar_overlay_protection.footer"))
             }
 
             DockGestureMappingsSection(settingsStore: settingsStore)
@@ -178,12 +173,25 @@ private struct SettingsView: View {
             } header: {
                 Text(settingsStore.localized("settings.section.shortcuts"))
             }
+
+            Section {
+                Button {
+                    showingAdvancedSettings = true
+                } label: {
+                    Text(settingsStore.localized("settings.advanced.open"))
+                }
+            } footer: {
+                Text(settingsStore.localized("settings.advanced.footer"))
+            }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(minWidth: 500, minHeight: 520)
         .onAppear {
             launchAtLoginController.refresh(localize: settingsStore.localized)
+        }
+        .sheet(isPresented: $showingAdvancedSettings) {
+            AdvancedSettingsSheet(settingsStore: settingsStore)
         }
     }
 
@@ -241,6 +249,123 @@ private struct SettingsSectionHeader: View {
             .padding(.top, 8)
     }
 }
+
+private struct AdvancedSettingsSheet: View {
+    @Bindable var settingsStore: SettingsStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(settingsStore.localized("settings.advanced.title"))
+                .font(.headline)
+                .padding(.top, 20)
+                .padding(.bottom, 12)
+
+            Form {
+                Section {
+                    SensitivitySlider(
+                        label: settingsStore.localized("settings.advanced.swipe_sensitivity.label"),
+                        value: $settingsStore.swipeSensitivity,
+                        lowLabel: settingsStore.localized("settings.advanced.sensitivity.low"),
+                        highLabel: settingsStore.localized("settings.advanced.sensitivity.high")
+                    )
+
+                    SensitivitySlider(
+                        label: settingsStore.localized("settings.advanced.pinch_sensitivity.label"),
+                        value: $settingsStore.pinchSensitivity,
+                        lowLabel: settingsStore.localized("settings.advanced.sensitivity.low"),
+                        highLabel: settingsStore.localized("settings.advanced.sensitivity.high")
+                    )
+                } header: {
+                    Text(settingsStore.localized("settings.advanced.section.sensitivity"))
+                }
+
+                Section {
+                    Toggle(
+                        settingsStore.localized("settings.advanced.reverse_cancel.enabled"),
+                        isOn: $settingsStore.reverseCancelEnabled
+                    )
+
+                    SensitivitySlider(
+                        label: settingsStore.localized("settings.advanced.reverse_cancel_sensitivity.label"),
+                        value: $settingsStore.reverseCancelSensitivity,
+                        lowLabel: settingsStore.localized("settings.advanced.sensitivity.low"),
+                        highLabel: settingsStore.localized("settings.advanced.sensitivity.high")
+                    )
+                    .disabled(settingsStore.reverseCancelEnabled == false)
+
+                    SettingsHintGroup {
+                        Text(settingsStore.localized("settings.advanced.reverse_cancel.footer"))
+                    }
+                } header: {
+                    Text(settingsStore.localized("settings.advanced.section.cancel"))
+                }
+
+                Section {
+                    Toggle(
+                        settingsStore.localized("settings.advanced.title_bar_overlay_protection.enabled"),
+                        isOn: $settingsStore.titleBarOverlayProtectionEnabled
+                    )
+                    .disabled(settingsStore.titleBarGesturesEnabled == false)
+
+                    SettingsHintGroup {
+                        Text(settingsStore.localized("settings.advanced.title_bar_overlay_protection.footer"))
+                    }
+                } header: {
+                    Text(settingsStore.localized("settings.advanced.section.other"))
+                }
+            }
+            .formStyle(.grouped)
+
+            HStack {
+                Button(settingsStore.localized("settings.advanced.reset_defaults")) {
+                    settingsStore.resetAdvancedSettingsToDefaults()
+                }
+
+                Spacer()
+
+                Button(settingsStore.localized("settings.advanced.done")) {
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
+            .padding(.top, 8)
+        }
+        .frame(width: 480, height: 520)
+    }
+}
+
+private struct SensitivitySlider: View {
+    let label: String
+    @Binding var value: Double
+    let lowLabel: String
+    let highLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.body)
+
+            HStack(spacing: 8) {
+                Text(lowLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, alignment: .trailing)
+
+                Slider(value: $value, in: 0...1, step: 0.05)
+
+                Text(highLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, alignment: .leading)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 
 private struct SettingsMappingCard<Rows: View>: View {
     @ViewBuilder let rows: Rows

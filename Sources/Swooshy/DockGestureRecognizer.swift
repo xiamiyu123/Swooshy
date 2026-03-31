@@ -69,9 +69,9 @@ struct DockGestureRecognizer {
         var hasTriggered = false
     }
 
-    private let translationThreshold: CGFloat = 0.09
+    var translationThreshold: CGFloat = 0.09
     private let directionalBiasRatio: CGFloat = 1.35
-    private let pinchThreshold: CGFloat = 0.08
+    var pinchThreshold: CGFloat = 0.08
     private let pinchBiasRatio: CGFloat = 1.15
     private var session: Session?
 

@@ -28,6 +28,18 @@ final class DockGestureController {
     private var isShuttingDown = false
     private let restoreHUDLeadDelay: UInt64 = 16_000_000
 
+    private var pendingReleaseAction: PendingReleaseAction?
+    private var escMonitor: Any?
+    private var lastTouchCount: Int = 0
+    private var pendingReleaseGestureKind: DockGestureKind?
+    private var pendingReleaseHighWaterMark: CGFloat?
+    private var pendingReleasePinchHighWaterMark: CGFloat?
+
+    private enum PendingReleaseAction {
+        case dock(action: DockGestureAction, application: DockApplicationTarget)
+        case titleBar(action: WindowAction, event: DockGestureEvent, anchorPoint: CGPoint)
+    }
+
     private struct MonitoringState: Equatable {
         let dockGesturesEnabled: Bool
         let titleBarGesturesEnabled: Bool
@@ -66,12 +78,13 @@ final class DockGestureController {
         pendingTouchFrame = nil
         isProcessingTouchFrame = false
         monitoringState = nil
-        dockRecognizer = DockGestureRecognizer()
-        titleBarRecognizer = DockGestureRecognizer()
+        dockRecognizer = makeConfiguredRecognizer()
+        titleBarRecognizer = makeConfiguredRecognizer()
         dockProbe.clearCache()
         titleBarProbe.clearCache()
         monitor.onFrame = nil
         monitor.stop()
+        cancelPendingReleaseAction()
     }
 
     private func observeSettings() {
@@ -100,12 +113,13 @@ final class DockGestureController {
         guard state != monitoringState else { return }
 
         monitoringState = state
-        dockRecognizer = DockGestureRecognizer()
-        titleBarRecognizer = DockGestureRecognizer()
+        dockRecognizer = makeConfiguredRecognizer()
+        titleBarRecognizer = makeConfiguredRecognizer()
         dockProbe.clearCache()
         titleBarProbe.clearCache()
         pendingTouchFrame = nil
         isProcessingTouchFrame = false
+        cancelPendingReleaseAction()
 
         if state.dockGesturesEnabled || state.titleBarGesturesEnabled {
             DebugLog.info(DebugLog.dock, "Starting trackpad gesture monitoring")
@@ -151,6 +165,16 @@ final class DockGestureController {
         let titleBarGesturesEnabled = settingsStore.titleBarGesturesEnabled
         guard dockGesturesEnabled || titleBarGesturesEnabled else { return }
 
+        let touchCount = frame.touches.count
+        let previousTouchCount = lastTouchCount
+        lastTouchCount = touchCount
+
+        // Execute pending action on finger release (touch count drops to 0).
+        if touchCount == 0, previousTouchCount > 0, pendingReleaseAction != nil {
+            executePendingReleaseAction()
+            // Still let recognizers see the zero-touch frame.
+        }
+
         // Keep the hot path cheap: only two-finger input can produce these gestures.
         guard frame.touches.count == 2 else {
             if dockGesturesEnabled {
@@ -160,6 +184,14 @@ final class DockGestureController {
                 _ = titleBarRecognizer.process(frame: frame, hoveredApplication: nil)
             }
             return
+        }
+
+        // Check for reverse swipe cancellation while fingers are still down.
+        if pendingReleaseAction != nil {
+            checkReverseCancellation(frame: frame)
+            if pendingReleaseAction == nil {
+                return
+            }
         }
 
         let needsDockLookup = dockGesturesEnabled && dockRecognizer.requiresHoveredApplication
@@ -199,7 +231,7 @@ final class DockGestureController {
 
         if dockGesturesEnabled, let dockEvent = dockRecognizer.process(frame: frame, hoveredApplication: hoveredDockApplication) {
             let anchorPoint = mouseLocation ?? NSEvent.mouseLocation
-            handleDockGestureEvent(dockEvent, anchorPoint: anchorPoint)
+            handleDockGestureEvent(dockEvent, anchorPoint: anchorPoint, touches: frame.touches)
             return
         }
 
@@ -208,24 +240,33 @@ final class DockGestureController {
         }
 
         let anchorPoint = mouseLocation ?? NSEvent.mouseLocation
-        handleTitleBarGestureEvent(titleBarEvent, anchorPoint: anchorPoint)
+        handleTitleBarGestureEvent(titleBarEvent, anchorPoint: anchorPoint, touches: frame.touches)
     }
 
-    private func handleDockGestureEvent(_ event: DockGestureEvent, anchorPoint: CGPoint) {
+    private func handleDockGestureEvent(_ event: DockGestureEvent, anchorPoint: CGPoint, touches: [TrackpadTouchSample]) {
         let action = settingsStore.dockGestureAction(for: event.gesture)
         let application = event.application
+        let persistent = settingsStore.executeGestureOnRelease
         gestureFeedbackPresenter.show(
             gesture: event.gesture,
             gestureTitle: event.gesture.title(preferredLanguages: settingsStore.preferredLanguages),
             actionTitle: action.title(preferredLanguages: settingsStore.preferredLanguages),
-            anchor: anchorPoint
+            anchor: anchorPoint,
+            persistent: persistent
         )
         DebugLog.info(
             DebugLog.dock,
             "Dock gesture \(event.gesture.rawValue) mapped to \(action.rawValue) for \(application.logDescription)"
         )
 
-        scheduleDockGestureAction(action, for: application)
+        if persistent {
+            pendingReleaseAction = .dock(action: action, application: application)
+            storeTouchAnchor(gesture: event.gesture, touches: touches)
+            installEscMonitor()
+            DebugLog.info(DebugLog.dock, "Deferred dock action \(action.rawValue) until finger release")
+        } else {
+            scheduleDockGestureAction(action, for: application)
+        }
     }
 
     private func scheduleDockGestureAction(_ action: DockGestureAction, for application: DockApplicationTarget) {
@@ -268,7 +309,7 @@ final class DockGestureController {
         }
     }
 
-    private func handleTitleBarGestureEvent(_ event: DockGestureEvent, anchorPoint: CGPoint) {
+    private func handleTitleBarGestureEvent(_ event: DockGestureEvent, anchorPoint: CGPoint, touches: [TrackpadTouchSample]) {
         guard
             let frontmostApplication = NSWorkspace.shared.frontmostApplication,
             frontmostApplication.processIdentifier == event.application.processIdentifier
@@ -285,17 +326,31 @@ final class DockGestureController {
             return
         }
 
+        let persistent = settingsStore.executeGestureOnRelease
+        gestureFeedbackPresenter.show(
+            gesture: event.gesture,
+            gestureTitle: event.gesture.title(preferredLanguages: settingsStore.preferredLanguages),
+            actionTitle: action.title(preferredLanguages: settingsStore.preferredLanguages),
+            anchor: anchorPoint,
+            persistent: persistent
+        )
+        DebugLog.info(
+            DebugLog.dock,
+            "Title-bar gesture \(event.gesture.rawValue) mapped to \(String(describing: action)) for \(event.application.logDescription)"
+        )
+
+        if persistent {
+            pendingReleaseAction = .titleBar(action: action, event: event, anchorPoint: anchorPoint)
+            storeTouchAnchor(gesture: event.gesture, touches: touches)
+            installEscMonitor()
+            DebugLog.info(DebugLog.dock, "Deferred title-bar action \(String(describing: action)) until finger release")
+        } else {
+            executeTitleBarAction(action, event: event, anchorPoint: anchorPoint)
+        }
+    }
+
+    private func executeTitleBarAction(_ action: WindowAction, event: DockGestureEvent, anchorPoint: CGPoint) {
         do {
-            gestureFeedbackPresenter.show(
-                gesture: event.gesture,
-                gestureTitle: event.gesture.title(preferredLanguages: settingsStore.preferredLanguages),
-                actionTitle: action.title(preferredLanguages: settingsStore.preferredLanguages),
-                anchor: anchorPoint
-            )
-            DebugLog.info(
-                DebugLog.dock,
-                "Title-bar gesture \(event.gesture.rawValue) mapped to \(String(describing: action)) for \(event.application.logDescription)"
-            )
             try windowManager.perform(
                 action,
                 layoutEngine: layoutEngine,
@@ -311,6 +366,149 @@ final class DockGestureController {
 
     private func titleBarAction(for gesture: DockGestureKind) -> WindowAction? {
         settingsStore.titleBarGestureAction(for: gesture)
+    }
+
+    // MARK: - Execute on Release
+
+    private func installEscMonitor() {
+        guard escMonitor == nil else { return }
+        escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return } // 53 = Esc
+            Task { @MainActor [weak self] in
+                self?.cancelPendingReleaseAction()
+            }
+        }
+        DebugLog.debug(DebugLog.dock, "Installed global Esc monitor for pending gesture")
+    }
+
+    private func removeEscMonitor() {
+        if let escMonitor {
+            NSEvent.removeMonitor(escMonitor)
+            self.escMonitor = nil
+            DebugLog.debug(DebugLog.dock, "Removed global Esc monitor")
+        }
+    }
+
+    private func cancelPendingReleaseAction() {
+        guard pendingReleaseAction != nil else {
+            removeEscMonitor()
+            return
+        }
+        DebugLog.info(DebugLog.dock, "Cancelled pending gesture action")
+        pendingReleaseAction = nil
+        clearTouchAnchor()
+        removeEscMonitor()
+        gestureFeedbackPresenter.dismiss()
+    }
+
+    private func executePendingReleaseAction() {
+        guard let action = pendingReleaseAction else { return }
+        pendingReleaseAction = nil
+        clearTouchAnchor()
+        removeEscMonitor()
+        gestureFeedbackPresenter.scheduleDismiss()
+
+        switch action {
+        case .dock(let dockAction, let application):
+            DebugLog.info(DebugLog.dock, "Executing deferred dock action \(dockAction.rawValue) on finger release")
+            scheduleDockGestureAction(dockAction, for: application)
+        case .titleBar(let windowAction, let event, let anchorPoint):
+            DebugLog.info(DebugLog.dock, "Executing deferred title-bar action \(String(describing: windowAction)) on finger release")
+            executeTitleBarAction(windowAction, event: event, anchorPoint: anchorPoint)
+        }
+    }
+
+    private func storeTouchAnchor(gesture: DockGestureKind, touches: [TrackpadTouchSample]) {
+        pendingReleaseGestureKind = gesture
+        guard touches.count >= 2 else {
+            pendingReleaseHighWaterMark = nil
+            pendingReleasePinchHighWaterMark = nil
+            return
+        }
+        let p0 = touches[0].position
+        let p1 = touches[1].position
+        let avg = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
+        // Initialize the high water mark with the gesture-direction component at trigger time.
+        pendingReleaseHighWaterMark = gestureDirectionComponent(for: gesture, point: avg)
+        pendingReleasePinchHighWaterMark = hypot(p1.x - p0.x, p1.y - p0.y)
+    }
+
+    private func clearTouchAnchor() {
+        pendingReleaseGestureKind = nil
+        pendingReleaseHighWaterMark = nil
+        pendingReleasePinchHighWaterMark = nil
+    }
+
+    /// Returns the scalar component along the gesture direction.
+    /// For swipe gestures this is the signed position along the swipe axis,
+    /// oriented so that "further into the gesture" is a larger value.
+    private func gestureDirectionComponent(for gesture: DockGestureKind, point: CGPoint) -> CGFloat {
+        switch gesture {
+        case .swipeLeft:  return -point.x  // moving left = decreasing x → negate so further = larger
+        case .swipeRight: return  point.x
+        case .swipeUp:    return  point.y  // trackpad y increases upward
+        case .swipeDown:  return -point.y
+        case .pinchIn:    return 0         // handled separately via finger distance
+        }
+    }
+
+    private func computeReverseCancelThreshold() -> CGFloat {
+        let sensitivity = settingsStore.reverseCancelSensitivity
+        // sensitivity 0.0 → threshold 0.06 (hard to cancel), 1.0 → threshold 0.005 (easy to cancel)
+        let minThreshold: CGFloat = 0.005
+        let maxThreshold: CGFloat = 0.06
+        return CGFloat(maxThreshold - sensitivity * (maxThreshold - minThreshold))
+    }
+
+    private func checkReverseCancellation(frame: TrackpadTouchFrame) {
+        guard settingsStore.reverseCancelEnabled else { return }
+        guard
+            let gestureKind = pendingReleaseGestureKind,
+            let highWater = pendingReleaseHighWaterMark,
+            frame.touches.count == 2
+        else { return }
+
+        let p0 = frame.touches[0].position
+        let p1 = frame.touches[1].position
+        let avg = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
+        let threshold = computeReverseCancelThreshold()
+
+        var shouldCancel = false
+
+        if gestureKind == .pinchIn {
+            // For pinch: track the minimum finger distance (most pinched) as high water mark.
+            let currentDist = hypot(p1.x - p0.x, p1.y - p0.y)
+            let pinchHighWater = pendingReleasePinchHighWaterMark ?? currentDist
+            if currentDist < pinchHighWater {
+                pendingReleasePinchHighWaterMark = currentDist
+            }
+            let retreat = currentDist - (pendingReleasePinchHighWaterMark ?? currentDist)
+            shouldCancel = retreat > threshold
+        } else {
+            // For swipe gestures: track the furthest progress along gesture direction.
+            let current = gestureDirectionComponent(for: gestureKind, point: avg)
+            if current > highWater {
+                pendingReleaseHighWaterMark = current
+            }
+            let retreat = (pendingReleaseHighWaterMark ?? current) - current
+            shouldCancel = retreat > threshold
+        }
+
+        if shouldCancel {
+            DebugLog.info(DebugLog.dock, "Reverse movement detected for \(gestureKind.rawValue), cancelling pending action")
+            cancelPendingReleaseAction()
+        }
+    }
+
+    private func makeConfiguredRecognizer() -> DockGestureRecognizer {
+        var recognizer = DockGestureRecognizer()
+        // sensitivity 0.0 → threshold 0.16 (hard), 1.0 → threshold 0.04 (easy)
+        let swipeSens = settingsStore.swipeSensitivity
+        recognizer.translationThreshold = CGFloat(0.16 - swipeSens * (0.16 - 0.04))
+        // sensitivity 0.0 → threshold 0.14 (hard), 1.0 → threshold 0.03 (easy)
+        let pinchSens = settingsStore.pinchSensitivity
+        recognizer.pinchThreshold = CGFloat(0.14 - pinchSens * (0.14 - 0.03))
+        return recognizer
     }
 
 #if DEBUG

@@ -59,6 +59,51 @@ final class SettingsStore {
         }
     }
 
+    var executeGestureOnRelease: Bool {
+        didSet {
+            guard oldValue != executeGestureOnRelease else { return }
+            userDefaults.set(executeGestureOnRelease, forKey: Keys.executeGestureOnRelease)
+            DebugLog.info(DebugLog.settings, "Execute gesture on release set to \(executeGestureOnRelease)")
+            notifyDidChange()
+        }
+    }
+
+    var reverseCancelEnabled: Bool {
+        didSet {
+            guard oldValue != reverseCancelEnabled else { return }
+            userDefaults.set(reverseCancelEnabled, forKey: Keys.reverseCancelEnabled)
+            DebugLog.info(DebugLog.settings, "Reverse cancel enabled set to \(reverseCancelEnabled)")
+            notifyDidChange()
+        }
+    }
+
+    var reverseCancelSensitivity: Double {
+        didSet {
+            guard oldValue != reverseCancelSensitivity else { return }
+            userDefaults.set(reverseCancelSensitivity, forKey: Keys.reverseCancelSensitivity)
+            DebugLog.info(DebugLog.settings, "Reverse cancel sensitivity set to \(reverseCancelSensitivity)")
+            notifyDidChange()
+        }
+    }
+
+    var swipeSensitivity: Double {
+        didSet {
+            guard oldValue != swipeSensitivity else { return }
+            userDefaults.set(swipeSensitivity, forKey: Keys.swipeSensitivity)
+            DebugLog.info(DebugLog.settings, "Swipe sensitivity set to \(swipeSensitivity)")
+            notifyDidChange()
+        }
+    }
+
+    var pinchSensitivity: Double {
+        didSet {
+            guard oldValue != pinchSensitivity else { return }
+            userDefaults.set(pinchSensitivity, forKey: Keys.pinchSensitivity)
+            DebugLog.info(DebugLog.settings, "Pinch sensitivity set to \(pinchSensitivity)")
+            notifyDidChange()
+        }
+    }
+
     var gestureHUDStyle: GestureHUDStyle {
         didSet {
             guard oldValue != gestureHUDStyle else { return }
@@ -151,6 +196,31 @@ final class SettingsStore {
             defaultValue: true,
             in: userDefaults
         )
+        self.executeGestureOnRelease = Self.boolValue(
+            forKey: Keys.executeGestureOnRelease,
+            defaultValue: false,
+            in: userDefaults
+        )
+        self.reverseCancelEnabled = Self.boolValue(
+            forKey: Keys.reverseCancelEnabled,
+            defaultValue: true,
+            in: userDefaults
+        )
+        self.reverseCancelSensitivity = Self.doubleValue(
+            forKey: Keys.reverseCancelSensitivity,
+            defaultValue: 0.5,
+            in: userDefaults
+        )
+        self.swipeSensitivity = Self.doubleValue(
+            forKey: Keys.swipeSensitivity,
+            defaultValue: 0.5,
+            in: userDefaults
+        )
+        self.pinchSensitivity = Self.doubleValue(
+            forKey: Keys.pinchSensitivity,
+            defaultValue: 0.5,
+            in: userDefaults
+        )
         self.gestureHUDStyle = GestureHUDStyle(
             storageValue: userDefaults.string(forKey: Keys.gestureHUDStyle)
         )
@@ -181,6 +251,11 @@ final class SettingsStore {
             Keys.dockGesturesEnabled,
             Keys.titleBarGesturesEnabled,
             Keys.titleBarOverlayProtectionEnabled,
+            Keys.executeGestureOnRelease,
+            Keys.reverseCancelEnabled,
+            Keys.reverseCancelSensitivity,
+            Keys.swipeSensitivity,
+            Keys.pinchSensitivity,
             Keys.gestureHUDStyle,
             Keys.statusItemIcon,
             Keys.hotKeyBindings,
@@ -402,6 +477,26 @@ final class SettingsStore {
         return userDefaults.bool(forKey: key)
     }
 
+    private static func doubleValue(
+        forKey key: String,
+        defaultValue: Double,
+        in userDefaults: UserDefaults
+    ) -> Double {
+        guard userDefaults.object(forKey: key) != nil else {
+            return defaultValue
+        }
+
+        return userDefaults.double(forKey: key)
+    }
+
+    func resetAdvancedSettingsToDefaults() {
+        reverseCancelEnabled = true
+        reverseCancelSensitivity = 0.5
+        swipeSensitivity = 0.5
+        pinchSensitivity = 0.5
+        titleBarOverlayProtectionEnabled = true
+    }
+
     private func persistHotKeyBindings() {
         do {
             let data = try JSONEncoder().encode(hotKeyBindings)
@@ -465,6 +560,11 @@ final class SettingsStore {
         static let dockGesturesEnabled = "settings.dockGesturesEnabled"
         static let titleBarGesturesEnabled = "settings.titleBarGesturesEnabled"
         static let titleBarOverlayProtectionEnabled = "settings.titleBarOverlayProtectionEnabled"
+        static let executeGestureOnRelease = "settings.executeGestureOnRelease"
+        static let reverseCancelEnabled = "settings.reverseCancelEnabled"
+        static let reverseCancelSensitivity = "settings.reverseCancelSensitivity"
+        static let swipeSensitivity = "settings.swipeSensitivity"
+        static let pinchSensitivity = "settings.pinchSensitivity"
         static let gestureHUDStyle = "settings.gestureHUDStyle"
         static let statusItemIcon = "settings.statusItemIcon"
         static let hasSeenWelcomeGuide = "settings.hasSeenWelcomeGuide"
