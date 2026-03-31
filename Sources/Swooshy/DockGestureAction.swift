@@ -61,6 +61,7 @@ enum DockGestureAction: String, CaseIterable, Codable, Hashable, Identifiable, S
     case cycleWindowsForward
     case cycleWindowsBackward
     case closeWindow
+    case closeTab
     case quitApplication
     case toggleFullScreenWindow
 
@@ -98,6 +99,12 @@ enum DockGestureAction: String, CaseIterable, Codable, Hashable, Identifiable, S
         case .closeWindow:
             return L10n.string(
                 "action.close_window",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .closeTab:
+            return L10n.string(
+                "action.close_tab",
                 localeIdentifier: localeIdentifier,
                 preferredLanguages: preferredLanguages
             )

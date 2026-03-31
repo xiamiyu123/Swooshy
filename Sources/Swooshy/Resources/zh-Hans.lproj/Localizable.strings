@@ -13,6 +13,7 @@
 "action.minimize" = "最小化到 Dock";
 "action.restore_window" = "恢复最小化窗口";
 "action.close_window" = "关闭窗口";
+"action.close_tab" = "关闭标签页";
 "action.quit_application" = "退出应用";
 "action.toggle_full_screen" = "最大化全屏";
 "action.exit_full_screen" = "退出全屏";
@@ -157,6 +158,8 @@
 "settings.advanced.done" = "完成";
 
 "settings.experimental.section" = "实验性功能";
+"settings.experimental.browser_tab_close.enabled" = "启用关闭浏览器标签页手势";
+"settings.experimental.browser_tab_close.footer" = "允许将手势映射为「关闭标签页」。Swooshy 会在对应位置模拟鼠标中键点击。";
 "settings.experimental.smart_browser_tab_close.enabled" = "智能关闭浏览器标签页";
 "settings.experimental.smart_browser_tab_close.footer" = "在对浏览器执行「关闭 窗口」或「退出应用」手势时，如果指针正好悬停在某个标签页上，Swooshy 会仅关闭该标签页，而不是关闭整个窗口或退出应用。如果指针不在任何标签页上，则回退执行正常的关闭/退出操作。理论支持 Safari、Chrome、Edge、Firefox等主流浏览器。(其中Safari仅支持顶栏，不支持侧边栏)\n\n原理：Swooshy 会在对应位置模拟鼠标中键点击。使用该功能前请确保浏览器已开启「鼠标中键关闭标签页」功能，且没有其它鼠标按键映射冲突。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
 

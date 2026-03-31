@@ -421,6 +421,7 @@ enum HotKeyBindings {
         HotKeyBinding(action: .center, key: .c, modifiers: .commandOptionControl),
         HotKeyBinding(action: .minimize, key: .m, modifiers: .commandOptionControl),
         HotKeyBinding(action: .closeWindow, key: .w, modifiers: .commandOptionControl),
+        HotKeyBinding(action: .closeTab, key: .w, modifiers: .commandShiftOptionControl),
         HotKeyBinding(action: .quitApplication, key: .q, modifiers: .commandOptionControl),
         HotKeyBinding(action: .cycleSameAppWindowsForward, key: .grave, modifiers: .commandOptionControl),
         HotKeyBinding(action: .cycleSameAppWindowsBackward, key: .grave, modifiers: .commandShiftOptionControl),

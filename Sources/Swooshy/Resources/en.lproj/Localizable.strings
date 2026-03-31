@@ -13,6 +13,7 @@
 "action.minimize" = "Minimize to Dock";
 "action.restore_window" = "Restore Minimized Window";
 "action.close_window" = "Close Window";
+"action.close_tab" = "Close Tab";
 "action.quit_application" = "Quit Application";
 "action.toggle_full_screen" = "Maximize";
 "action.exit_full_screen" = "Exit Full Screen";
@@ -157,6 +158,8 @@
 "settings.advanced.done" = "Done";
 
 "settings.experimental.section" = "Experimental";
+"settings.experimental.browser_tab_close.enabled" = "Enable browser tab close gesture";
+"settings.experimental.browser_tab_close.footer" = "Allows you to map gestures to 'Close Tab'. This uses synthetic middle-clicks.";
 "settings.experimental.smart_browser_tab_close.enabled" = "Smart browser tab close";
 "settings.experimental.smart_browser_tab_close.footer" = "When performing a 'Close Window' or 'Quit Application' gesture on a browser, if the pointer is hovering over a specific tab, Swooshy will close only that tab instead. If the pointer is not over any tab, the gesture falls back to the normal close/quit behavior. Supports Safari, Chrome, Edge, Firefox, Arc, Brave, Vivaldi, Opera, and more.\n\nPrinciple: Swooshy simulates a middle-click (button 3) at the pointer location. Ensure your browser has 'middle-click to close tabs' enabled and no third-party button remapping conflicts.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
 

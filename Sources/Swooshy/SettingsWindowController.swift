@@ -331,8 +331,6 @@ private struct AdvancedSettingsSheet: View {
                         Text(settingsStore.localized("settings.advanced.title_bar_overlay_protection.footer"))
                     }
 
-                    Divider()
-
                     Toggle(
                         settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.enabled"),
                         isOn: $settingsStore.smartPinchExitFullScreenEnabled
@@ -348,9 +346,19 @@ private struct AdvancedSettingsSheet: View {
 
                 Section {
                     Toggle(
+                        settingsStore.localized("settings.experimental.browser_tab_close.enabled"),
+                        isOn: $settingsStore.experimentalBrowserTabCloseEnabled
+                    )
+
+                    SettingsHintGroup {
+                        Text(settingsStore.localized("settings.experimental.browser_tab_close.footer"))
+                    }
+
+                    Toggle(
                         settingsStore.localized("settings.experimental.smart_browser_tab_close.enabled"),
                         isOn: $settingsStore.smartBrowserTabCloseEnabled
                     )
+                    .disabled(settingsStore.experimentalBrowserTabCloseEnabled == false)
 
                     SettingsHintGroup {
                         Text(settingsStore.localized("settings.experimental.smart_browser_tab_close.footer"))
@@ -591,7 +599,9 @@ private struct DockGestureActionRow: View {
                 )
             ) {
                 ForEach(DockGestureAction.allCases) { action in
-                    Text(action.title(preferredLanguages: settingsStore.preferredLanguages)).tag(action)
+                    Text(action.title(preferredLanguages: settingsStore.preferredLanguages))
+                        .tag(action)
+                        .disabled(action == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false)
                 }
             }
             .pickerStyle(.menu)
@@ -629,7 +639,9 @@ private struct TitleBarGestureActionRow: View {
                 )
             ) {
                 ForEach(WindowAction.allCases, id: \.self) { action in
-                    Text(action.title(preferredLanguages: settingsStore.preferredLanguages)).tag(action)
+                    Text(action.title(preferredLanguages: settingsStore.preferredLanguages))
+                        .tag(action)
+                        .disabled(action == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false)
                 }
             }
             .pickerStyle(.menu)

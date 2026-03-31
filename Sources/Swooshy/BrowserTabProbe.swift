@@ -70,6 +70,12 @@ enum BrowserTabProbe {
         return true
     }
 
+    /// Sends a synthetic middle-click at the current mouse location.
+    @discardableResult
+    static func simulateMiddleClickAtMouseLocation() -> Bool {
+        simulateMiddleClick(at: NSEvent.mouseLocation)
+    }
+
     // MARK: - Browser Identification
 
     private static let knownBrowserBundleIdentifiers: Set<String> = [

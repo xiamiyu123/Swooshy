@@ -17,6 +17,7 @@ struct WindowLayoutEngine {
             return currentVisibleFrame.integral
         case .minimize,
              .closeWindow,
+             .closeTab,
              .quitApplication,
              .cycleSameAppWindowsForward,
              .cycleSameAppWindowsBackward,

@@ -84,6 +84,21 @@ final class SettingsStore {
         }
     }
 
+    var experimentalBrowserTabCloseEnabled: Bool {
+        didSet {
+            guard oldValue != experimentalBrowserTabCloseEnabled else { return }
+            userDefaults.set(experimentalBrowserTabCloseEnabled, forKey: Keys.experimentalBrowserTabCloseEnabled)
+            if experimentalBrowserTabCloseEnabled == false {
+                smartBrowserTabCloseEnabled = false
+            }
+            DebugLog.info(
+                DebugLog.settings,
+                "Experimental browser tab close enabled set to \(experimentalBrowserTabCloseEnabled)"
+            )
+            notifyDidChange()
+        }
+    }
+
     var executeGestureOnRelease: Bool {
         didSet {
             guard oldValue != executeGestureOnRelease else { return }
@@ -223,6 +238,11 @@ final class SettingsStore {
         )
         self.smartBrowserTabCloseEnabled = Self.boolValue(
             forKey: Keys.smartBrowserTabCloseEnabled,
+            defaultValue: false,
+            in: userDefaults
+        )
+        self.experimentalBrowserTabCloseEnabled = Self.boolValue(
+            forKey: Keys.experimentalBrowserTabCloseEnabled,
             defaultValue: false,
             in: userDefaults
         )
@@ -536,6 +556,7 @@ final class SettingsStore {
         titleBarOverlayProtectionEnabled = true
         smartPinchExitFullScreenEnabled = true
         smartBrowserTabCloseEnabled = false
+        experimentalBrowserTabCloseEnabled = false
     }
 
     private func persistHotKeyBindings() {
@@ -603,6 +624,7 @@ final class SettingsStore {
         static let titleBarOverlayProtectionEnabled = "settings.titleBarOverlayProtectionEnabled"
         static let smartPinchExitFullScreenEnabled = "settings.smartPinchExitFullScreenEnabled"
         static let smartBrowserTabCloseEnabled = "settings.smartBrowserTabCloseEnabled"
+        static let experimentalBrowserTabCloseEnabled = "settings.experimentalBrowserTabCloseEnabled"
         static let executeGestureOnRelease = "settings.executeGestureOnRelease"
         static let reverseCancelEnabled = "settings.reverseCancelEnabled"
         static let reverseCancelSensitivity = "settings.reverseCancelSensitivity"

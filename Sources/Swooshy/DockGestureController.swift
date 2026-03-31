@@ -309,6 +309,10 @@ final class DockGestureController {
                 _ = try windowManager.cycleVisibleWindows(of: application, direction: .backward)
             case .closeWindow:
                 _ = try windowManager.closeVisibleWindow(of: application)
+            case .closeTab:
+                guard BrowserTabProbe.simulateMiddleClickAtMouseLocation() else {
+                    throw WindowManagerError.unableToPerformAction
+                }
             case .quitApplication:
                 _ = try windowManager.quitApplication(matching: application)
             case .toggleFullScreenWindow:

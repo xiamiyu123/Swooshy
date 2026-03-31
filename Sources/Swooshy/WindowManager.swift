@@ -69,6 +69,11 @@ struct WindowManager: WindowManaging {
                 throw WindowManagerError.unableToPerformAction
             }
             return
+        case .closeTab:
+            guard BrowserTabProbe.simulateMiddleClickAtMouseLocation() else {
+                throw WindowManagerError.unableToPerformAction
+            }
+            return
         case .cycleSameAppWindowsForward:
             let currentWindow = try focusedWindowElement(in: appElement)
             try focusAdjacentVisibleWindow(

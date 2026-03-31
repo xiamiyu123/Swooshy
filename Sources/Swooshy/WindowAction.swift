@@ -7,6 +7,7 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
     case center = 3
     case minimize = 4
     case closeWindow = 5
+    case closeTab = 10
     case quitApplication = 6
     case cycleSameAppWindowsForward = 7
     case cycleSameAppWindowsBackward = 8
@@ -57,6 +58,12 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
                 localeIdentifier: localeIdentifier,
                 preferredLanguages: preferredLanguages
             )
+        case .closeTab:
+            return L10n.string(
+                "action.close_tab",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
         case .quitApplication:
             return L10n.string(
                 "action.quit_application",
@@ -98,6 +105,8 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
             return "5"
         case .closeWindow:
             return "6"
+        case .closeTab:
+            return ""
         case .quitApplication:
             return "7"
         case .cycleSameAppWindowsForward:
