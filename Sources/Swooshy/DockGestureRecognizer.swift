@@ -160,6 +160,17 @@ struct DockGestureRecognizer {
         return .swipeRight(application: session.application)
     }
 
+    func predictedEvent(
+        frame: TrackpadTouchFrame,
+        hoveredApplication: DockApplicationTarget?
+    ) -> DockGestureEvent? {
+        var recognizer = self
+        return recognizer.process(
+            frame: frame,
+            hoveredApplication: hoveredApplication
+        )
+    }
+
     mutating func reset() {
         session = nil
     }

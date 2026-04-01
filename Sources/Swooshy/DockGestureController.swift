@@ -63,6 +63,7 @@ final class DockGestureController {
     }
 
     private struct MonitoringState: Equatable {
+        let cornerDragEnabled: Bool
         let dockGesturesEnabled: Bool
         let titleBarGesturesEnabled: Bool
     }
@@ -194,6 +195,7 @@ final class DockGestureController {
         }
 
         let state = MonitoringState(
+            cornerDragEnabled: settingsStore.cornerDragSnapEnabled,
             dockGesturesEnabled: settingsStore.dockGesturesEnabled,
             titleBarGesturesEnabled: settingsStore.titleBarGesturesEnabled
         )
@@ -260,6 +262,7 @@ final class DockGestureController {
 
         let dockGesturesEnabled = settingsStore.dockGesturesEnabled
         let titleBarGesturesEnabled = settingsStore.titleBarGesturesEnabled
+        let cornerDragEnabled = settingsStore.cornerDragSnapEnabled
         guard dockGesturesEnabled || titleBarGesturesEnabled else { return }
 
         let touchCount = frame.touches.count
@@ -305,16 +308,17 @@ final class DockGestureController {
         }
 
         // Check for reverse swipe cancellation while fingers are still down.
-        if pendingReleaseAction != nil {
+        if pendingReleaseGestureKind != nil {
             checkReverseCancellation(frame: frame)
             if pendingReleaseAction == nil {
                 return
             }
+            return
         }
 
         let cornerDragSessionActive = activeCornerDragApplication != nil ||
-            dockCornerDragRecognizer.isActive ||
-            titleBarCornerDragRecognizer.isActive
+            (cornerDragEnabled && dockCornerDragRecognizer.isActive) ||
+            (cornerDragEnabled && titleBarCornerDragRecognizer.isActive)
         let needsDockLookup = dockGesturesEnabled &&
             dockRecognizer.requiresHoveredApplication &&
             cornerDragSessionActive == false
@@ -357,13 +361,14 @@ final class DockGestureController {
         }
 #endif
 
-        if dockGesturesEnabled {
+        if cornerDragEnabled, dockGesturesEnabled {
             let dockCornerDragEvent = dockCornerDragRecognizer.process(
                 frame: frame,
                 hoveredApplication: hoveredDockApplication
             )
             if handleCornerDragEvent(
                 dockCornerDragEvent,
+                frame: frame,
                 hoveredApplication: hoveredDockApplication,
                 anchorPoint: mouseLocation ?? NSEvent.mouseLocation,
                 source: .dock
@@ -372,7 +377,7 @@ final class DockGestureController {
             }
         }
 
-        if titleBarGesturesEnabled {
+        if cornerDragEnabled, titleBarGesturesEnabled {
             let cornerDragEvent = titleBarCornerDragRecognizer.process(
                 frame: frame,
                 hoveredApplication: hoveredTitleBarTarget?.source == .titleBar
@@ -381,6 +386,7 @@ final class DockGestureController {
             )
             if handleCornerDragEvent(
                 cornerDragEvent,
+                frame: frame,
                 hoveredApplication: hoveredTitleBarTarget?.source == .titleBar
                     ? hoveredTitleBarTarget?.application
                     : nil,
@@ -416,12 +422,25 @@ final class DockGestureController {
 
     private func handleCornerDragEvent(
         _ event: TitleBarCornerDragEvent?,
+        frame: TrackpadTouchFrame,
         hoveredApplication: DockApplicationTarget?,
         anchorPoint: CGPoint,
         source: CornerDragSource
     ) -> Bool {
         switch event {
         case .began(let application, let startAveragePoint, let currentAveragePoint):
+            guard standardGestureWouldTrigger(
+                beforeCornerDragFrom: source,
+                frame: frame,
+                hoveredApplication: hoveredApplication ?? application
+            ) == false else {
+                resetCornerDragRecognizer(for: source)
+                DebugLog.debug(
+                    DebugLog.dock,
+                    "Suppressed \(source.logLabel) corner drag entry because a standard gesture matched first"
+                )
+                return false
+            }
             if source == .dock {
                 dockRecognizer.reset()
             } else {
@@ -816,6 +835,34 @@ final class DockGestureController {
         dockRecognizer.reset()
         titleBarRecognizer.reset()
         titleBarSessionHoverSource = nil
+    }
+
+    private func resetCornerDragRecognizer(for source: CornerDragSource) {
+        switch source {
+        case .dock:
+            dockCornerDragRecognizer.reset()
+        case .titleBar:
+            titleBarCornerDragRecognizer.reset()
+        }
+    }
+
+    private func standardGestureWouldTrigger(
+        beforeCornerDragFrom source: CornerDragSource,
+        frame: TrackpadTouchFrame,
+        hoveredApplication: DockApplicationTarget?
+    ) -> Bool {
+        switch source {
+        case .dock:
+            return dockRecognizer.predictedEvent(
+                frame: frame,
+                hoveredApplication: hoveredApplication
+            ) != nil
+        case .titleBar:
+            return titleBarRecognizer.predictedEvent(
+                frame: frame,
+                hoveredApplication: hoveredApplication
+            ) != nil
+        }
     }
 
     private func resetGestureStateForNewTouchSequence() {

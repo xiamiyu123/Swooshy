@@ -283,6 +283,71 @@ struct DockSwipeGestureRecognizerTests {
     }
 
     @Test
+    func predictedEventMatchesSwipeWithoutMutatingRecognizerState() {
+        var recognizer = DockGestureRecognizer()
+        let finder = target(dockItemName: "Finder")
+        let startFrame = TrackpadTouchFrame(
+            touches: [
+                TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.3, y: 0.3)),
+                TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.5, y: 0.3)),
+            ],
+            timestamp: 0
+        )
+        let swipeFrame = TrackpadTouchFrame(
+            touches: [
+                TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.45, y: 0.31)),
+                TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.65, y: 0.3)),
+            ],
+            timestamp: 0.1
+        )
+
+        _ = recognizer.process(frame: startFrame, hoveredApplication: finder)
+
+        #expect(
+            recognizer.predictedEvent(
+                frame: swipeFrame,
+                hoveredApplication: nil
+            ) == .swipeRight(application: finder)
+        )
+        #expect(
+            recognizer.process(
+                frame: swipeFrame,
+                hoveredApplication: nil
+            ) == .swipeRight(application: finder)
+        )
+    }
+
+    @Test
+    func predictedEventReturnsNilWhenGestureWouldNotTrigger() {
+        var recognizer = DockGestureRecognizer()
+        let finder = target(dockItemName: "Finder")
+
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.3, y: 0.3)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.5, y: 0.3)),
+                ],
+                timestamp: 0
+            ),
+            hoveredApplication: finder
+        )
+
+        #expect(
+            recognizer.predictedEvent(
+                frame: TrackpadTouchFrame(
+                    touches: [
+                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.32, y: 0.31)),
+                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.52, y: 0.31)),
+                    ],
+                    timestamp: 0.1
+                ),
+                hoveredApplication: nil
+            ) == nil
+        )
+    }
+
+    @Test
     func titleBarCornerDragRecognizerActivatesAfterLongPressBeforeMovement() {
         var recognizer = TitleBarCornerDragRecognizer()
         let finder = target(dockItemName: "Finder")
