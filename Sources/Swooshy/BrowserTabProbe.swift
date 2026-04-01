@@ -2,26 +2,35 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 
-/// Detects whether the pointer is hovering over a browser tab and can simulate
-/// a middle-click to close that specific tab without switching to it first.
+/// Detects whether the pointer is hovering over a supported app tab and can
+/// simulate a middle-click to close that specific tab without switching to it first.
 ///
-/// Supported browsers: Safari, Chrome, Edge, Firefox, Arc, Brave, Vivaldi, Opera, Orion.
+/// Supported apps include major browsers plus VS Code-based editors such as
+/// Visual Studio Code, Cursor, Windsurf, Trae, and Antigravity.
 /// When the pointer is not over a tab, the caller should fall back to the
 /// normal close-window or quit-application action.
 @MainActor
 enum BrowserTabProbe {
+    private struct CachedHostSupport {
+        let isSupported: Bool
+        let description: String
+    }
+
     // MARK: - Public API
 
-    /// Returns `true` if the element at `appKitPoint` belongs to a known browser
+    /// Returns `true` if the element at `appKitPoint` belongs to a supported tab host
     /// and appears to be a tab UI element.
     static func isBrowserTab(
         at appKitPoint: CGPoint,
         processIdentifier: pid_t
     ) -> Bool {
-        guard let bundleIdentifier = browserBundleIdentifierIfKnown(processIdentifier: processIdentifier) else {
+        guard
+            let hostSupport = hostSupport(processIdentifier: processIdentifier),
+            hostSupport.isSupported
+        else {
             DebugLog.debug(
                 DebugLog.dock,
-                "BrowserTabProbe skipped non-browser pid=\(processIdentifier) at \(NSStringFromPoint(appKitPoint))"
+                "BrowserTabProbe skipped unsupported tab host pid=\(processIdentifier) at \(NSStringFromPoint(appKitPoint))"
             )
             return false
         }
@@ -29,7 +38,7 @@ enum BrowserTabProbe {
         let isTab = axElementIsTab(at: appKitPoint)
         DebugLog.debug(
             DebugLog.dock,
-            "BrowserTabProbe result pid=\(processIdentifier) bundle=\(bundleIdentifier) point=\(NSStringFromPoint(appKitPoint)) => \(isTab ? "tab" : "not-tab")"
+            "BrowserTabProbe result pid=\(processIdentifier) host=\(hostSupport.description) point=\(NSStringFromPoint(appKitPoint)) => \(isTab ? "tab" : "not-tab")"
         )
         return isTab
     }
@@ -76,7 +85,7 @@ enum BrowserTabProbe {
         simulateMiddleClick(at: NSEvent.mouseLocation)
     }
 
-    // MARK: - Browser Identification
+    // MARK: - Supported App Identification
 
     private static let knownBrowserBundleIdentifiers: Set<String> = [
         "com.apple.Safari",
@@ -99,23 +108,74 @@ enum BrowserTabProbe {
         "com.nickvision.nickelchrome",       // Nickel
     ]
 
-    /// Cache resolved bundle identifiers per PID to avoid repeated lookups.
-    private static var bundleIdentifierCache: [pid_t: String] = [:]
+    private static let knownEditorBundleIdentifiers: Set<String> = [
+        "com.microsoft.VSCode",
+        "com.microsoft.VSCodeInsiders",
+        "com.vscodium",
+        "org.vscodium",
+        "com.google.antigravity",
+    ]
 
-    private static func browserBundleIdentifierIfKnown(processIdentifier: pid_t) -> String? {
-        if let cached = bundleIdentifierCache[processIdentifier] {
-            return knownBrowserBundleIdentifiers.contains(cached) ? cached : nil
+    private static let knownEditorNames: Set<String> = [
+        "visual studio code",
+        "visual studio code - insiders",
+        "vscodium",
+        "code - oss",
+        "cursor",
+        "windsurf",
+        "trae",
+        "antigravity",
+        "void",
+        "pearai",
+        "kiro",
+    ]
+
+    /// Cache resolved host support per PID to avoid repeated lookups.
+    private static var hostSupportCache: [pid_t: CachedHostSupport] = [:]
+
+    static func supportsTabCloseHost(bundleIdentifier: String?, localizedName: String?) -> Bool {
+        if let bundleIdentifier, knownBrowserBundleIdentifiers.contains(bundleIdentifier) {
+            return true
+        }
+
+        if let bundleIdentifier, knownEditorBundleIdentifiers.contains(bundleIdentifier) {
+            return true
         }
 
         guard
-            let app = NSRunningApplication(processIdentifier: processIdentifier),
-            let bundleIdentifier = app.bundleIdentifier
+            let localizedName = localizedName?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+            localizedName.isEmpty == false
         else {
+            return false
+        }
+
+        return knownEditorNames.contains(localizedName)
+    }
+
+    private static func hostSupport(processIdentifier: pid_t) -> CachedHostSupport? {
+        if let cached = hostSupportCache[processIdentifier] {
+            return cached
+        }
+
+        guard let app = NSRunningApplication(processIdentifier: processIdentifier) else {
             return nil
         }
 
-        bundleIdentifierCache[processIdentifier] = bundleIdentifier
-        return knownBrowserBundleIdentifiers.contains(bundleIdentifier) ? bundleIdentifier : nil
+        let isSupported = supportsTabCloseHost(
+            bundleIdentifier: app.bundleIdentifier,
+            localizedName: app.localizedName
+        )
+        let description = [app.localizedName, app.bundleIdentifier]
+            .compactMap { $0 }
+            .joined(separator: " / ")
+        let support = CachedHostSupport(
+            isSupported: isSupported,
+            description: description.isEmpty ? "<unknown>" : description
+        )
+        hostSupportCache[processIdentifier] = support
+        return support
     }
 
     // MARK: - AX Tab Detection
@@ -360,6 +420,6 @@ enum BrowserTabProbe {
     // MARK: - Cache Maintenance
 
     static func clearCache() {
-        bundleIdentifierCache.removeAll()
+        hostSupportCache.removeAll()
     }
 }

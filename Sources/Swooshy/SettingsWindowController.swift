@@ -303,10 +303,6 @@ private struct AdvancedSettingsSheet: View {
                         step: 1
                     )
                     .disabled(settingsStore.titleBarGesturesEnabled == false)
-
-                    SettingsHintGroup {
-                        Text(settingsStore.localized("settings.advanced.title_bar_trigger_height.footer"))
-                    }
                 } header: {
                     Text(settingsStore.localized("settings.advanced.section.sensitivity"))
                 }

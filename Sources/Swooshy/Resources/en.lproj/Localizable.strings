@@ -148,7 +148,6 @@
 "settings.advanced.swipe_sensitivity.label" = "Swipe sensitivity";
 "settings.advanced.pinch_sensitivity.label" = "Pinch sensitivity";
 "settings.advanced.title_bar_trigger_height.label" = "Title-bar trigger height";
-"settings.advanced.title_bar_trigger_height.footer" = "Use a fixed height for title-bar detection instead of scaling with the window size. The default matches a standard title bar.";
 "settings.advanced.section.cancel" = "Gesture Cancellation";
 "settings.advanced.reverse_cancel.enabled" = "Cancel gesture on reverse movement";
 "settings.advanced.reverse_cancel.footer" = "When enabled and \"Execute on release\" is active, moving your fingers back in the opposite direction will cancel the pending gesture.";
@@ -160,16 +159,16 @@
 "settings.advanced.done" = "Done";
 
 "settings.experimental.section" = "Experimental";
-"settings.experimental.browser_tab_close.enabled" = "Enable browser tab close gesture";
-"settings.experimental.browser_tab_close.footer" = "Allows you to map gestures to 'Close Tab'. This uses synthetic middle-clicks.";
-"settings.experimental.smart_browser_tab_close.enabled" = "Smart browser tab close";
-"settings.experimental.smart_browser_tab_close.footer" = "When performing a 'Close Window' or 'Quit Application' gesture on a browser, if the pointer is hovering over a specific tab, Swooshy will close only that tab instead. If the pointer is not over any tab, the gesture falls back to the normal close/quit behavior. Supports Safari, Chrome, Edge, Firefox, Arc, Brave, Vivaldi, Opera, and more.\n\nPrinciple: Swooshy simulates a middle-click (button 3) at the pointer location. Ensure your browser has 'middle-click to close tabs' enabled and no third-party button remapping conflicts.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
+"settings.experimental.browser_tab_close.enabled" = "Enable tab close gesture";
+"settings.experimental.browser_tab_close.footer" = "Allows you to map gestures to 'Close Tab'.\n\nPrinciple: Swooshy simulates a middle-click at the pointer location. Before using this feature, make sure the target app supports middle-click to close tabs and that no third-party button remapping conflicts are present.";
+"settings.experimental.smart_browser_tab_close.enabled" = "Smart tab close";
+"settings.experimental.smart_browser_tab_close.footer" = "When performing a 'Close Window' or 'Quit Application' gesture on a supported browser, or on a supported VS Code-based editor, if the pointer is hovering over a specific tab, Swooshy will close only that tab instead of closing the whole window or quitting the app. If the pointer is not over any tab, the gesture falls back to the normal close or quit behavior. Supported apps include browsers such as Safari, Chrome, Edge, and Firefox, as well as VS Code-based code editors such as Visual Studio Code, Cursor, and Antigravity.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
 
 "guide.page.experimental.title" = "Experimental Features";
 "guide.page.experimental.message" = "Swooshy includes a few experimental features you can opt into. These are disabled by default but can be turned on in Advanced Settings.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
-"guide.page.experimental.bullet1" = "Smart browser tab close: when gesturing to close or quit on a browser, Swooshy detects if the pointer is over a specific tab and closes only that tab via a simulated middle-click.";
+"guide.page.experimental.bullet1" = "Smart tab close: when gesturing to close or quit on a supported browser or on a supported VS Code-based editor, Swooshy detects if the pointer is over a specific tab and closes only that tab via a simulated middle-click.";
 "guide.page.experimental.bullet2" = "If the pointer is not over any tab, the gesture falls back to the normal close-window or quit behavior.";
-"guide.page.experimental.bullet3" = "Supports all major browsers including Safari, Chrome, Edge, Firefox, Arc, Brave, and more.";
+"guide.page.experimental.bullet3" = "Supports major browsers, and also supports VS Code-based editors such as Visual Studio Code, Cursor, Antigravity, and more.";
 
 "error.permission_missing" = "Accessibility permission is missing. Enable Swooshy in System Settings and try again.";
 "error.no_frontmost_app" = "Unable to find the frontmost application.";

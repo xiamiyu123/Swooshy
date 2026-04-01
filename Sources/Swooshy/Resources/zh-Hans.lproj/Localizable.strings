@@ -148,7 +148,6 @@
 "settings.advanced.swipe_sensitivity.label" = "滑动灵敏度";
 "settings.advanced.pinch_sensitivity.label" = "捏合灵敏度";
 "settings.advanced.title_bar_trigger_height.label" = "标题栏触发高度";
-"settings.advanced.title_bar_trigger_height.footer" = "使用固定高度来识别标题栏区域，不再随着窗口缩放而变化。默认值为标准标题栏高度。";
 "settings.advanced.section.cancel" = "手势取消";
 "settings.advanced.reverse_cancel.enabled" = "反向移动时取消手势";
 "settings.advanced.reverse_cancel.footer" = "开启后，在「松手后执行」模式下，反方向移动手指可以取消待执行的手势。";
@@ -160,16 +159,16 @@
 "settings.advanced.done" = "完成";
 
 "settings.experimental.section" = "实验性功能";
-"settings.experimental.browser_tab_close.enabled" = "启用关闭浏览器标签页手势";
-"settings.experimental.browser_tab_close.footer" = "允许将手势映射为「关闭标签页」。Swooshy 会在对应位置模拟鼠标中键点击。";
-"settings.experimental.smart_browser_tab_close.enabled" = "智能关闭浏览器标签页";
-"settings.experimental.smart_browser_tab_close.footer" = "在对浏览器执行「关闭 窗口」或「退出应用」手势时，如果指针正好悬停在某个标签页上，Swooshy 会仅关闭该标签页，而不是关闭整个窗口或退出应用。如果指针不在任何标签页上，则回退执行正常的关闭/退出操作。理论支持 Safari、Chrome、Edge、Firefox等主流浏览器。(其中Safari仅支持顶栏，不支持侧边栏)\n\n原理：Swooshy 会在对应位置模拟鼠标中键点击。使用该功能前请确保浏览器已开启「鼠标中键关闭标签页」功能，且没有其它鼠标按键映射冲突。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
+"settings.experimental.browser_tab_close.enabled" = "启用关闭标签页手势";
+"settings.experimental.browser_tab_close.footer" = "允许将手势映射为「关闭标签页」。\n\n原理：Swooshy 会在对应位置模拟鼠标中键点击。使用该功能前请确保目标应用支持「鼠标中键关闭标签页」，且没有其它鼠标按键映射冲突。";
+"settings.experimental.smart_browser_tab_close.enabled" = "智能关闭标签页";
+"settings.experimental.smart_browser_tab_close.footer" = "在对受支持的浏览器，或受支持的 VSCode 系编辑器执行「关闭窗口」或「退出应用」手势时，如果指针正好悬停在某个标签页上，Swooshy 会仅关闭该标签页，而不是关闭整个窗口或退出应用。如果指针不在任何标签页上，则回退执行正常的关闭或退出操作。理论支持 Safari、Chrome、Edge、Firefox等浏览器，以及 Visual Studio Code、Cursor、Antigravity等基于 VSCode 的代码编辑器。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
 
 "guide.page.experimental.title" = "实验性功能";
 "guide.page.experimental.message" = "Swooshy 提供了一些可选的实验性功能，默认关闭，可以在高级设置中手动开启。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
-"guide.page.experimental.bullet1" = "智能关闭浏览器标签页：在浏览器上做关闭或退出手势时，Swooshy 会检测指针是否正悬停在某个标签页上，如果是，则通过模拟鼠标中键点击精准关闭该标签页。";
+"guide.page.experimental.bullet1" = "智能关闭标签页：在受支持的浏览器，或受支持的 VSCode 系编辑器上做关闭或退出手势时，Swooshy 会检测指针是否正悬停在某个标签页上，如果是，则通过模拟鼠标中键点击精准关闭该标签页。";
 "guide.page.experimental.bullet2" = "如果指针不在任何标签页上，手势会回退为正常的关闭窗口或退出应用操作。";
-"guide.page.experimental.bullet3" = "理论支持 Safari、Chrome、Edge、Firefox等主流浏览器。(其中Safari仅支持顶栏，不支持侧边栏)。";
+"guide.page.experimental.bullet3" = "理论支持主流浏览器，也支持 Visual Studio Code、Cursor、反重力等 VSCode 系编辑器。(其中 Safari 仅支持顶栏，不支持侧边栏)。";
 
 "error.permission_missing" = "缺少辅助功能权限。请在系统设置中启用 Swooshy 后重试。";
 "error.no_frontmost_app" = "无法找到当前前台应用。";
