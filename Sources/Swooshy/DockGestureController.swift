@@ -29,6 +29,9 @@ final class DockGestureController {
     private var monitoringState: MonitoringState?
     private var isShuttingDown = false
     private let restoreHUDLeadDelay: UInt64 = 16_000_000
+    private let gestureStateTimeout: TimeInterval = 10
+    private var gestureStateWatchdog: Timer?
+    private var gestureStateWatchdogState: GestureStateSnapshot?
 
     private var touchSequenceTracker = TwoFingerTouchSequenceTracker()
     private var pendingReleaseAction: PendingReleaseAction?
@@ -81,6 +84,22 @@ final class DockGestureController {
                 return "title-bar"
             }
         }
+    }
+
+    private struct GestureStateSnapshot: Equatable {
+        enum PendingActionKind: Equatable {
+            case dock
+            case titleBar
+            case cornerDrag
+        }
+
+        let pendingActionKind: PendingActionKind?
+        let pendingGestureKind: DockGestureKind?
+        let dockRecognizerCaptured: Bool
+        let titleBarRecognizerCaptured: Bool
+        let dockCornerDragActive: Bool
+        let titleBarCornerDragActive: Bool
+        let activeCornerDragProcessIdentifier: pid_t?
     }
 
     private struct CornerDragPreviewCache {
@@ -148,6 +167,7 @@ final class DockGestureController {
     func shutdown() {
         guard isShuttingDown == false else { return }
         isShuttingDown = true
+        invalidateGestureStateWatchdog()
 
         if let settingsObserver {
             NotificationCenter.default.removeObserver(settingsObserver)
@@ -205,6 +225,10 @@ final class DockGestureController {
         guard state != monitoringState else { return }
 
         monitoringState = state
+        DebugLog.info(
+            DebugLog.dock,
+            "Syncing gesture monitoring; dockGesturesEnabled=\(state.dockGesturesEnabled), titleBarGesturesEnabled=\(state.titleBarGesturesEnabled), dockCornerDragEnabled=\(state.dockCornerDragEnabled), titleBarCornerDragEnabled=\(state.titleBarCornerDragEnabled)"
+        )
         touchSequenceTracker.reset()
         dockRecognizer = makeConfiguredRecognizer()
         dockCornerDragRecognizer = makeConfiguredCornerDragRecognizer()
@@ -223,13 +247,34 @@ final class DockGestureController {
         isProcessingTouchFrame = false
         cancelPendingReleaseAction()
 
-        if state.dockGesturesEnabled || state.titleBarGesturesEnabled {
+        setTrackpadMonitoringEnabled(state.dockGesturesEnabled || state.titleBarGesturesEnabled)
+
+        syncGestureStateWatchdog()
+    }
+
+    private func setTrackpadMonitoringEnabled(_ isEnabled: Bool) {
+        if isEnabled {
             DebugLog.info(DebugLog.dock, "Starting trackpad gesture monitoring")
             monitor.startIfAvailable()
         } else {
             DebugLog.info(DebugLog.dock, "Stopping trackpad gesture monitoring")
             monitor.stop()
         }
+    }
+
+    private func restartTrackpadMonitoringIfNeeded() {
+        guard let monitoringState else {
+            return
+        }
+
+        guard monitoringState.dockGesturesEnabled || monitoringState.titleBarGesturesEnabled else {
+            return
+        }
+
+        DebugLog.info(DebugLog.dock, "Restarting trackpad gesture monitoring after watchdog recovery")
+        monitor.stop()
+        monitor.startIfAvailable()
+        DebugLog.info(DebugLog.dock, "Trackpad gesture monitoring restart requested after watchdog recovery")
     }
 
     nonisolated private func enqueue(frame: TrackpadTouchFrame) {
@@ -262,6 +307,9 @@ final class DockGestureController {
 
     private func handle(frame: TrackpadTouchFrame) {
         guard isShuttingDown == false else { return }
+        defer {
+            syncGestureStateWatchdog()
+        }
 
         let dockGesturesEnabled = settingsStore.dockGesturesEnabled
         let titleBarGesturesEnabled = settingsStore.titleBarGesturesEnabled
@@ -360,7 +408,7 @@ final class DockGestureController {
             let mouseDescription = mouseLocation.map(NSStringFromPoint) ?? "<skipped>"
             DebugLog.debug(
                 DebugLog.dock,
-                "Received touch frame with \(frame.touches.count) touches at mouse \(mouseDescription); dock hover = \(hoveredDockApplication?.logDescription ?? "nil"); title-bar hover = \(hoveredTitleBarTarget?.logDescription ?? "nil"); touches = [\(touchSummary)]"
+                "Received touch frame with \(frame.touches.count) touches at mouse \(mouseDescription); dock hover = \(hoveredDockApplication?.logDescription ?? "nil"); title-bar hover = \(hoveredTitleBarTarget?.logDescription ?? "nil"); state = \(gestureStateDebugDescription()); touches = [\(touchSummary)]"
             )
         }
 #endif
@@ -810,9 +858,18 @@ final class DockGestureController {
         )
     }
 
-    private func resetCornerDragSession(dismissFeedback: Bool) {
-        dockCornerDragRecognizer.reset()
-        titleBarCornerDragRecognizer.reset()
+    private func resetCornerDragSession(
+        dismissFeedback: Bool,
+        rebuildRecognizers: Bool = false
+    ) {
+        if rebuildRecognizers {
+            DebugLog.info(DebugLog.dock, "Rebuilding corner drag recognizers for stale gesture recovery")
+            dockCornerDragRecognizer = makeConfiguredCornerDragRecognizer()
+            titleBarCornerDragRecognizer = makeConfiguredCornerDragRecognizer()
+        } else {
+            dockCornerDragRecognizer.reset()
+            titleBarCornerDragRecognizer.reset()
+        }
         activeCornerDragApplication = nil
         activeCornerDragSource = nil
         activeCornerDragAction = nil
@@ -835,9 +892,15 @@ final class DockGestureController {
             titleBarCornerDragRecognizer.isActive
     }
 
-    private func resetStandardRecognizers() {
-        dockRecognizer.reset()
-        titleBarRecognizer.reset()
+    private func resetStandardRecognizers(rebuildRecognizers: Bool = false) {
+        if rebuildRecognizers {
+            DebugLog.info(DebugLog.dock, "Rebuilding standard gesture recognizers for stale gesture recovery")
+            dockRecognizer = makeConfiguredRecognizer()
+            titleBarRecognizer = makeConfiguredRecognizer()
+        } else {
+            dockRecognizer.reset()
+            titleBarRecognizer.reset()
+        }
         titleBarSessionHoverSource = nil
     }
 
@@ -869,13 +932,101 @@ final class DockGestureController {
         }
     }
 
-    private func resetGestureStateForNewTouchSequence() {
+    private func resetGestureStateForNewTouchSequence(rebuildRecognizers: Bool = false) {
+        if rebuildRecognizers {
+            DebugLog.info(DebugLog.dock, "Resetting gesture state by rebuilding recognizers for watchdog recovery")
+        }
         pendingReleaseAction = nil
         clearTouchAnchor()
-        resetStandardRecognizers()
-        resetCornerDragSession(dismissFeedback: false)
+        resetStandardRecognizers(rebuildRecognizers: rebuildRecognizers)
+        resetCornerDragSession(
+            dismissFeedback: false,
+            rebuildRecognizers: rebuildRecognizers
+        )
         removeEscMonitor()
         gestureFeedbackPresenter.dismiss()
+        syncGestureStateWatchdog()
+    }
+
+    private func gestureStateSnapshot() -> GestureStateSnapshot? {
+        guard hasActiveGestureState else {
+            return nil
+        }
+
+        let pendingActionKind: GestureStateSnapshot.PendingActionKind?
+        switch pendingReleaseAction {
+        case .dock:
+            pendingActionKind = .dock
+        case .titleBar:
+            pendingActionKind = .titleBar
+        case .cornerDrag:
+            pendingActionKind = .cornerDrag
+        case .none:
+            pendingActionKind = nil
+        }
+
+        return GestureStateSnapshot(
+            pendingActionKind: pendingActionKind,
+            pendingGestureKind: pendingReleaseGestureKind,
+            dockRecognizerCaptured: dockRecognizer.requiresHoveredApplication == false,
+            titleBarRecognizerCaptured: titleBarRecognizer.requiresHoveredApplication == false,
+            dockCornerDragActive: dockCornerDragRecognizer.isActive,
+            titleBarCornerDragActive: titleBarCornerDragRecognizer.isActive,
+            activeCornerDragProcessIdentifier: activeCornerDragApplication?.processIdentifier
+        )
+    }
+
+    private func syncGestureStateWatchdog() {
+        let nextState = gestureStateSnapshot()
+        guard nextState != gestureStateWatchdogState else {
+            return
+        }
+
+        invalidateGestureStateWatchdog()
+        gestureStateWatchdogState = nextState
+
+        guard let nextState else {
+            DebugLog.debug(DebugLog.dock, "Disarming gesture state watchdog; no active gesture state remains")
+            return
+        }
+
+        DebugLog.debug(DebugLog.dock, "Arming gesture state watchdog for active gesture state")
+        let timer = Timer.scheduledTimer(withTimeInterval: gestureStateTimeout, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleGestureStateWatchdogFired(expectedState: nextState)
+            }
+        }
+        timer.tolerance = min(1, gestureStateTimeout * 0.1)
+        gestureStateWatchdog = timer
+    }
+
+    private func invalidateGestureStateWatchdog() {
+        gestureStateWatchdog?.invalidate()
+        gestureStateWatchdog = nil
+    }
+
+    private func handleGestureStateWatchdogFired(expectedState: GestureStateSnapshot) {
+        guard isShuttingDown == false else { return }
+        guard gestureStateWatchdogState == expectedState else { return }
+
+        #if DEBUG
+        let stateDescription = gestureStateDebugDescription()
+        #else
+        let stateDescription = "watchdog_active"
+        #endif
+        DebugLog.error(
+            DebugLog.dock,
+            "Gesture state watchdog reset stale gesture state after \(Int(gestureStateTimeout))s; state = \(stateDescription)"
+        )
+        DebugLog.info(DebugLog.dock, "Clearing pending touch frame and rebuilding recognizers after watchdog timeout")
+        pendingTouchFrame = nil
+        isProcessingTouchFrame = false
+        lastTouchCount = 0
+        touchSequenceTracker.reset()
+        dockProbe.clearCache()
+        titleBarProbe.clearCache()
+        resetGestureStateForNewTouchSequence(rebuildRecognizers: true)
+        restartTrackpadMonitoringIfNeeded()
     }
 
     private func cornerDragGlyph(for action: WindowAction?) -> GestureHUDGlyph {
@@ -1144,6 +1295,22 @@ final class DockGestureController {
     }
 
 #if DEBUG
+    private func gestureStateDebugDescription() -> String {
+        let pendingActionDescription: String
+        switch pendingReleaseAction {
+        case .dock:
+            pendingActionDescription = "dock"
+        case .titleBar:
+            pendingActionDescription = "titleBar"
+        case .cornerDrag:
+            pendingActionDescription = "cornerDrag"
+        case .none:
+            pendingActionDescription = "none"
+        }
+
+        return "pendingAction=\(pendingActionDescription), pendingGesture=\(pendingReleaseGestureKind?.rawValue ?? "nil"), dockSession=\(dockRecognizer.requiresHoveredApplication ? "idle" : "captured"), titleSession=\(titleBarRecognizer.requiresHoveredApplication ? "idle" : "captured"), dockCornerActive=\(dockCornerDragRecognizer.isActive), titleCornerActive=\(titleBarCornerDragRecognizer.isActive), activeCornerApp=\(activeCornerDragApplication?.logDescription ?? "nil")"
+    }
+
     private func shouldLogFrame(
         touchCount: Int,
         dockHoveredApplication: DockApplicationTarget?,
@@ -1228,7 +1395,7 @@ struct TwoFingerTouchSequenceTracker {
             return .none
         }
 
-        if Set(previousIdentifiers).isDisjoint(with: currentIdentifiers) {
+        if previousIdentifiers != currentIdentifiers {
             return .restarted(
                 previousIdentifiers: previousIdentifiers,
                 currentIdentifiers: currentIdentifiers
@@ -1957,7 +2124,7 @@ private final class DockAccessibilityProbe {
     }
 }
 
-private final class MultitouchInputMonitor {
+final class MultitouchInputMonitor {
     var onFrame: ((TrackpadTouchFrame) -> Void)?
 
     private var isMonitoring = false
@@ -1984,23 +2151,36 @@ private final class MultitouchInputMonitor {
         DebugLog.info(DebugLog.dock, "MultitouchSupport monitoring stopped")
     }
 
+    func receiveCallbackPayload(
+        fingers: UnsafePointer<SwooshyMTFinger>?,
+        fingerCount: Int,
+        timestamp: Double
+    ) {
+        guard fingerCount > 0 else {
+            deliverZeroTouchFrame(timestamp: timestamp)
+            return
+        }
+
+        guard let fingers else {
+            DebugLog.error(
+                DebugLog.dock,
+                "Multitouch callback dropped a non-zero finger payload because the finger buffer was nil"
+            )
+            return
+        }
+
+        receive(
+            fingers: fingers,
+            fingerCount: fingerCount,
+            timestamp: timestamp
+        )
+    }
+
     fileprivate func receive(
         fingers: UnsafePointer<SwooshyMTFinger>,
         fingerCount: Int,
         timestamp: Double
     ) {
-        guard fingerCount > 0 else {
-            guard lastDeliveredFingerCount != 0 else { return }
-            lastDeliveredFingerCount = 0
-            onFrame?(
-                TrackpadTouchFrame(
-                    touches: [],
-                    timestamp: timestamp
-                )
-            )
-            return
-        }
-
         let buffer = UnsafeBufferPointer(start: fingers, count: fingerCount)
         let touches = buffer.map {
             TrackpadTouchSample(
@@ -2020,6 +2200,17 @@ private final class MultitouchInputMonitor {
             )
         )
     }
+
+    private func deliverZeroTouchFrame(timestamp: Double) {
+        guard lastDeliveredFingerCount != 0 else { return }
+        lastDeliveredFingerCount = 0
+        onFrame?(
+            TrackpadTouchFrame(
+                touches: [],
+                timestamp: timestamp
+            )
+        )
+    }
 }
 
 private func multitouchCallback(
@@ -2030,9 +2221,9 @@ private func multitouchCallback(
     _ frame: Int32,
     _ context: UnsafeMutableRawPointer?
 ) {
-    guard let data, let context else { return }
+    guard let context else { return }
     let monitor = Unmanaged<MultitouchInputMonitor>.fromOpaque(context).takeUnretainedValue()
-    monitor.receive(
+    monitor.receiveCallbackPayload(
         fingers: data,
         fingerCount: Int(fingerCount),
         timestamp: timestamp
