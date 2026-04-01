@@ -76,6 +76,14 @@ struct WindowLayoutEngine {
             return leftHalfFrame(in: currentVisibleFrame)
         case .rightHalf:
             return rightHalfFrame(in: currentVisibleFrame)
+        case .topLeftQuarter:
+            return topLeftQuarterFrame(in: currentVisibleFrame)
+        case .topRightQuarter:
+            return topRightQuarterFrame(in: currentVisibleFrame)
+        case .bottomLeftQuarter:
+            return bottomLeftQuarterFrame(in: currentVisibleFrame)
+        case .bottomRightQuarter:
+            return bottomRightQuarterFrame(in: currentVisibleFrame)
         case .maximize:
             return currentVisibleFrame.integral
         case .center:
@@ -236,6 +244,59 @@ struct WindowLayoutEngine {
             y: visibleFrame.minY,
             width: visibleFrame.maxX - splitX,
             height: visibleFrame.height
+        ).integral
+    }
+
+    private func topLeftQuarterFrame(in visibleFrame: CGRect) -> CGRect {
+        quarterFrame(
+            in: visibleFrame,
+            horizontalAnchor: .leadingEdge,
+            verticalAnchor: .trailingEdge
+        )
+    }
+
+    private func topRightQuarterFrame(in visibleFrame: CGRect) -> CGRect {
+        quarterFrame(
+            in: visibleFrame,
+            horizontalAnchor: .trailingEdge,
+            verticalAnchor: .trailingEdge
+        )
+    }
+
+    private func bottomLeftQuarterFrame(in visibleFrame: CGRect) -> CGRect {
+        quarterFrame(
+            in: visibleFrame,
+            horizontalAnchor: .leadingEdge,
+            verticalAnchor: .leadingEdge
+        )
+    }
+
+    private func bottomRightQuarterFrame(in visibleFrame: CGRect) -> CGRect {
+        quarterFrame(
+            in: visibleFrame,
+            horizontalAnchor: .trailingEdge,
+            verticalAnchor: .leadingEdge
+        )
+    }
+
+    private func quarterFrame(
+        in visibleFrame: CGRect,
+        horizontalAnchor: WindowActionPreview.AxisAnchor,
+        verticalAnchor: WindowActionPreview.AxisAnchor
+    ) -> CGRect {
+        let splitX = visibleFrame.minX + floor(visibleFrame.width / 2)
+        let splitY = visibleFrame.minY + floor(visibleFrame.height / 2)
+
+        let minX = horizontalAnchor == .leadingEdge ? visibleFrame.minX : splitX
+        let maxX = horizontalAnchor == .leadingEdge ? splitX : visibleFrame.maxX
+        let minY = verticalAnchor == .leadingEdge ? visibleFrame.minY : splitY
+        let maxY = verticalAnchor == .leadingEdge ? splitY : visibleFrame.maxY
+
+        return CGRect(
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
         ).integral
     }
 }

@@ -275,7 +275,14 @@ struct WindowManager: WindowManaging {
                 direction: .backward
             )
             return
-        case .leftHalf, .rightHalf, .maximize, .center:
+        case .leftHalf,
+             .rightHalf,
+             .topLeftQuarter,
+             .topRightQuarter,
+             .bottomLeftQuarter,
+             .bottomRightQuarter,
+             .maximize,
+             .center:
             break
         case .quitApplication:
             return

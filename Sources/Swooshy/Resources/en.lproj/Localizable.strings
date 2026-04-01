@@ -10,6 +10,10 @@
 "action.right_half" = "Snap Right Half";
 "action.maximize" = "Maximize to Visible Frame";
 "action.center" = "Fill Entire Screen";
+"action.top_left_quarter" = "Snap Top Left Quarter";
+"action.top_right_quarter" = "Snap Top Right Quarter";
+"action.bottom_left_quarter" = "Snap Bottom Left Quarter";
+"action.bottom_right_quarter" = "Snap Bottom Right Quarter";
 "action.minimize" = "Minimize to Dock";
 "action.restore_window" = "Restore Minimized Window";
 "action.close_window" = "Close Window";

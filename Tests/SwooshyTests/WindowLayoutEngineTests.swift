@@ -51,6 +51,50 @@ struct WindowLayoutEngineTests {
     }
 
     @Test
+    func topLeftQuarterUsesTopLeftAreaOfVisibleFrame() {
+        let frame = engine.targetFrame(
+            for: .topLeftQuarter,
+            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
+            currentVisibleFrame: visibleFrame
+        )
+
+        #expect(frame == CGRect(x: 0, y: 450, width: 720, height: 450))
+    }
+
+    @Test
+    func topRightQuarterUsesTopRightAreaOfVisibleFrame() {
+        let frame = engine.targetFrame(
+            for: .topRightQuarter,
+            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
+            currentVisibleFrame: visibleFrame
+        )
+
+        #expect(frame == CGRect(x: 720, y: 450, width: 720, height: 450))
+    }
+
+    @Test
+    func bottomLeftQuarterUsesBottomLeftAreaOfVisibleFrame() {
+        let frame = engine.targetFrame(
+            for: .bottomLeftQuarter,
+            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
+            currentVisibleFrame: visibleFrame
+        )
+
+        #expect(frame == CGRect(x: 0, y: 0, width: 720, height: 450))
+    }
+
+    @Test
+    func bottomRightQuarterUsesBottomRightAreaOfVisibleFrame() {
+        let frame = engine.targetFrame(
+            for: .bottomRightQuarter,
+            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
+            currentVisibleFrame: visibleFrame
+        )
+
+        #expect(frame == CGRect(x: 720, y: 0, width: 720, height: 450))
+    }
+
+    @Test
     func nonLayoutActionsPreserveCurrentFrame() {
         let currentWindowFrame = CGRect(x: 100, y: 100, width: 800, height: 600)
 
@@ -216,6 +260,29 @@ struct WindowLayoutEngineTests {
         )
 
         #expect(preview?.frame == targetFrame)
+        #expect(preview?.style == .area)
+    }
+
+    @Test
+    func previewFrameExpandsTopLeftQuarterFromOuterEdgesForObservedMinimumSize() {
+        let targetFrame = CGRect(x: 0, y: 450, width: 720, height: 450)
+
+        let preview = engine.preview(
+            for: .topLeftQuarter,
+            targetFrame: targetFrame,
+            observation: WindowActionPreview.Observation(
+                sizeBounds: WindowActionPreview.SizeBounds(
+                    minimumWidth: 860,
+                    maximumWidth: nil,
+                    minimumHeight: 520,
+                    maximumHeight: nil
+                ),
+                horizontalAnchor: .leadingEdge,
+                verticalAnchor: .trailingEdge
+            )
+        )
+
+        #expect(preview?.frame == CGRect(x: 0, y: 380, width: 860, height: 520))
         #expect(preview?.style == .area)
     }
 }

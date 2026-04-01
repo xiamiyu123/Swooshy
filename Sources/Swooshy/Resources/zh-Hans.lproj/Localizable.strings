@@ -10,6 +10,10 @@
 "action.right_half" = "贴靠到右半屏";
 "action.maximize" = "最大化到可视区域";
 "action.center" = "填充整个屏幕";
+"action.top_left_quarter" = "贴靠到左上角";
+"action.top_right_quarter" = "贴靠到右上角";
+"action.bottom_left_quarter" = "贴靠到左下角";
+"action.bottom_right_quarter" = "贴靠到右下角";
 "action.minimize" = "最小化到 Dock";
 "action.restore_window" = "恢复最小化窗口";
 "action.close_window" = "关闭窗口";

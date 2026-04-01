@@ -5,13 +5,17 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
     case rightHalf = 1
     case maximize = 2
     case center = 3
-    case minimize = 4
-    case closeWindow = 5
+    case topLeftQuarter = 4
+    case topRightQuarter = 5
+    case bottomLeftQuarter = 6
+    case bottomRightQuarter = 7
+    case minimize = 8
+    case closeWindow = 9
     case closeTab = 10
-    case quitApplication = 6
-    case cycleSameAppWindowsForward = 7
-    case cycleSameAppWindowsBackward = 8
-    case toggleFullScreen = 9
+    case quitApplication = 11
+    case cycleSameAppWindowsForward = 12
+    case cycleSameAppWindowsBackward = 13
+    case toggleFullScreen = 14
 
     var title: String {
         title()
@@ -36,6 +40,26 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
         case .maximize, .center:
             return .area(
                 defaultHorizontalAnchor: .leadingEdge,
+                defaultVerticalAnchor: .leadingEdge
+            )
+        case .topLeftQuarter:
+            return .area(
+                defaultHorizontalAnchor: .leadingEdge,
+                defaultVerticalAnchor: .trailingEdge
+            )
+        case .topRightQuarter:
+            return .area(
+                defaultHorizontalAnchor: .trailingEdge,
+                defaultVerticalAnchor: .trailingEdge
+            )
+        case .bottomLeftQuarter:
+            return .area(
+                defaultHorizontalAnchor: .leadingEdge,
+                defaultVerticalAnchor: .leadingEdge
+            )
+        case .bottomRightQuarter:
+            return .area(
+                defaultHorizontalAnchor: .trailingEdge,
                 defaultVerticalAnchor: .leadingEdge
             )
         case .minimize,
@@ -75,6 +99,30 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
         case .center:
             return L10n.string(
                 "action.center",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .topLeftQuarter:
+            return L10n.string(
+                "action.top_left_quarter",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .topRightQuarter:
+            return L10n.string(
+                "action.top_right_quarter",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .bottomLeftQuarter:
+            return L10n.string(
+                "action.bottom_left_quarter",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .bottomRightQuarter:
+            return L10n.string(
+                "action.bottom_right_quarter",
                 localeIdentifier: localeIdentifier,
                 preferredLanguages: preferredLanguages
             )
@@ -133,6 +181,11 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
             return "3"
         case .center:
             return "4"
+        case .topLeftQuarter,
+             .topRightQuarter,
+             .bottomLeftQuarter,
+             .bottomRightQuarter:
+            return ""
         case .minimize:
             return "5"
         case .closeWindow:
