@@ -75,10 +75,15 @@
 "guide.page.titlebar_vertical.bullet3" = "Recognition is most reliable when the pointer is already resting on the title bar.";
 
 "guide.page.titlebar_horizontal.title" = "Title Bar Gestures: Snap Left and Right";
-"guide.page.titlebar_horizontal.message" = "The title bar trigger area also supports horizontal swipes and a short long-press for fast window arrangement.";
+"guide.page.titlebar_horizontal.message" = "The title bar trigger area also supports horizontal swipes for fast window arrangement.";
 "guide.page.titlebar_horizontal.bullet1" = "Two-finger swipe left: snap the current window to the left half of the screen.";
 "guide.page.titlebar_horizontal.bullet2" = "Two-finger swipe right: snap the current window to the right half of the screen.";
-"guide.page.titlebar_horizontal.bullet3" = "Two-finger long press for 0.2 seconds, then drag toward a corner to enter corner snap mode. Hover targets are cached briefly to keep repeated triggers stable.";
+
+"guide.page.corner_snap.title" = "Title Bar Gestures: Corner Snap Mode";
+"guide.page.corner_snap.message" = "After hovering over the title bar, you can also long-press briefly to switch into corner snapping.";
+"guide.page.corner_snap.bullet1" = "Two-finger long press for 0.2 seconds, then drag toward a corner to enter corner snap mode.";
+"guide.page.corner_snap.bullet2" = "Hover targets are cached briefly to keep repeated title-bar and Dock triggers stable while your pointer stays in place.";
+"guide.page.corner_snap.bullet3" = "You can change the long-press delay later in Settings under Advanced Settings.";
 
 "guide.page.shortcuts.title" = "Customization and Global Hotkeys";
 "guide.page.shortcuts.message" = "If you prefer the keyboard, Swooshy also includes global shortcuts. Every gesture mapping and hotkey can be recorded and changed from Settings.";

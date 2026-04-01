@@ -220,12 +220,23 @@ struct WelcomeGuideContent {
                 bullets: [
                     settingsStore.localized("guide.page.titlebar_horizontal.bullet1"),
                     settingsStore.localized("guide.page.titlebar_horizontal.bullet2"),
-                    settingsStore.localized("guide.page.titlebar_horizontal.bullet3"),
                 ],
                 imageName: "step3"
             ),
             Page(
                 id: 6,
+                kind: .tutorial,
+                title: settingsStore.localized("guide.page.corner_snap.title"),
+                message: settingsStore.localized("guide.page.corner_snap.message"),
+                bullets: [
+                    settingsStore.localized("guide.page.corner_snap.bullet1"),
+                    settingsStore.localized("guide.page.corner_snap.bullet2"),
+                    settingsStore.localized("guide.page.corner_snap.bullet3"),
+                ],
+                imageName: "step3"
+            ),
+            Page(
+                id: 7,
                 kind: .preference,
                 title: settingsStore.localized("guide.page.interaction.title"),
                 message: settingsStore.localized("guide.page.interaction.message"),
@@ -233,7 +244,7 @@ struct WelcomeGuideContent {
                 imageName: nil
             ),
             Page(
-                id: 7,
+                id: 8,
                 kind: .tutorial,
                 title: settingsStore.localized("guide.page.shortcuts.title"),
                 message: settingsStore.localized("guide.page.shortcuts.message"),
@@ -248,7 +259,7 @@ struct WelcomeGuideContent {
                 imageName: nil
             ),
             Page(
-                id: 8,
+                id: 9,
                 kind: .experimental,
                 title: settingsStore.localized("guide.page.experimental.title"),
                 message: settingsStore.localized("guide.page.experimental.message"),

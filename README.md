@@ -90,8 +90,6 @@ layout:
 
 * **Two-finger swipe left**: Snap the current window to the left half.
 * **Two-finger swipe right**: Snap the current window to the right half.
-* **Two-finger long press for 0.2s, then drag toward a corner**: Enter corner
-  snap mode.
 * Great for side-by-side comparison with another window.
 
 <br>
@@ -99,12 +97,26 @@ layout:
 
 </details>
 
-Corner snap uses a short hover-target cache to keep repeated title-bar and Dock
-triggers stable while your pointer stays in place. The default long-press delay
-is now `0.2s`, and you can adjust it from `Settings...` -> `Advanced Settings`.
+<details>
+<summary><b>Page 6: Title bar gesture - corner snap mode</b></summary>
+
+After hovering over the title bar, you can also enter a dedicated corner snap
+mode:
+
+* **Two-finger long press for 0.2s, then drag toward a corner**: Enter corner
+  snap mode.
+* Hover targets are cached briefly to keep repeated title-bar and Dock triggers
+  stable while your pointer stays in place.
+* You can adjust the long-press delay later from `Settings...` ->
+  `Advanced Settings`.
+
+<br>
+<img src="docs/images/step3.jpg" width="600" alt="Title bar gesture for corner snap mode" style="border-radius: 8px;">
+
+</details>
 
 <details>
-<summary><b>Page 6: Custom settings and global shortcuts</b></summary>
+<summary><b>Page 7: Custom settings and global shortcuts</b></summary>
 
 If you prefer the keyboard, Swooshy also ships with global shortcuts. Every
 gesture mapping and hotkey can be re-recorded and edited from `Settings...` in

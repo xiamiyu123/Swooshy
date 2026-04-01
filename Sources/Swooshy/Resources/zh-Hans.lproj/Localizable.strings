@@ -75,10 +75,15 @@
 "guide.page.titlebar_vertical.bullet3" = "先把指针停在标题栏，再做手势，识别会更稳定。";
 
 "guide.page.titlebar_horizontal.title" = "标题栏手势：左右贴靠窗口";
-"guide.page.titlebar_horizontal.message" = "标题栏区域同样支持左右滑动和短暂长按，用来快速整理当前窗口布局。";
+"guide.page.titlebar_horizontal.message" = "标题栏区域同样支持左右滑动，用来快速整理当前窗口布局。";
 "guide.page.titlebar_horizontal.bullet1" = "双指左滑：将当前窗口贴靠到屏幕左半边。";
 "guide.page.titlebar_horizontal.bullet2" = "双指右滑：将当前窗口贴靠到屏幕右半边。";
-"guide.page.titlebar_horizontal.bullet3" = "双指长按 0.2 秒后拖向角落，即可进入角落贴靠模式。悬停目标会被短暂缓存，让连续触发更稳定。";
+
+"guide.page.corner_snap.title" = "标题栏手势：角落贴靠模式";
+"guide.page.corner_snap.message" = "在标题栏上悬停后，也可以通过一次短暂长按切换到角落贴靠模式。";
+"guide.page.corner_snap.bullet1" = "双指长按 0.2 秒后拖向角落，即可进入角落贴靠模式。";
+"guide.page.corner_snap.bullet2" = "悬停目标会被短暂缓存，让连续触发标题栏和 Dock 操作时更稳定。";
+"guide.page.corner_snap.bullet3" = "如果你想调整长按时长，可以稍后在“高级设置”里修改。";
 
 "guide.page.shortcuts.title" = "自定义设置与全局快捷键";
 "guide.page.shortcuts.message" = "如果你更习惯键盘，Swooshy 也提供了全局快捷键；所有手势映射和快捷键都可以在“设置…”里录制和修改。";
