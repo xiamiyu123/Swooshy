@@ -163,6 +163,7 @@
 "settings.experimental.browser_tab_close.footer" = "允许将手势映射为「关闭标签页」。\n\n原理：Swooshy 会在对应位置模拟鼠标中键点击。使用该功能前请确保目标应用支持「鼠标中键关闭标签页」，且没有其它鼠标按键映射冲突。";
 "settings.experimental.smart_browser_tab_close.enabled" = "智能关闭标签页";
 "settings.experimental.smart_browser_tab_close.footer" = "在对受支持的浏览器，或受支持的 VSCode 系编辑器执行「关闭窗口」或「退出应用」手势时，如果指针正好悬停在某个标签页上，Swooshy 会仅关闭该标签页，而不是关闭整个窗口或退出应用。如果指针不在任何标签页上，则回退执行正常的关闭或退出操作。理论支持 Safari、Chrome、Edge、Firefox等浏览器，以及 Visual Studio Code、Cursor、Antigravity等基于 VSCode 的代码编辑器。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
+"settings.experimental.opt_in_persistence.footer" = "注意：重置用户配置时，会保留你对实验性功能的启用状态。";
 
 "guide.page.experimental.title" = "实验性功能";
 "guide.page.experimental.message" = "Swooshy 提供了一些可选的实验性功能，默认关闭，可以在高级设置中手动开启。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";

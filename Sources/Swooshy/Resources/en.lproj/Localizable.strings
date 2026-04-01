@@ -163,6 +163,7 @@
 "settings.experimental.browser_tab_close.footer" = "Allows you to map gestures to 'Close Tab'.\n\nPrinciple: Swooshy simulates a middle-click at the pointer location. Before using this feature, make sure the target app supports middle-click to close tabs and that no third-party button remapping conflicts are present.";
 "settings.experimental.smart_browser_tab_close.enabled" = "Smart tab close";
 "settings.experimental.smart_browser_tab_close.footer" = "When performing a 'Close Window' or 'Quit Application' gesture on a supported browser, or on a supported VS Code-based editor, if the pointer is hovering over a specific tab, Swooshy will close only that tab instead of closing the whole window or quitting the app. If the pointer is not over any tab, the gesture falls back to the normal close or quit behavior. Supported apps include browsers such as Safari, Chrome, Edge, and Firefox, as well as VS Code-based code editors such as Visual Studio Code, Cursor, and Antigravity.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
+"settings.experimental.opt_in_persistence.footer" = "Note: Resetting user configuration keeps your experimental feature opt-in state.";
 
 "guide.page.experimental.title" = "Experimental Features";
 "guide.page.experimental.message" = "Swooshy includes a few experimental features you can opt into. These are disabled by default but can be turned on in Advanced Settings.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";

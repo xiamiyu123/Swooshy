@@ -370,6 +370,7 @@ private struct AdvancedSettingsSheet: View {
 
                     SettingsHintGroup {
                         Text(settingsStore.localized("settings.experimental.smart_browser_tab_close.footer"))
+                        Text(settingsStore.localized("settings.experimental.opt_in_persistence.footer"))
                     }
                 } header: {
                     Text(settingsStore.localized("settings.experimental.section"))

@@ -352,6 +352,10 @@ final class SettingsStore {
             Keys.hasSeenWelcomeGuide,
         ]
 
+        // Intentionally preserve `experimentalBrowserTabCloseEnabled` here.
+        // `--reset-user-config` is meant to restore everyday preferences while
+        // keeping the user's explicit experimental opt-in state across launches.
+
         #if DEBUG
         keysToReset.append(Keys.debugLoggingEnabled)
         #endif

@@ -524,6 +524,11 @@ private struct WelcomeGuideView: View {
                 )
                 .padding(.vertical, 8)
 
+                Text(viewModel.localized("settings.experimental.opt_in_persistence.footer"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(page.bullets.enumerated()), id: \.offset) { _, bullet in
                         bulletRow(text: bullet)
@@ -871,4 +876,3 @@ private struct InteractionStyleCard: View {
         .frame(maxWidth: .infinity)
     }
 }
-
