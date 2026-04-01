@@ -165,6 +165,27 @@ final class SettingsStore {
         }
     }
 
+    var titleBarCornerDragHoldDuration: Double {
+        didSet {
+            let clampedValue = Self.clampTitleBarCornerDragHoldDuration(titleBarCornerDragHoldDuration)
+            guard oldValue != clampedValue else {
+                if titleBarCornerDragHoldDuration != clampedValue {
+                    titleBarCornerDragHoldDuration = clampedValue
+                }
+                return
+            }
+
+            if titleBarCornerDragHoldDuration != clampedValue {
+                titleBarCornerDragHoldDuration = clampedValue
+                return
+            }
+
+            userDefaults.set(clampedValue, forKey: Keys.titleBarCornerDragHoldDuration)
+            DebugLog.info(DebugLog.settings, "Title-bar corner drag hold duration set to \(clampedValue)")
+            notifyDidChange()
+        }
+    }
+
     var gestureHUDStyle: GestureHUDStyle {
         didSet {
             guard oldValue != gestureHUDStyle else { return }
@@ -305,6 +326,13 @@ final class SettingsStore {
                 in: userDefaults
             )
         )
+        self.titleBarCornerDragHoldDuration = Self.clampTitleBarCornerDragHoldDuration(
+            Self.doubleValue(
+                forKey: Keys.titleBarCornerDragHoldDuration,
+                defaultValue: Self.defaultTitleBarCornerDragHoldDuration,
+                in: userDefaults
+            )
+        )
         self.gestureHUDStyle = GestureHUDStyle(
             storageValue: userDefaults.string(forKey: Keys.gestureHUDStyle)
         )
@@ -344,6 +372,7 @@ final class SettingsStore {
             Keys.swipeSensitivity,
             Keys.pinchSensitivity,
             Keys.titleBarTriggerHeight,
+            Keys.titleBarCornerDragHoldDuration,
             Keys.gestureHUDStyle,
             Keys.statusItemIcon,
             Keys.hotKeyBindings,
@@ -587,6 +616,7 @@ final class SettingsStore {
         swipeSensitivity = 0.5
         pinchSensitivity = 0.5
         titleBarTriggerHeight = Self.defaultTitleBarTriggerHeight
+        titleBarCornerDragHoldDuration = Self.defaultTitleBarCornerDragHoldDuration
         titleBarOverlayProtectionEnabled = true
         smartPinchExitFullScreenEnabled = true
         smartBrowserTabCloseEnabled = false
@@ -596,9 +626,16 @@ final class SettingsStore {
     static let defaultTitleBarTriggerHeight: Double = 32
     static let minimumTitleBarTriggerHeight: Double = 24
     static let maximumTitleBarTriggerHeight: Double = 56
+    static let defaultTitleBarCornerDragHoldDuration: Double = 0.6
+    static let minimumTitleBarCornerDragHoldDuration: Double = 0.2
+    static let maximumTitleBarCornerDragHoldDuration: Double = 1.5
 
     static func clampTitleBarTriggerHeight(_ value: Double) -> Double {
         min(maximumTitleBarTriggerHeight, max(minimumTitleBarTriggerHeight, value))
+    }
+
+    static func clampTitleBarCornerDragHoldDuration(_ value: Double) -> Double {
+        min(maximumTitleBarCornerDragHoldDuration, max(minimumTitleBarCornerDragHoldDuration, value))
     }
 
     private func persistHotKeyBindings() {
@@ -673,6 +710,7 @@ final class SettingsStore {
         static let swipeSensitivity = "settings.swipeSensitivity"
         static let pinchSensitivity = "settings.pinchSensitivity"
         static let titleBarTriggerHeight = "settings.titleBarTriggerHeight"
+        static let titleBarCornerDragHoldDuration = "settings.titleBarCornerDragHoldDuration"
         static let gestureHUDStyle = "settings.gestureHUDStyle"
         static let statusItemIcon = "settings.statusItemIcon"
         static let hasSeenWelcomeGuide = "settings.hasSeenWelcomeGuide"

@@ -24,6 +24,8 @@
 "action.close_tab" = "Close Tab";
 "action.cycle_same_app_windows_forward" = "Cycle Same-App Windows Forward";
 "action.cycle_same_app_windows_backward" = "Cycle Same-App Windows Backward";
+"gesture.corner_drag.title" = "Corner Snap";
+"gesture.corner_drag.waiting" = "Drag diagonally toward a corner";
 
 "alert.permission_required.title" = "Accessibility Permission Required";
 "alert.permission_required.message" = "Swooshy needs Accessibility permission to read and move the focused window.\nOpen System Settings > Privacy & Security > Accessibility, enable Swooshy, then refresh this menu.";
@@ -152,6 +154,7 @@
 "settings.advanced.swipe_sensitivity.label" = "Swipe sensitivity";
 "settings.advanced.pinch_sensitivity.label" = "Pinch sensitivity";
 "settings.advanced.title_bar_trigger_height.label" = "Title-bar trigger height";
+"settings.advanced.corner_drag_hold_duration.label" = "Corner snap hold delay";
 "settings.advanced.section.cancel" = "Gesture Cancellation";
 "settings.advanced.reverse_cancel.enabled" = "Cancel gesture on reverse movement";
 "settings.advanced.reverse_cancel.footer" = "When enabled and \"Execute on release\" is active, moving your fingers back in the opposite direction will cancel the pending gesture.";

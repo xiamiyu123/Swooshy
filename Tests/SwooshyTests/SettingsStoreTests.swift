@@ -19,6 +19,7 @@ struct SettingsStoreTests {
         store.titleBarOverlayProtectionEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.titleBarTriggerHeight = 42
+        store.titleBarCornerDragHoldDuration = 0.9
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
         store.updateDockGestureEnabled(false, for: .pinchIn)
         store.updateTitleBarGestureAction(.maximize, for: .swipeLeft)
@@ -34,6 +35,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == true)
         #expect(reloadedStore.titleBarTriggerHeight == 42)
+        #expect(reloadedStore.titleBarCornerDragHoldDuration == 0.9)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .closeWindow)
         #expect(reloadedStore.dockGestureIsEnabled(for: .pinchIn) == false)
         #expect(reloadedStore.titleBarGestureAction(for: .swipeLeft) == .maximize)
@@ -120,6 +122,7 @@ struct SettingsStoreTests {
         store.titleBarOverlayProtectionEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.titleBarTriggerHeight = 40
+        store.titleBarCornerDragHoldDuration = 1.2
         store.statusItemIcon = .windowGrid
         _ = store.consumeWelcomeGuidePresentationFlag()
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
@@ -134,6 +137,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == false)
         #expect(reloadedStore.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
+        #expect(reloadedStore.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
         #expect(reloadedStore.statusItemIcon == .gale)
         #expect(reloadedStore.hasSeenWelcomeGuide == false)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .quitApplication)
@@ -159,6 +163,17 @@ struct SettingsStoreTests {
         let store = SettingsStore(userDefaults: defaults)
 
         #expect(store.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
+    }
+
+    @Test
+    func titleBarCornerDragHoldDurationDefaultsToQuickActivation() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
     }
 
     @Test

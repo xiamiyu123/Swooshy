@@ -24,6 +24,8 @@
 "action.close_tab" = "关闭标签页";
 "action.cycle_same_app_windows_forward" = "向前切换当前应用窗口";
 "action.cycle_same_app_windows_backward" = "向后切换当前应用窗口";
+"gesture.corner_drag.title" = "角落贴靠";
+"gesture.corner_drag.waiting" = "向角落方向斜向拖动以预览";
 
 "alert.permission_required.title" = "需要辅助功能权限";
 "alert.permission_required.message" = "Swooshy 需要辅助功能权限来读取和移动当前窗口。\n请打开“系统设置” > “隐私与安全性” > “辅助功能”，启用 Swooshy，然后回到菜单中刷新权限状态。";
@@ -152,6 +154,7 @@
 "settings.advanced.swipe_sensitivity.label" = "滑动灵敏度";
 "settings.advanced.pinch_sensitivity.label" = "捏合灵敏度";
 "settings.advanced.title_bar_trigger_height.label" = "标题栏触发高度";
+"settings.advanced.corner_drag_hold_duration.label" = "角落贴靠长按时长";
 "settings.advanced.section.cancel" = "手势取消";
 "settings.advanced.reverse_cancel.enabled" = "反向移动时取消手势";
 "settings.advanced.reverse_cancel.footer" = "开启后，在「松手后执行」模式下，反方向移动手指可以取消待执行的手势。";

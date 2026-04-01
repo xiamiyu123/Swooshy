@@ -160,6 +160,10 @@ struct DockGestureRecognizer {
         return .swipeRight(application: session.application)
     }
 
+    mutating func reset() {
+        session = nil
+    }
+
     private func midpoint(_ first: CGPoint, _ second: CGPoint) -> CGPoint {
         CGPoint(
             x: (first.x + second.x) / 2,
@@ -176,3 +180,111 @@ struct DockGestureRecognizer {
 
 typealias DockSwipeGestureRecognizer = DockGestureRecognizer
 typealias DockSwipeEvent = DockGestureEvent
+
+enum TitleBarCornerDragEvent: Equatable {
+    case began(
+        application: DockApplicationTarget,
+        startAveragePoint: CGPoint,
+        currentAveragePoint: CGPoint
+    )
+    case changed(
+        application: DockApplicationTarget,
+        startAveragePoint: CGPoint,
+        currentAveragePoint: CGPoint
+    )
+    case ended(application: DockApplicationTarget)
+}
+
+struct TitleBarCornerDragRecognizer {
+    private struct Session: Equatable {
+        let application: DockApplicationTarget
+        let startAveragePoint: CGPoint
+        let startTimestamp: TimeInterval
+        var isActive = false
+    }
+
+    var holdDurationThreshold: TimeInterval = 1.5
+    var stationaryDistanceThreshold: CGFloat = 0.025
+    private var session: Session?
+
+    var isActive: Bool {
+        session?.isActive ?? false
+    }
+
+    mutating func process(
+        frame: TrackpadTouchFrame,
+        hoveredApplication: DockApplicationTarget?
+    ) -> TitleBarCornerDragEvent? {
+        guard frame.touches.count == 2 else {
+            defer { session = nil }
+            guard let session, session.isActive else {
+                return nil
+            }
+
+            return .ended(application: session.application)
+        }
+
+        let averagePoint = midpoint(frame.touches[0].position, frame.touches[1].position)
+
+        guard var session else {
+            guard let hoveredApplication else {
+                return nil
+            }
+
+            self.session = Session(
+                application: hoveredApplication,
+                startAveragePoint: averagePoint,
+                startTimestamp: frame.timestamp
+            )
+            return nil
+        }
+
+        if session.isActive {
+            return .changed(
+                application: session.application,
+                startAveragePoint: session.startAveragePoint,
+                currentAveragePoint: averagePoint
+            )
+        }
+
+        if frame.timestamp - session.startTimestamp >= holdDurationThreshold {
+            session.isActive = true
+            self.session = session
+            return .began(
+                application: session.application,
+                startAveragePoint: session.startAveragePoint,
+                currentAveragePoint: averagePoint
+            )
+        }
+
+        let driftDistance = distance(averagePoint, session.startAveragePoint)
+        if driftDistance > stationaryDistanceThreshold {
+            if let hoveredApplication {
+                self.session = Session(
+                    application: hoveredApplication,
+                    startAveragePoint: averagePoint,
+                    startTimestamp: frame.timestamp
+                )
+            } else {
+                self.session = nil
+            }
+            return nil
+        }
+        return nil
+    }
+
+    mutating func reset() {
+        session = nil
+    }
+
+    private func midpoint(_ first: CGPoint, _ second: CGPoint) -> CGPoint {
+        CGPoint(
+            x: (first.x + second.x) / 2,
+            y: (first.y + second.y) / 2
+        )
+    }
+
+    private func distance(_ first: CGPoint, _ second: CGPoint) -> CGFloat {
+        hypot(second.x - first.x, second.y - first.y)
+    }
+}

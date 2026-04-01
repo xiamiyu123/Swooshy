@@ -303,6 +303,14 @@ private struct AdvancedSettingsSheet: View {
                         step: 1
                     )
                     .disabled(settingsStore.titleBarGesturesEnabled == false)
+
+                    DurationSlider(
+                        label: settingsStore.localized("settings.advanced.corner_drag_hold_duration.label"),
+                        value: $settingsStore.titleBarCornerDragHoldDuration,
+                        range: SettingsStore.minimumTitleBarCornerDragHoldDuration ... SettingsStore.maximumTitleBarCornerDragHoldDuration,
+                        step: 0.1
+                    )
+                    .disabled(settingsStore.titleBarGesturesEnabled == false)
                 } header: {
                     Text(settingsStore.localized("settings.advanced.section.sensitivity"))
                 }
@@ -453,6 +461,32 @@ private struct PixelSlider: View {
     }
 }
 
+private struct DurationSlider: View {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label)
+                    .font(.body)
+
+                Spacer()
+
+                Text(String(format: "%.1f s", value))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Slider(value: $value, in: range, step: step)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 
 private struct SettingsMappingCard<Rows: View>: View {
     @ViewBuilder let rows: Rows
@@ -582,7 +616,7 @@ private struct GestureHUDPreviewCard: View {
             GestureHUDRenderHost(
                 model: GestureHUDRenderModel(
                     style: style,
-                    gesture: gesture,
+                    glyph: .gesture(gesture),
                     gestureTitle: gestureTitle,
                     actionTitle: actionTitle
                 )

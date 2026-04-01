@@ -15,6 +15,7 @@ final class DockGestureController {
     private let monitor = MultitouchInputMonitor()
     private var dockRecognizer = DockGestureRecognizer()
     private var titleBarRecognizer = DockGestureRecognizer()
+    private var titleBarCornerDragRecognizer = TitleBarCornerDragRecognizer()
     private var hasShownPermissionHint = false
     private var settingsObserver: NSObjectProtocol?
 #if DEBUG
@@ -34,6 +35,12 @@ final class DockGestureController {
     private var pendingReleaseGestureKind: DockGestureKind?
     private var pendingReleaseHighWaterMark: CGFloat?
     private var pendingReleasePinchHighWaterMark: CGFloat?
+    private var activeCornerDragApplication: DockApplicationTarget?
+    private var activeCornerDragAction: WindowAction?
+    private var activeCornerDragAnchorPoint: CGPoint?
+    private var activeCornerDragTouchOrigin: CGPoint?
+    private var cornerDragPreviewCache = CornerDragPreviewCache()
+    private let cornerDragTranslationThreshold: CGFloat = 0.06
 
     private enum PendingReleaseAction {
         case dock(action: DockGestureAction, application: DockApplicationTarget)
@@ -43,11 +50,53 @@ final class DockGestureController {
             anchorPoint: CGPoint,
             replacesWithTabClose: Bool
         )
+        case cornerDrag(action: WindowAction, anchorPoint: CGPoint)
     }
 
     private struct MonitoringState: Equatable {
         let dockGesturesEnabled: Bool
         let titleBarGesturesEnabled: Bool
+    }
+
+    private struct CornerDragPreviewCache {
+        private struct Key: Equatable {
+            let processIdentifier: pid_t
+            let action: WindowAction
+            let screenFrame: CGRect
+        }
+
+        private var key: Key?
+        private var preview: WindowActionPreview?
+
+        mutating func resolvePreview(
+            for application: DockApplicationTarget,
+            action: WindowAction,
+            anchorPoint: CGPoint,
+            previewProvider: (WindowAction, CGPoint?) throws -> WindowActionPreview?
+        ) -> WindowActionPreview? {
+            let screenFrame = NSScreen.screens
+                .map(\.visibleFrame)
+                .first(where: { $0.contains(anchorPoint) })
+
+            let resolvedKey = Key(
+                processIdentifier: application.processIdentifier,
+                action: action,
+                screenFrame: screenFrame ?? .null
+            )
+
+            if key == resolvedKey {
+                return preview
+            }
+
+            key = resolvedKey
+            preview = try? previewProvider(action, anchorPoint)
+            return preview
+        }
+
+        mutating func clear() {
+            key = nil
+            preview = nil
+        }
     }
 
     init(
@@ -85,6 +134,12 @@ final class DockGestureController {
         monitoringState = nil
         dockRecognizer = makeConfiguredRecognizer()
         titleBarRecognizer = makeConfiguredRecognizer()
+        titleBarCornerDragRecognizer = makeConfiguredCornerDragRecognizer()
+        activeCornerDragApplication = nil
+        activeCornerDragAction = nil
+        activeCornerDragAnchorPoint = nil
+        activeCornerDragTouchOrigin = nil
+        cornerDragPreviewCache.clear()
         dockProbe.clearCache()
         titleBarProbe.clearCache()
         monitor.onFrame = nil
@@ -120,6 +175,12 @@ final class DockGestureController {
         monitoringState = state
         dockRecognizer = makeConfiguredRecognizer()
         titleBarRecognizer = makeConfiguredRecognizer()
+        titleBarCornerDragRecognizer = makeConfiguredCornerDragRecognizer()
+        activeCornerDragApplication = nil
+        activeCornerDragAction = nil
+        activeCornerDragAnchorPoint = nil
+        activeCornerDragTouchOrigin = nil
+        cornerDragPreviewCache.clear()
         dockProbe.clearCache()
         titleBarProbe.clearCache()
         pendingTouchFrame = nil
@@ -174,9 +235,17 @@ final class DockGestureController {
         let previousTouchCount = lastTouchCount
         lastTouchCount = touchCount
 
-        // Execute pending action on finger release (touch count drops to 0).
-        if touchCount == 0, previousTouchCount > 0, pendingReleaseAction != nil {
-            executePendingReleaseAction()
+        refreshRecognizerConfiguration()
+
+        // Some trackpads do not reliably emit a zero-touch frame at the end of a
+        // two-finger gesture, so losing the second finger also counts as release.
+        if touchCount < 2, previousTouchCount == 2 {
+            if titleBarCornerDragRecognizer.isActive {
+                resetCornerDragSession(dismissFeedback: pendingReleaseAction == nil)
+            }
+            if pendingReleaseAction != nil {
+                executePendingReleaseAction()
+            }
             // Still let recognizers see the zero-touch frame.
         }
 
@@ -187,6 +256,7 @@ final class DockGestureController {
             }
             if titleBarGesturesEnabled {
                 _ = titleBarRecognizer.process(frame: frame, hoveredApplication: nil)
+                _ = titleBarCornerDragRecognizer.process(frame: frame, hoveredApplication: nil)
             }
             return
         }
@@ -199,8 +269,13 @@ final class DockGestureController {
             }
         }
 
-        let needsDockLookup = dockGesturesEnabled && dockRecognizer.requiresHoveredApplication
-        let needsTitleBarLookup = titleBarGesturesEnabled && titleBarRecognizer.requiresHoveredApplication
+        let cornerDragSessionActive = activeCornerDragApplication != nil || titleBarCornerDragRecognizer.isActive
+        let needsDockLookup = dockGesturesEnabled &&
+            dockRecognizer.requiresHoveredApplication &&
+            cornerDragSessionActive == false
+        let needsTitleBarLookup = titleBarGesturesEnabled &&
+            cornerDragSessionActive == false &&
+            (titleBarRecognizer.requiresHoveredApplication || titleBarCornerDragRecognizer.isActive == false)
         let mouseLocation = (needsDockLookup || needsTitleBarLookup) ? NSEvent.mouseLocation : nil
         let hoveredDockApplication = needsDockLookup ? mouseLocation.flatMap {
             dockProbe.hoveredApplication(
@@ -237,6 +312,20 @@ final class DockGestureController {
         }
 #endif
 
+        if titleBarGesturesEnabled {
+            let cornerDragEvent = titleBarCornerDragRecognizer.process(
+                frame: frame,
+                hoveredApplication: hoveredTitleBarApplication
+            )
+            if handleCornerDragEvent(
+                cornerDragEvent,
+                hoveredApplication: hoveredTitleBarApplication,
+                anchorPoint: mouseLocation ?? NSEvent.mouseLocation
+            ) {
+                return
+            }
+        }
+
         if dockGesturesEnabled, let dockEvent = dockRecognizer.process(frame: frame, hoveredApplication: hoveredDockApplication) {
             let anchorPoint = mouseLocation ?? NSEvent.mouseLocation
             handleDockGestureEvent(dockEvent, anchorPoint: anchorPoint, touches: frame.touches)
@@ -249,6 +338,45 @@ final class DockGestureController {
 
         let anchorPoint = mouseLocation ?? NSEvent.mouseLocation
         handleTitleBarGestureEvent(titleBarEvent, anchorPoint: anchorPoint, touches: frame.touches)
+    }
+
+    private func handleCornerDragEvent(
+        _ event: TitleBarCornerDragEvent?,
+        hoveredApplication: DockApplicationTarget?,
+        anchorPoint: CGPoint
+    ) -> Bool {
+        switch event {
+        case .began(let application, let startAveragePoint, let currentAveragePoint):
+            titleBarRecognizer.reset()
+            pendingReleaseAction = nil
+            clearTouchAnchor()
+            gestureFeedbackPresenter.dismiss()
+            activeCornerDragApplication = application
+            activeCornerDragAction = nil
+            activeCornerDragAnchorPoint = anchorPoint
+            activeCornerDragTouchOrigin = startAveragePoint
+            cornerDragPreviewCache.clear()
+            installEscMonitor()
+            updateCornerDragFeedback(
+                currentTouchPoint: currentAveragePoint,
+                forcePresentation: true
+            )
+            DebugLog.info(DebugLog.dock, "Entered title-bar corner drag mode for \(application.logDescription)")
+            return true
+        case .changed(_, _, let currentAveragePoint):
+            updateCornerDragFeedback(currentTouchPoint: currentAveragePoint)
+            return true
+        case .ended:
+            return activeCornerDragApplication != nil
+        case .none:
+            if titleBarCornerDragRecognizer.isActive {
+                if hoveredApplication == nil, activeCornerDragApplication == nil {
+                    return false
+                }
+                return true
+            }
+            return false
+        }
     }
 
     private func handleDockGestureEvent(_ event: DockGestureEvent, anchorPoint: CGPoint, touches: [TrackpadTouchSample]) {
@@ -479,6 +607,100 @@ final class DockGestureController {
         )
     }
 
+    private func updateCornerDragFeedback(
+        currentTouchPoint: CGPoint,
+        forcePresentation: Bool = false
+    ) {
+        guard
+            let application = activeCornerDragApplication,
+            let anchorPoint = activeCornerDragAnchorPoint,
+            let touchOrigin = activeCornerDragTouchOrigin
+        else {
+            return
+        }
+
+        let translation = CGPoint(
+            x: currentTouchPoint.x - touchOrigin.x,
+            y: currentTouchPoint.y - touchOrigin.y
+        )
+        let nextAction = cornerDragAction(
+            forTouchTranslation: translation,
+            threshold: cornerDragTranslationThreshold
+        )
+        let previousAction = activeCornerDragAction
+        activeCornerDragAction = nextAction
+
+        if let nextAction {
+            pendingReleaseAction = .cornerDrag(action: nextAction, anchorPoint: anchorPoint)
+        } else if case .cornerDrag = pendingReleaseAction {
+            pendingReleaseAction = nil
+        }
+
+        guard forcePresentation || nextAction != previousAction else {
+            return
+        }
+
+        let preview = nextAction.flatMap { action in
+            cornerDragPreviewCache.resolvePreview(
+                for: application,
+                action: action,
+                anchorPoint: anchorPoint,
+                previewProvider: { [windowManager, layoutEngine] action, preferredAppKitPoint in
+                    try windowManager.previewTarget(
+                        for: action,
+                        layoutEngine: layoutEngine,
+                        preferredAppKitPoint: preferredAppKitPoint
+                    )
+                }
+            )
+        }
+
+        let actionTitle = nextAction?.title(preferredLanguages: settingsStore.preferredLanguages)
+            ?? settingsStore.localized("gesture.corner_drag.waiting")
+
+        DebugLog.debug(
+            DebugLog.dock,
+            "Corner drag translation \(NSStringFromPoint(translation)) mapped to \(String(describing: nextAction)) for \(application.logDescription)"
+        )
+
+        gestureFeedbackPresenter.show(
+            glyph: cornerDragGlyph(for: nextAction),
+            gestureTitle: settingsStore.localized("gesture.corner_drag.title"),
+            actionTitle: actionTitle,
+            anchor: anchorPoint,
+            persistent: true,
+            preview: preview
+        )
+    }
+
+    private func resetCornerDragSession(dismissFeedback: Bool) {
+        titleBarCornerDragRecognizer.reset()
+        activeCornerDragApplication = nil
+        activeCornerDragAction = nil
+        activeCornerDragAnchorPoint = nil
+        activeCornerDragTouchOrigin = nil
+        cornerDragPreviewCache.clear()
+        if dismissFeedback {
+            gestureFeedbackPresenter.dismiss()
+            removeEscMonitor()
+        }
+    }
+
+    private func cornerDragGlyph(for action: WindowAction?) -> GestureHUDGlyph {
+        switch action {
+        case .topLeftQuarter:
+            return .diagonal(.topLeft)
+        case .topRightQuarter:
+            return .diagonal(.topRight)
+        case .bottomLeftQuarter:
+            return .diagonal(.bottomLeft)
+        case .bottomRightQuarter:
+            return .diagonal(.bottomRight)
+        default:
+            return .cornerMode
+        }
+    }
+
     private func shouldReplaceWithBrowserTabClose(
         action: WindowAction,
         event: DockGestureEvent,
@@ -534,13 +756,14 @@ final class DockGestureController {
     }
 
     private func cancelPendingReleaseAction() {
-        guard pendingReleaseAction != nil else {
+        guard pendingReleaseAction != nil || activeCornerDragApplication != nil else {
             removeEscMonitor()
             return
         }
         DebugLog.info(DebugLog.dock, "Cancelled pending gesture action")
         pendingReleaseAction = nil
         clearTouchAnchor()
+        resetCornerDragSession(dismissFeedback: false)
         removeEscMonitor()
         gestureFeedbackPresenter.dismiss()
     }
@@ -564,6 +787,24 @@ final class DockGestureController {
                 anchorPoint: anchorPoint,
                 replacesWithTabClose: replacesWithTabClose
             )
+        case .cornerDrag(let windowAction, let anchorPoint):
+            DebugLog.info(DebugLog.dock, "Executing deferred corner drag action \(String(describing: windowAction)) on finger release")
+            executeCornerDragAction(windowAction, anchorPoint: anchorPoint)
+        }
+    }
+
+    private func executeCornerDragAction(_ action: WindowAction, anchorPoint: CGPoint) {
+        do {
+            try windowManager.perform(
+                action,
+                layoutEngine: layoutEngine,
+                preferredAppKitPoint: anchorPoint
+            )
+        } catch let error as WindowManagerError {
+            handleWindowManagerError(error)
+        } catch {
+            NSSound.beep()
+            DebugLog.error(DebugLog.dock, "Corner drag action failed: \(error.localizedDescription)")
         }
     }
 
@@ -660,13 +901,29 @@ final class DockGestureController {
 
     private func makeConfiguredRecognizer() -> DockGestureRecognizer {
         var recognizer = DockGestureRecognizer()
+        configure(&recognizer)
+        return recognizer
+    }
+
+    private func makeConfiguredCornerDragRecognizer() -> TitleBarCornerDragRecognizer {
+        var recognizer = TitleBarCornerDragRecognizer()
+        recognizer.holdDurationThreshold = settingsStore.titleBarCornerDragHoldDuration
+        return recognizer
+    }
+
+    private func refreshRecognizerConfiguration() {
+        configure(&dockRecognizer)
+        configure(&titleBarRecognizer)
+        titleBarCornerDragRecognizer.holdDurationThreshold = settingsStore.titleBarCornerDragHoldDuration
+    }
+
+    private func configure(_ recognizer: inout DockGestureRecognizer) {
         // sensitivity 0.0 → threshold 0.16 (hard), 1.0 → threshold 0.04 (easy)
         let swipeSens = settingsStore.swipeSensitivity
         recognizer.translationThreshold = CGFloat(0.16 - swipeSens * (0.16 - 0.04))
         // sensitivity 0.0 → threshold 0.14 (hard), 1.0 → threshold 0.03 (easy)
         let pinchSens = settingsStore.pinchSensitivity
         recognizer.pinchThreshold = CGFloat(0.14 - pinchSens * (0.14 - 0.03))
-        return recognizer
     }
 
 #if DEBUG
@@ -736,6 +993,57 @@ struct DockHoverSnapshot: Equatable {
     }
 }
 
+func cornerDragAction(
+    forTouchTranslation translation: CGPoint,
+    threshold: CGFloat
+) -> WindowAction? {
+    guard abs(translation.x) >= threshold, abs(translation.y) >= threshold else {
+        return nil
+    }
+
+    if translation.x < 0, translation.y > 0 {
+        return .topLeftQuarter
+    }
+    if translation.x > 0, translation.y > 0 {
+        return .topRightQuarter
+    }
+    if translation.x < 0, translation.y < 0 {
+        return .bottomLeftQuarter
+    }
+    if translation.x > 0, translation.y < 0 {
+        return .bottomRightQuarter
+    }
+
+    return nil
+}
+
+enum TitleBarHoverSource: Equatable {
+    case titleBar
+    case browserTabFallback
+
+    func allowsGestureAction(_ action: WindowAction) -> Bool {
+        switch self {
+        case .titleBar:
+            return true
+        case .browserTabFallback:
+            return action == .closeWindow || action == .quitApplication
+        }
+    }
+}
+
+struct TitleBarHoverTarget: Equatable {
+    let application: DockApplicationTarget
+    let source: TitleBarHoverSource
+
+    var logDescription: String {
+        switch source {
+        case .titleBar:
+            return application.logDescription
+        case .browserTabFallback:
+            return "\(application.logDescription) via browser-tab fallback"
+        }
+    }
+}
 @MainActor
 private final class TitleBarAccessibilityProbe {
     private let cacheTTL: TimeInterval = 0.2

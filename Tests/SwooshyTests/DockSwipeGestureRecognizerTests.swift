@@ -3,6 +3,11 @@ import Testing
 @testable import Swooshy
 
 struct DockSwipeGestureRecognizerTests {
+    private func expect(_ point: CGPoint, approximatelyEquals expected: CGPoint) {
+        #expect(abs(point.x - expected.x) < 0.0001)
+        #expect(abs(point.y - expected.y) < 0.0001)
+    }
+
     private func target(
         dockItemName: String,
         resolvedApplicationName: String? = nil,
@@ -275,5 +280,246 @@ struct DockSwipeGestureRecognizerTests {
         )
 
         #expect(recognizer.requiresHoveredApplication)
+    }
+
+    @Test
+    func titleBarCornerDragRecognizerActivatesAfterLongPressBeforeMovement() {
+        var recognizer = TitleBarCornerDragRecognizer()
+        let finder = target(dockItemName: "Finder")
+
+        #expect(
+            recognizer.process(
+                frame: TrackpadTouchFrame(
+                    touches: [
+                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
+                    ],
+                    timestamp: 0
+                ),
+                hoveredApplication: finder
+            ) == nil
+        )
+
+        let event = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.402, y: 0.4)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.552, y: 0.402)),
+                ],
+                timestamp: 1.6
+            ),
+            hoveredApplication: finder
+        )
+
+        guard case .began(let application, let startAveragePoint, let currentAveragePoint) = event else {
+            Issue.record("Expected corner drag recognizer to begin after the hold threshold")
+            return
+        }
+        #expect(application == finder)
+        expect(startAveragePoint, approximatelyEquals: CGPoint(x: 0.475, y: 0.4))
+        expect(currentAveragePoint, approximatelyEquals: CGPoint(x: 0.477, y: 0.401))
+
+        #expect(recognizer.isActive)
+    }
+
+    @Test
+    func titleBarCornerDragRecognizerActivatesOnFirstDragFrameAfterHoldThreshold() {
+        var recognizer = TitleBarCornerDragRecognizer()
+        let finder = target(dockItemName: "Finder")
+
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
+                ],
+                timestamp: 0
+            ),
+            hoveredApplication: finder
+        )
+
+        let event = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.47, y: 0.41)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.62, y: 0.41)),
+                ],
+                timestamp: 1.55
+            ),
+            hoveredApplication: finder
+        )
+
+        guard case .began(let application, let startAveragePoint, let currentAveragePoint) = event else {
+            Issue.record("Expected the first post-hold drag frame to activate corner drag mode")
+            return
+        }
+        #expect(application == finder)
+        expect(startAveragePoint, approximatelyEquals: CGPoint(x: 0.475, y: 0.4))
+        expect(currentAveragePoint, approximatelyEquals: CGPoint(x: 0.545, y: 0.41))
+    }
+
+    @Test
+    func titleBarCornerDragRecognizerResetsHoldWhenFingersMoveTooSoon() {
+        var recognizer = TitleBarCornerDragRecognizer()
+        let finder = target(dockItemName: "Finder")
+
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
+                ],
+                timestamp: 0
+            ),
+            hoveredApplication: finder
+        )
+
+        #expect(
+            recognizer.process(
+                frame: TrackpadTouchFrame(
+                    touches: [
+                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.46, y: 0.4)),
+                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.61, y: 0.4)),
+                    ],
+                    timestamp: 0.1
+                ),
+                hoveredApplication: finder
+            ) == nil
+        )
+
+        #expect(
+            recognizer.process(
+                frame: TrackpadTouchFrame(
+                    touches: [
+                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.462, y: 0.4)),
+                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.612, y: 0.401)),
+                    ],
+                    timestamp: 1.7
+                ),
+                hoveredApplication: finder
+            ) == .began(
+                application: finder,
+                startAveragePoint: CGPoint(x: 0.535, y: 0.4),
+                currentAveragePoint: CGPoint(x: 0.537, y: 0.4005)
+            )
+        )
+    }
+
+    @Test
+    func titleBarCornerDragRecognizerReportsChangedTouchTranslationWhileActive() {
+        var recognizer = TitleBarCornerDragRecognizer()
+        let finder = target(dockItemName: "Finder")
+
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
+                ],
+                timestamp: 0
+            ),
+            hoveredApplication: finder
+        )
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.402, y: 0.4)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.552, y: 0.402)),
+                ],
+                timestamp: 1.6
+            ),
+            hoveredApplication: finder
+        )
+
+        let event = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.34, y: 0.48)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.49, y: 0.5)),
+                ],
+                timestamp: 1.7
+            ),
+            hoveredApplication: finder
+        )
+
+        guard case .changed(let application, let startAveragePoint, let currentAveragePoint) = event else {
+            Issue.record("Expected active corner drag recognizer to report changed touch positions")
+            return
+        }
+        #expect(application == finder)
+        expect(startAveragePoint, approximatelyEquals: CGPoint(x: 0.475, y: 0.4))
+        expect(currentAveragePoint, approximatelyEquals: CGPoint(x: 0.415, y: 0.49))
+    }
+
+    @Test
+    func cornerDragActionUsesDiagonalTouchTranslation() {
+        #expect(
+            cornerDragAction(
+                forTouchTranslation: CGPoint(x: -0.09, y: 0.08),
+                threshold: 0.06
+            ) == .topLeftQuarter
+        )
+        #expect(
+            cornerDragAction(
+                forTouchTranslation: CGPoint(x: 0.1, y: 0.09),
+                threshold: 0.06
+            ) == .topRightQuarter
+        )
+        #expect(
+            cornerDragAction(
+                forTouchTranslation: CGPoint(x: -0.08, y: -0.1),
+                threshold: 0.06
+            ) == .bottomLeftQuarter
+        )
+        #expect(
+            cornerDragAction(
+                forTouchTranslation: CGPoint(x: 0.09, y: -0.08),
+                threshold: 0.06
+            ) == .bottomRightQuarter
+        )
+        #expect(
+            cornerDragAction(
+                forTouchTranslation: CGPoint(x: 0.12, y: 0.02),
+                threshold: 0.06
+            ) == nil
+        )
+    }
+
+    @Test
+    func titleBarCornerDragRecognizerEndsWhenTouchesLift() {
+        var recognizer = TitleBarCornerDragRecognizer()
+        let finder = target(dockItemName: "Finder")
+
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
+                ],
+                timestamp: 0
+            ),
+            hoveredApplication: finder
+        )
+        _ = recognizer.process(
+            frame: TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
+                ],
+                timestamp: 1.6
+            ),
+            hoveredApplication: finder
+        )
+
+        #expect(
+            recognizer.process(
+                frame: TrackpadTouchFrame(
+                    touches: [],
+                    timestamp: 1.7
+                ),
+                hoveredApplication: nil
+            ) == .ended(application: finder)
+        )
+        #expect(recognizer.isActive == false)
     }
 }
