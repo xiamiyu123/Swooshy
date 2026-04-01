@@ -522,4 +522,71 @@ struct DockSwipeGestureRecognizerTests {
         )
         #expect(recognizer.isActive == false)
     }
+
+    @Test
+    func twoFingerTouchSequenceTrackerFlagsFreshContactsWithoutLiftFrames() {
+        var tracker = TwoFingerTouchSequenceTracker()
+
+        #expect(
+            tracker.consume(
+                TrackpadTouchFrame(
+                    touches: [
+                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
+                    ],
+                    timestamp: 0
+                )
+            ) == .none
+        )
+
+        #expect(
+            tracker.consume(
+                TrackpadTouchFrame(
+                    touches: [
+                        TrackpadTouchSample(identifier: 7, position: CGPoint(x: 0.45, y: 0.45)),
+                        TrackpadTouchSample(identifier: 8, position: CGPoint(x: 0.65, y: 0.45)),
+                    ],
+                    timestamp: 0.2
+                )
+            ) == .restarted(previousIdentifiers: [1, 2], currentIdentifiers: [7, 8])
+        )
+    }
+
+    @Test
+    func twoFingerTouchSequenceTrackerResetsAfterExplicitLift() {
+        var tracker = TwoFingerTouchSequenceTracker()
+
+        _ = tracker.consume(
+            TrackpadTouchFrame(
+                touches: [
+                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
+                ],
+                timestamp: 0
+            )
+        )
+
+        #expect(
+            tracker.consume(
+                TrackpadTouchFrame(
+                    touches: [
+                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.42, y: 0.42)),
+                    ],
+                    timestamp: 0.1
+                )
+            ) == .none
+        )
+
+        #expect(
+            tracker.consume(
+                TrackpadTouchFrame(
+                    touches: [
+                        TrackpadTouchSample(identifier: 7, position: CGPoint(x: 0.45, y: 0.45)),
+                        TrackpadTouchSample(identifier: 8, position: CGPoint(x: 0.65, y: 0.45)),
+                    ],
+                    timestamp: 0.2
+                )
+            ) == .none
+        )
+    }
 }

@@ -323,6 +323,88 @@ struct WindowManager: WindowManaging {
         )
     }
 
+    func perform(
+        _ action: WindowAction,
+        on target: DockApplicationTarget,
+        layoutEngine: WindowLayoutEngine,
+        preferredAppKitPoint: CGPoint?
+    ) throws {
+        DebugLog.info(DebugLog.windows, "Performing window action \(String(describing: action)) for Dock target \(target.logDescription)")
+
+        guard AXIsProcessTrusted() else {
+            DebugLog.error(DebugLog.accessibility, "Accessibility permission missing before Dock-target action \(String(describing: action))")
+            throw WindowManagerError.accessibilityPermissionMissing
+        }
+
+        let app = try runningApplication(matching: target)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+        switch action {
+        case .quitApplication:
+            _ = try quitApplication(matching: target)
+            return
+        case .minimize:
+            _ = try minimizeVisibleWindow(of: target)
+            return
+        case .closeWindow:
+            _ = try closeVisibleWindow(of: target)
+            return
+        case .toggleFullScreen:
+            _ = try toggleFullScreenWindow(of: target)
+            return
+        case .closeTab:
+            guard BrowserTabProbe.simulateMiddleClick(at: preferredAppKitPoint ?? NSEvent.mouseLocation) else {
+                throw WindowManagerError.unableToPerformAction
+            }
+            return
+        case .cycleSameAppWindowsForward:
+            _ = try cycleVisibleWindows(of: target, direction: .forward)
+            return
+        case .cycleSameAppWindowsBackward:
+            _ = try cycleVisibleWindows(of: target, direction: .backward)
+            return
+        case .leftHalf,
+             .rightHalf,
+             .topLeftQuarter,
+             .topRightQuarter,
+             .bottomLeftQuarter,
+             .bottomRightQuarter,
+             .maximize,
+             .center:
+            break
+        }
+
+        let targetWindow = try preferredWindowActionTarget(in: app, appElement: appElement)
+        try bringWindowToFront(targetWindow, for: app)
+
+        let resolvedLayout = try resolvedWindowActionLayout(
+            for: action,
+            application: app,
+            window: targetWindow,
+            layoutEngine: layoutEngine,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
+
+        let frameOutcome = try setFrame(resolvedLayout.targetAXFrame, for: resolvedLayout.focusedWindow)
+        let appliedAXFrame: CGRect
+        switch frameOutcome {
+        case .exact(let frame), .constrained(let frame):
+            appliedAXFrame = frame
+        }
+
+        let appliedAppKitFrame = resolvedLayout.screenGeometry.appKitFrame(fromAXFrame: appliedAXFrame)
+        recordObservedConstraintIfNeeded(
+            requestedFrame: resolvedLayout.targetFrame,
+            appliedFrame: appliedAppKitFrame,
+            action: action,
+            application: app
+        )
+        DebugLog.debug(
+            DebugLog.windows,
+            "Read back Dock-target window frame after \(String(describing: action)): AX \(NSStringFromRect(appliedAXFrame)), AppKit \(NSStringFromRect(appliedAppKitFrame))"
+        )
+    }
+
     func previewTarget(
         for action: WindowAction,
         layoutEngine: WindowLayoutEngine,
@@ -349,6 +431,34 @@ struct WindowManager: WindowManaging {
         )
     }
 
+    func previewTarget(
+        for action: WindowAction,
+        on target: DockApplicationTarget,
+        layoutEngine: WindowLayoutEngine,
+        preferredAppKitPoint: CGPoint?
+    ) throws -> WindowActionPreview? {
+        guard action.supportsSnapPreview else {
+            throw WindowManagerError.unableToPerformAction
+        }
+
+        let app = try runningApplication(matching: target)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let targetWindow = try preferredWindowActionTarget(in: app, appElement: appElement)
+        let resolvedLayout = try resolvedWindowActionLayout(
+            for: action,
+            application: app,
+            window: targetWindow,
+            layoutEngine: layoutEngine,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
+        let observedObservation = observedConstraintObservation(for: app, action: action)
+        return layoutEngine.preview(
+            for: action,
+            targetFrame: resolvedLayout.targetFrame,
+            observation: observedObservation
+        )
+    }
+
     private func frontmostApplication() throws -> NSRunningApplication {
         guard let app = NSWorkspace.shared.frontmostApplication else {
             throw WindowManagerError.noFrontmostApplication
@@ -364,6 +474,23 @@ struct WindowManager: WindowManaging {
         layoutEngine: WindowLayoutEngine,
         preferredAppKitPoint: CGPoint?
     ) throws -> ResolvedWindowActionLayout {
+        let focusedWindow = try focusedWindowElement(in: appElement)
+        return try resolvedWindowActionLayout(
+            for: action,
+            application: application,
+            window: focusedWindow,
+            layoutEngine: layoutEngine,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
+    }
+
+    private func resolvedWindowActionLayout(
+        for action: WindowAction,
+        application: NSRunningApplication,
+        window: AXUIElement,
+        layoutEngine: WindowLayoutEngine,
+        preferredAppKitPoint: CGPoint?
+    ) throws -> ResolvedWindowActionLayout {
         let screens = NSScreen.screens
         guard screens.isEmpty == false else {
             throw WindowManagerError.unableToResolveScreen
@@ -371,11 +498,10 @@ struct WindowManager: WindowManaging {
         logScreenConfiguration(screens, preferredAppKitPoint: preferredAppKitPoint)
 
         let screenGeometry = ScreenGeometry(screenFrames: screens.map(\.frame))
-        let focusedWindow = try focusedWindowElement(in: appElement)
-        let currentAXFrame = try frame(of: focusedWindow)
+        let currentAXFrame = try frame(of: window)
         let currentFrame = screenGeometry.appKitFrame(fromAXFrame: currentAXFrame)
         logFrameRead(
-            for: focusedWindow,
+            for: window,
             action: action,
             application: application,
             axFrame: currentAXFrame,
@@ -424,11 +550,27 @@ struct WindowManager: WindowManaging {
         )
 
         return ResolvedWindowActionLayout(
-            focusedWindow: focusedWindow,
+            focusedWindow: window,
             screenGeometry: screenGeometry,
             targetFrame: targetFrame,
             targetAXFrame: targetAXFrame
         )
+    }
+
+    private func preferredWindowActionTarget(
+        in app: NSRunningApplication,
+        appElement: AXUIElement
+    ) throws -> AXUIElement {
+        let visibleWindows = try orderedVisibleWindowElements(in: app, appElement: appElement)
+        if let window = visibleWindows.first {
+            return window
+        }
+
+        if let referenceWindow = preferredCycleReferenceWindow(in: appElement) {
+            return referenceWindow
+        }
+
+        throw WindowManagerError.noFocusedWindow
     }
 
     private func observedConstraintObservation(
