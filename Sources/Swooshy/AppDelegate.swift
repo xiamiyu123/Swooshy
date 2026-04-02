@@ -2,10 +2,6 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private enum LaunchArgument {
-        static let resetUserConfiguration = "--reset-user-config"
-    }
-
     private var statusBarController: StatusBarController?
     private var globalHotKeyController: GlobalHotKeyController?
     private var settingsWindowController: SettingsWindowController?
@@ -13,19 +9,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dockGestureController: DockGestureController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let shouldResetUserConfiguration = ProcessInfo.processInfo.arguments.contains(
-            LaunchArgument.resetUserConfiguration
-        )
-        if shouldResetUserConfiguration {
-            SettingsStore.resetPersistedConfiguration()
-            ObservedWindowConstraintStore.resetPersistedConstraints()
-        }
+        let launchOptions = LaunchOptions()
+        launchOptions.apply()
 
         let settingsStore = SettingsStore()
         DebugLog.info(DebugLog.app, "Swooshy launch sequence started")
         DebugLog.info(DebugLog.app, "Debug log file path: \(DebugLog.logFilePathDescription)")
-        if shouldResetUserConfiguration {
-            DebugLog.info(DebugLog.app, "Launch argument \(LaunchArgument.resetUserConfiguration) detected; user configuration reset")
+        if launchOptions.resetUserConfiguration {
+            DebugLog.info(
+                DebugLog.app,
+                "Launch argument \(LaunchOptions.resetUserConfigurationArgument) detected; user configuration reset"
+            )
+        }
+        if launchOptions.clearCache {
+            DebugLog.info(
+                DebugLog.app,
+                "Launch argument \(LaunchOptions.clearCacheArgument) detected; persisted caches cleared"
+            )
         }
         let permissionManager = AccessibilityPermissionManager()
         let windowManager = WindowManager()
