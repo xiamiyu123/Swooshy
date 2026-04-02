@@ -826,10 +826,9 @@ final class DockGestureController {
             y: currentTouchPoint.y - touchOrigin.y
         )
         let previousAction = activeCornerDragAction
-        let useRelativeCornerDrag = settingsStore.smoothWindowPreviewEnabled
         let nextAction: WindowAction?
 
-        if useRelativeCornerDrag, let previousAction {
+        if let previousAction {
             nextAction = cornerDragTransitionAction(
                 from: previousAction,
                 forTouchTranslation: translation,
@@ -844,12 +843,10 @@ final class DockGestureController {
 
         activeCornerDragAction = nextAction
 
-        if useRelativeCornerDrag {
-            if let nextAction, nextAction != previousAction {
-                activeCornerDragTouchReferencePoint = currentTouchPoint
-            } else if previousAction == nil, nextAction == nil {
-                activeCornerDragTouchReferencePoint = activeCornerDragTouchOrigin
-            }
+        if let nextAction, nextAction != previousAction {
+            activeCornerDragTouchReferencePoint = currentTouchPoint
+        } else if previousAction == nil, nextAction == nil {
+            activeCornerDragTouchReferencePoint = activeCornerDragTouchOrigin
         }
 
         if let nextAction {
