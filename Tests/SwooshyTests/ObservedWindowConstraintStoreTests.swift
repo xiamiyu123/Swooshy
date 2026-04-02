@@ -92,9 +92,9 @@ struct ObservedWindowConstraintStoreTests {
         )
 
         #expect(leftObservation?.sizeBounds.minimumWidth == 860)
-        #expect(leftObservation?.sizeBounds.maximumWidth == 1200)
+        #expect(leftObservation?.sizeBounds.maximumWidth == nil)
         #expect(leftObservation?.sizeBounds.minimumHeight == 520)
-        #expect(leftObservation?.sizeBounds.maximumHeight == 800)
+        #expect(leftObservation?.sizeBounds.maximumHeight == nil)
         #expect(leftObservation?.horizontalAnchor == .leadingEdge)
         #expect(leftObservation?.verticalAnchor == .leadingEdge)
         #expect(rightObservation?.sizeBounds.minimumWidth == 860)
@@ -228,7 +228,7 @@ struct ObservedWindowConstraintStoreTests {
     }
 
     @Test
-    func actionSpecificAnchorsMergeWithSharedBounds() {
+    func actionSpecificObservationOverridesSharedBounds() {
         let store = ObservedWindowConstraintStore()
 
         store.record(
@@ -263,10 +263,38 @@ struct ObservedWindowConstraintStoreTests {
         )
 
         #expect(observation?.sizeBounds.minimumWidth == 860)
-        #expect(observation?.sizeBounds.maximumWidth == 1200)
-        #expect(observation?.sizeBounds.maximumHeight == 800)
+        #expect(observation?.sizeBounds.maximumWidth == nil)
+        #expect(observation?.sizeBounds.maximumHeight == nil)
         #expect(observation?.horizontalAnchor == .leadingEdge)
         #expect(observation?.verticalAnchor == .leadingEdge)
+    }
+
+    @Test
+    func sharedBoundsRemainFallbackWhenActionHasNoObservation() {
+        let store = ObservedWindowConstraintStore()
+
+        store.record(
+            sizeBounds: WindowActionPreview.SizeBounds(
+                minimumWidth: nil,
+                maximumWidth: 1200,
+                minimumHeight: nil,
+                maximumHeight: 800
+            ),
+            horizontalAnchor: .centered,
+            verticalAnchor: .centered,
+            action: .maximize,
+            for: "com.example.app"
+        )
+
+        let observation = store.observation(
+            for: "com.example.app",
+            action: .rightHalf
+        )
+
+        #expect(observation?.sizeBounds.maximumWidth == 1200)
+        #expect(observation?.sizeBounds.maximumHeight == 800)
+        #expect(observation?.horizontalAnchor == nil)
+        #expect(observation?.verticalAnchor == nil)
     }
 
     @Test

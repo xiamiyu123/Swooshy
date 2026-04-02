@@ -98,28 +98,30 @@ final class ObservedWindowConstraintStore {
             return nil
         }
 
-        let actionObservation = applicationConstraints.observationsByAction[action]
-        let mergedSizeBounds = merged(
-            actionObservation?.sizeBounds ?? emptySizeBounds(),
-            with: applicationConstraints.sharedSizeBounds
-        )
-
-        guard
-            mergedSizeBounds.hasConstraints ||
-            actionObservation?.horizontalAnchor != nil ||
-            actionObservation?.verticalAnchor != nil
-        else {
-            return nil
-        }
-
         applicationConstraints.lastUsedAt = now()
         constraintsByApplicationKey[applicationKey] = applicationConstraints
         hasPendingPersistence = true
 
+        if let actionObservation = applicationConstraints.observationsByAction[action] {
+            guard
+                actionObservation.sizeBounds.hasConstraints ||
+                actionObservation.horizontalAnchor != nil ||
+                actionObservation.verticalAnchor != nil
+            else {
+                return nil
+            }
+
+            return actionObservation
+        }
+
+        guard applicationConstraints.sharedSizeBounds.hasConstraints else {
+            return nil
+        }
+
         return WindowActionPreview.Observation(
-            sizeBounds: mergedSizeBounds,
-            horizontalAnchor: actionObservation?.horizontalAnchor,
-            verticalAnchor: actionObservation?.verticalAnchor
+            sizeBounds: applicationConstraints.sharedSizeBounds,
+            horizontalAnchor: nil,
+            verticalAnchor: nil
         )
     }
 
