@@ -659,20 +659,22 @@ private struct GestureHUDPreviewCard: View {
     let gestureTitle: String
     let actionTitle: String
 
+    private var model: GestureHUDRenderModel {
+        GestureHUDRenderModel(
+            style: style,
+            glyph: .gesture(gesture),
+            gestureTitle: gestureTitle,
+            actionTitle: actionTitle
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(gestureTitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            GestureHUDRenderHost(
-                model: GestureHUDRenderModel(
-                    style: style,
-                    glyph: .gesture(gesture),
-                    gestureTitle: gestureTitle,
-                    actionTitle: actionTitle
-                )
-            )
+            GestureHUDPreviewSnapshot(model: model)
             .frame(
                 width: GestureHUDRenderView.panelSize(for: style).width,
                 height: GestureHUDRenderView.panelSize(for: style).height,
@@ -683,17 +685,39 @@ private struct GestureHUDPreviewCard: View {
     }
 }
 
-private struct GestureHUDRenderHost: NSViewRepresentable {
+@MainActor
+private struct GestureHUDPreviewSnapshot: View {
     let model: GestureHUDRenderModel
+    @State private var snapshot: NSImage?
 
-    func makeNSView(context: Context) -> GestureHUDRenderView {
-        let view = GestureHUDRenderView(frame: NSRect(origin: .zero, size: GestureHUDRenderView.panelSize(for: model.style)))
-        view.render(model: model)
-        return view
+    var body: some View {
+        Group {
+            if let snapshot {
+                Image(nsImage: snapshot)
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: model) {
+            snapshot = Self.makeSnapshot(for: model)
+        }
     }
 
-    func updateNSView(_ nsView: GestureHUDRenderView, context: Context) {
-        nsView.render(model: model)
+    private static func makeSnapshot(for model: GestureHUDRenderModel) -> NSImage? {
+        let size = GestureHUDRenderView.panelSize(for: model.style)
+        let renderView = GestureHUDRenderView(frame: NSRect(origin: .zero, size: size))
+        renderView.render(model: model)
+        renderView.layoutSubtreeIfNeeded()
+
+        guard let bitmap = renderView.bitmapImageRepForCachingDisplay(in: renderView.bounds) else {
+            return nil
+        }
+
+        renderView.cacheDisplay(in: renderView.bounds, to: bitmap)
+
+        let image = NSImage(size: size)
+        image.addRepresentation(bitmap)
+        return image
     }
 }
 

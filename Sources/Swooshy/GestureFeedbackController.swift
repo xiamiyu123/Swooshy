@@ -142,6 +142,7 @@ final class GestureHUDRenderView: NSVisualEffectView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let glyphView = GestureGlyphView(frame: .zero)
     private let glyphBadgeView = NSView(frame: .zero)
+    private var currentModel: GestureHUDRenderModel?
     private var currentStyle: GestureHUDStyle?
 
     static func panelSize(for style: GestureHUDStyle) -> NSSize {
@@ -167,6 +168,10 @@ final class GestureHUDRenderView: NSVisualEffectView {
     }
 
     func render(model: GestureHUDRenderModel) {
+        guard currentModel != model else {
+            return
+        }
+
         if currentStyle != model.style || subviews.isEmpty {
             rebuild(for: model.style)
         }
@@ -174,11 +179,13 @@ final class GestureHUDRenderView: NSVisualEffectView {
         glyphView.glyph = model.glyph
         messageLabel.stringValue = "\(model.gestureTitle) · \(model.actionTitle)"
         titleLabel.stringValue = model.actionTitle
+        currentModel = model
     }
 
     private func rebuild(for style: GestureHUDStyle) {
         let configuration = gestureHUDStyleConfiguration(for: style)
         currentStyle = style
+        currentModel = nil
         frame = NSRect(origin: .zero, size: configuration.panelSize)
         material = configuration.material
         blendingMode = configuration.blendingMode
