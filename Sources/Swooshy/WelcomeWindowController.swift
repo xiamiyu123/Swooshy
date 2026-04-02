@@ -234,7 +234,7 @@ struct WelcomeGuideContent {
                     settingsStore.localized("guide.page.corner_snap.bullet2"),
                     settingsStore.localized("guide.page.corner_snap.bullet3"),
                 ],
-                imageName: "step3"
+                imageName: "corner-snap-mode"
             ),
             Page(
                 id: 7,
@@ -816,6 +816,7 @@ private func guideImage(named name: String) -> NSImage? {
 @MainActor
 private final class GuideImageCache {
     static let shared = GuideImageCache()
+    private static let supportedExtensions = ["gif", "jpg", "jpeg", "png"]
 
     private var cache: [String: NSImage] = [:]
 
@@ -824,16 +825,19 @@ private final class GuideImageCache {
             return cached
         }
 
-        guard let url = Bundle.appResources.url(forResource: name, withExtension: "jpg") else {
-            return nil
-        }
+        for fileExtension in Self.supportedExtensions {
+            guard let url = Bundle.appResources.url(forResource: name, withExtension: fileExtension) else {
+                continue
+            }
 
-        guard let image = NSImage(contentsOf: url) else {
-            return nil
-        }
+            guard let image = NSImage(contentsOf: url) else {
+                continue
+            }
 
-        cache[name] = image
-        return image
+            cache[name] = image
+            return image
+        }
+        return nil
     }
 }
 

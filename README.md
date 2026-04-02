@@ -114,7 +114,7 @@ corner snap mode:
   `Advanced Settings`.
 
 <br>
-<img src="docs/images/step3.jpg" width="600" alt="Title bar gesture for corner snap mode" style="border-radius: 8px;">
+<img src="docs/images/corner-snap-mode.gif" width="600" alt="Title bar gesture for corner snap mode" style="border-radius: 8px;">
 
 </details>
 
