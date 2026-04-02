@@ -446,6 +446,12 @@ struct WindowManager: WindowManaging {
                 try setFullScreen(true, for: window)
             }
             return
+        case .exitFullScreen:
+            let window = try focusedWindowElement(in: appElement)
+            if isFullScreen(window) {
+                try setFullScreen(false, for: window)
+            }
+            return
         }
 
         let resolvedLayout = try resolvedWindowActionLayout(
@@ -504,6 +510,9 @@ struct WindowManager: WindowManaging {
             return
         case .toggleFullScreen:
             _ = try toggleFullScreenWindow(of: target)
+            return
+        case .exitFullScreen:
+            _ = try exitFullScreenWindow(of: target)
             return
         case .closeTab:
             guard BrowserTabProbe.simulateMiddleClick(at: preferredAppKitPoint ?? NSEvent.mouseLocation) else {
@@ -939,6 +948,34 @@ struct WindowManager: WindowManaging {
         
         cycleSessions.invalidate(for: app.processIdentifier)
         DebugLog.info(DebugLog.windows, "Entered full screen for one visible window of \(application.logDescription)")
+        return true
+    }
+
+    func exitFullScreenWindow(of application: DockApplicationTarget) throws -> Bool {
+        guard AXIsProcessTrusted() else {
+            throw WindowManagerError.accessibilityPermissionMissing
+        }
+
+        DebugLog.info(DebugLog.windows, "Attempting to exit full screen for a visible window of \(application.logDescription)")
+
+        let app = try runningApplication(matching: application)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
+
+        guard let targetWindow = windows.first else {
+            DebugLog.debug(DebugLog.windows, "No visible window found to exit full screen for \(application.logDescription)")
+            return false
+        }
+
+        try bringWindowToFront(targetWindow, for: app)
+        guard isFullScreen(targetWindow) else {
+            DebugLog.debug(DebugLog.windows, "Visible window is not full screen for \(application.logDescription); nothing to exit")
+            return false
+        }
+
+        try setFullScreen(false, for: targetWindow)
+        cycleSessions.invalidate(for: app.processIdentifier)
+        DebugLog.info(DebugLog.windows, "Exited full screen for one visible window of \(application.logDescription)")
         return true
     }
 

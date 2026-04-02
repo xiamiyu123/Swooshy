@@ -16,6 +16,27 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
     case cycleSameAppWindowsForward = 12
     case cycleSameAppWindowsBackward = 13
     case toggleFullScreen = 14
+    case exitFullScreen = 15
+
+    static let allCases: [WindowAction] = [
+        .leftHalf,
+        .rightHalf,
+        .maximize,
+        .center,
+        .topLeftQuarter,
+        .topRightQuarter,
+        .bottomLeftQuarter,
+        .bottomRightQuarter,
+        .minimize,
+        .closeWindow,
+        .closeTab,
+        .quitApplication,
+        .cycleSameAppWindowsForward,
+        .cycleSameAppWindowsBackward,
+        .toggleFullScreen,
+    ]
+
+    static let gestureCases: [WindowAction] = allCases + [.exitFullScreen]
 
     var title: String {
         title()
@@ -68,7 +89,8 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
              .quitApplication,
              .cycleSameAppWindowsForward,
              .cycleSameAppWindowsBackward,
-             .toggleFullScreen:
+             .toggleFullScreen,
+             .exitFullScreen:
             return nil
         }
     }
@@ -168,6 +190,12 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
                 localeIdentifier: localeIdentifier,
                 preferredLanguages: preferredLanguages
             )
+        case .exitFullScreen:
+            return L10n.string(
+                "action.exit_full_screen",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
         }
     }
 
@@ -200,6 +228,8 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
             return "9"
         case .toggleFullScreen:
             return "0"
+        case .exitFullScreen:
+            return ""
         }
     }
 }

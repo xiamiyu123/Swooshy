@@ -64,6 +64,7 @@ enum DockGestureAction: String, CaseIterable, Codable, Hashable, Identifiable, S
     case closeTab
     case quitApplication
     case toggleFullScreenWindow
+    case exitFullScreenWindow
 
     var id: String { rawValue }
 
@@ -117,6 +118,12 @@ enum DockGestureAction: String, CaseIterable, Codable, Hashable, Identifiable, S
         case .toggleFullScreenWindow:
             return L10n.string(
                 "action.toggle_full_screen",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .exitFullScreenWindow:
+            return L10n.string(
+                "action.exit_full_screen",
                 localeIdentifier: localeIdentifier,
                 preferredLanguages: preferredLanguages
             )

@@ -20,7 +20,7 @@
 "action.close_tab" = "关闭标签页";
 "action.quit_application" = "退出应用";
 "action.toggle_full_screen" = "最大化全屏";
-"action.exit_full_screen" = "退出全屏";
+"action.exit_full_screen" = "仅取消最大化";
 "action.close_tab" = "关闭标签页";
 "action.cycle_same_app_windows_forward" = "向前切换当前应用窗口";
 "action.cycle_same_app_windows_backward" = "向后切换当前应用窗口";

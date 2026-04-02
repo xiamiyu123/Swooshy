@@ -248,6 +248,22 @@ struct SettingsStoreTests {
     }
 
     @Test
+    func persistsGestureOnlyExitMaximizeActions() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+        store.updateDockGestureAction(.exitFullScreenWindow, for: .pinchOut)
+        store.updateTitleBarGestureAction(.exitFullScreen, for: .pinchOut)
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+
+        #expect(reloadedStore.dockGestureAction(for: .pinchOut) == .exitFullScreenWindow)
+        #expect(reloadedStore.titleBarGestureAction(for: .pinchOut) == .exitFullScreen)
+    }
+
+    @Test
     func legacyGestureBindingsWithoutEnabledFlagsStillDecode() {
         let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

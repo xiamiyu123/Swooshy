@@ -25,5 +25,13 @@ struct WindowActionTests {
         {
             #expect(action.supportsSnapPreview == false)
         }
+
+        #expect(WindowAction.exitFullScreen.supportsSnapPreview == false)
+    }
+
+    @Test
+    func gestureCasesIncludeGestureOnlyActionsWithoutAffectingShortcutActions() {
+        #expect(WindowAction.gestureCases.contains(.exitFullScreen))
+        #expect(WindowAction.allCases.contains(.exitFullScreen) == false)
     }
 }

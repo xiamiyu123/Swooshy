@@ -614,6 +614,8 @@ final class DockGestureController {
                 _ = try windowManager.quitApplication(matching: application)
             case .toggleFullScreenWindow:
                 _ = try windowManager.toggleFullScreenWindow(of: application)
+            case .exitFullScreenWindow:
+                _ = try windowManager.exitFullScreenWindow(of: application)
             }
         } catch let error as WindowManagerError {
             handleWindowManagerError(error)

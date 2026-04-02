@@ -736,7 +736,7 @@ private struct TitleBarGestureActionRow: View {
                     set: { settingsStore.updateTitleBarGestureAction($0, for: gesture) }
                 )
             ) {
-                ForEach(WindowAction.allCases, id: \.self) { action in
+                ForEach(WindowAction.gestureCases, id: \.self) { action in
                     Text(action.title(preferredLanguages: settingsStore.preferredLanguages))
                         .tag(action)
                         .disabled(action == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false)

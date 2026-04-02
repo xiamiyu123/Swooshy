@@ -20,7 +20,7 @@
 "action.close_tab" = "Close Tab";
 "action.quit_application" = "Quit Application";
 "action.toggle_full_screen" = "Maximize";
-"action.exit_full_screen" = "Exit Full Screen";
+"action.exit_full_screen" = "Exit Full Screen Only";
 "action.close_tab" = "Close Tab";
 "action.cycle_same_app_windows_forward" = "Cycle Same-App Windows Forward";
 "action.cycle_same_app_windows_backward" = "Cycle Same-App Windows Backward";
