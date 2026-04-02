@@ -2,6 +2,7 @@
 "menu.permission.ready" = "Accessibility Access Ready";
 "menu.permission.grant" = "Grant Accessibility Access";
 "menu.permission.refresh" = "Refresh Permission State";
+"menu.window_actions" = "Window Actions";
 "menu.settings" = "Settings…";
 "menu.help" = "How This Works";
 "menu.quit" = "Quit Swooshy";
@@ -119,6 +120,8 @@
 "settings.launch_at_login.error" = "Unable to update launch-at-login. Make sure the app is in Applications and try again.";
 "settings.status_item_icon.label" = "Menu bar icon";
 "settings.status_item_icon.footer" = "";
+"settings.status_item_window_actions_collapsed.enabled" = "Collapse window actions in status menu";
+"settings.status_item_window_actions_collapsed.footer" = "When enabled, window action items move into a single submenu to keep the status menu shorter.";
 "settings.status_item_icon.swooshy" = "Swooshy";
 "settings.status_item_icon.gale" = "Gale";
 "settings.status_item_icon.grouped_windows" = "Grouped windows";

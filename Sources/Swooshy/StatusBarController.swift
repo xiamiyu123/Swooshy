@@ -102,6 +102,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         DebugLog.debug(DebugLog.app, "Rebuilding status menu; accessibility granted = \(permissionGranted)")
         let entries = menuContentBuilder.makeEntries(
             permissionGranted: permissionGranted,
+            collapseWindowActions: settingsStore.collapseStatusItemWindowActions,
             preferredLanguages: settingsStore.preferredLanguages
         )
 
@@ -225,6 +226,15 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             item.isEnabled = enforcePermissionLock ? false : entry.isEnabled
             item.keyEquivalentModifierMask = binding.menuModifierFlags
             return item
+        case .windowActionGroup:
+            let item = NSMenuItem(
+                title: entry.title,
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.isEnabled = enforcePermissionLock ? false : entry.isEnabled
+            item.submenu = windowActionsSubmenu(permissionGranted: permissionGranted)
+            return item
         case .help:
             let item = NSMenuItem(
                 title: entry.title,
@@ -255,5 +265,24 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             item.isEnabled = entry.isEnabled
             return item
         }
+    }
+
+    private func windowActionsSubmenu(permissionGranted: Bool) -> NSMenu {
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        let entries = WindowAction.allCases.map { action in
+            StatusMenuEntry(
+                kind: .windowAction(action),
+                title: action.title(preferredLanguages: settingsStore.preferredLanguages),
+                isEnabled: permissionGranted
+            )
+        }
+
+        for entry in entries {
+            submenu.addItem(menuItem(for: entry, permissionGranted: permissionGranted))
+        }
+
+        return submenu
     }
 }

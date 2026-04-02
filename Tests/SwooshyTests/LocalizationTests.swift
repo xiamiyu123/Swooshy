@@ -15,6 +15,7 @@ struct LocalizationTests {
     @Test
     func englishStringsResolveFromModuleBundle() {
         #expect(L10n.string("menu.permission.grant", localeIdentifier: "en") == "Grant Accessibility Access")
+        #expect(L10n.string("menu.window_actions", localeIdentifier: "en") == "Window Actions")
         #expect(L10n.string("action.center", localeIdentifier: "en") == "Fill Entire Screen")
         #expect(L10n.string("action.quit_application", localeIdentifier: "en") == "Quit Application")
         #expect(L10n.string("action.restore_window", localeIdentifier: "en") == "Restore Minimized Window")
@@ -26,6 +27,7 @@ struct LocalizationTests {
     @Test
     func simplifiedChineseStringsResolveFromModuleBundle() {
         #expect(L10n.string("menu.permission.grant", localeIdentifier: "zh-Hans") == "授予辅助功能权限")
+        #expect(L10n.string("menu.window_actions", localeIdentifier: "zh-Hans") == "窗口操作")
         #expect(L10n.string("action.center", localeIdentifier: "zh-Hans") == "填充整个屏幕")
         #expect(L10n.string("action.close_window", localeIdentifier: "zh-Hans") == "关闭窗口")
         #expect(L10n.string("action.restore_window", localeIdentifier: "zh-Hans") == "恢复最小化窗口")

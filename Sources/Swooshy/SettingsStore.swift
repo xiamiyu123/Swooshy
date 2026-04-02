@@ -222,6 +222,18 @@ final class SettingsStore {
         }
     }
 
+    var collapseStatusItemWindowActions: Bool {
+        didSet {
+            guard oldValue != collapseStatusItemWindowActions else { return }
+            userDefaults.set(collapseStatusItemWindowActions, forKey: Keys.collapseStatusItemWindowActions)
+            DebugLog.info(
+                DebugLog.settings,
+                "Collapse status-item window actions set to \(collapseStatusItemWindowActions)"
+            )
+            notifyDidChange()
+        }
+    }
+
     var hasSeenWelcomeGuide: Bool {
         didSet {
             guard oldValue != hasSeenWelcomeGuide else { return }
@@ -365,6 +377,11 @@ final class SettingsStore {
         self.statusItemIcon = StatusItemIcon(
             storageValue: userDefaults.string(forKey: Keys.statusItemIcon)
         )
+        self.collapseStatusItemWindowActions = Self.boolValue(
+            forKey: Keys.collapseStatusItemWindowActions,
+            defaultValue: true,
+            in: userDefaults
+        )
         self.hasSeenWelcomeGuide = Self.boolValue(
             forKey: Keys.hasSeenWelcomeGuide,
             defaultValue: false,
@@ -401,6 +418,7 @@ final class SettingsStore {
             Keys.titleBarCornerDragHoldDuration,
             Keys.gestureHUDStyle,
             Keys.statusItemIcon,
+            Keys.collapseStatusItemWindowActions,
             Keys.debugLoggingEnabled,
             Keys.hotKeyBindings,
             Keys.dockGestureBindings,
@@ -738,6 +756,7 @@ final class SettingsStore {
         static let titleBarCornerDragHoldDuration = "settings.titleBarCornerDragHoldDuration"
         static let gestureHUDStyle = "settings.gestureHUDStyle"
         static let statusItemIcon = "settings.statusItemIcon"
+        static let collapseStatusItemWindowActions = "settings.collapseStatusItemWindowActions"
         static let hasSeenWelcomeGuide = "settings.hasSeenWelcomeGuide"
         static let debugLoggingEnabled = "settings.debugLoggingEnabled"
         static let hotKeyBindings = "settings.hotKeyBindings"

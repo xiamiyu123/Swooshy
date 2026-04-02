@@ -38,6 +38,19 @@ struct StatusMenuContentBuilderTests {
     }
 
     @Test
+    func menuCanCollapseWindowActionsIntoSingleEntry() {
+        let entries = builder.makeEntries(
+            permissionGranted: true,
+            collapseWindowActions: true,
+            preferredLanguages: ["zh-Hans-CN"]
+        )
+
+        #expect(entries.contains { $0.kind == .windowActionGroup && $0.title == "窗口操作" })
+        #expect(entries.contains { $0.kind == .windowAction(.leftHalf) } == false)
+        #expect(entries.contains { $0.kind == .windowAction(.toggleFullScreen) } == false)
+    }
+
+    @Test
     func permissionAndRefreshEntriesAreEnabledWhenPermissionMissing() {
         let entries = builder.makeEntries(
             permissionGranted: false,

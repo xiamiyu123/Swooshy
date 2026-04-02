@@ -111,6 +111,15 @@ private struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+
+                Toggle(
+                    settingsStore.localized("settings.status_item_window_actions_collapsed.enabled"),
+                    isOn: $settingsStore.collapseStatusItemWindowActions
+                )
+
+                SettingsHintGroup {
+                    Text(settingsStore.localized("settings.status_item_window_actions_collapsed.footer"))
+                }
             } header: {
                 Text(settingsStore.localized("settings.section.general"))
             }

@@ -2,6 +2,7 @@
 "menu.permission.ready" = "辅助功能权限已就绪";
 "menu.permission.grant" = "授予辅助功能权限";
 "menu.permission.refresh" = "刷新权限状态";
+"menu.window_actions" = "窗口操作";
 "menu.settings" = "设置…";
 "menu.help" = "使用说明";
 "menu.quit" = "退出 Swooshy";
@@ -119,6 +120,8 @@
 "settings.launch_at_login.error" = "无法更新开机自启状态，请确认应用位于 Applications 并稍后重试。";
 "settings.status_item_icon.label" = "菜单栏图标";
 "settings.status_item_icon.footer" = "";
+"settings.status_item_window_actions_collapsed.enabled" = "折叠托盘菜单里的动作按钮";
+"settings.status_item_window_actions_collapsed.footer" = "启用后，窗口动作会收进一个子菜单里，让托盘菜单更短一些。";
 "settings.status_item_icon.swooshy" = "Swooshy";
 "settings.status_item_icon.gale" = "狂风";
 "settings.status_item_icon.grouped_windows" = "窗口分组";

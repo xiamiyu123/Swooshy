@@ -18,6 +18,7 @@ struct SettingsStoreTests {
         store.titleBarGesturesEnabled = false
         store.dockCornerDragSnapEnabled = false
         store.titleBarCornerDragSnapEnabled = false
+        store.collapseStatusItemWindowActions = true
         store.titleBarOverlayProtectionEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.titleBarTriggerHeight = 42
@@ -36,6 +37,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.titleBarGesturesEnabled == false)
         #expect(reloadedStore.dockCornerDragSnapEnabled == false)
         #expect(reloadedStore.titleBarCornerDragSnapEnabled == false)
+        #expect(reloadedStore.collapseStatusItemWindowActions == true)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == true)
         #expect(reloadedStore.titleBarTriggerHeight == 42)
@@ -139,6 +141,7 @@ struct SettingsStoreTests {
         store.titleBarGesturesEnabled = false
         store.dockCornerDragSnapEnabled = false
         store.titleBarCornerDragSnapEnabled = false
+        store.collapseStatusItemWindowActions = true
         store.titleBarOverlayProtectionEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.titleBarTriggerHeight = 40
@@ -157,6 +160,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.titleBarGesturesEnabled == true)
         #expect(reloadedStore.dockCornerDragSnapEnabled == true)
         #expect(reloadedStore.titleBarCornerDragSnapEnabled == true)
+        #expect(reloadedStore.collapseStatusItemWindowActions == true)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == false)
         #expect(reloadedStore.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
@@ -210,6 +214,17 @@ struct SettingsStoreTests {
 
         #expect(store.dockCornerDragSnapEnabled == true)
         #expect(store.titleBarCornerDragSnapEnabled == true)
+    }
+
+    @Test
+    func statusItemWindowActionsCollapseByDefault() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.collapseStatusItemWindowActions == true)
     }
 
     @Test

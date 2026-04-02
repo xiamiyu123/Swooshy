@@ -6,6 +6,7 @@ struct StatusMenuEntry: Equatable {
         case permission
         case refresh
         case windowAction(WindowAction)
+        case windowActionGroup
         case settings
         case help
         case quit
@@ -20,6 +21,7 @@ struct StatusMenuEntry: Equatable {
 struct StatusMenuContentBuilder {
     func makeEntries(
         permissionGranted: Bool,
+        collapseWindowActions: Bool = false,
         localeIdentifier: String? = nil,
         preferredLanguages: [String] = Locale.preferredLanguages
     ) -> [StatusMenuEntry] {
@@ -32,15 +34,26 @@ struct StatusMenuContentBuilder {
             )
         }
 
-        let actions = WindowAction.allCases.map { action in
-            StatusMenuEntry(
-                kind: .windowAction(action),
-                title: action.title(
-                    localeIdentifier: localeIdentifier,
-                    preferredLanguages: preferredLanguages
-                ),
-                isEnabled: permissionGranted
-            )
+        let actionEntries: [StatusMenuEntry]
+        if collapseWindowActions {
+            actionEntries = [
+                StatusMenuEntry(
+                    kind: .windowActionGroup,
+                    title: localized("menu.window_actions"),
+                    isEnabled: permissionGranted
+                )
+            ]
+        } else {
+            actionEntries = WindowAction.allCases.map { action in
+                StatusMenuEntry(
+                    kind: .windowAction(action),
+                    title: action.title(
+                        localeIdentifier: localeIdentifier,
+                        preferredLanguages: preferredLanguages
+                    ),
+                    isEnabled: permissionGranted
+                )
+            }
         }
 
         return [
@@ -65,8 +78,8 @@ struct StatusMenuContentBuilder {
                 kind: .separator,
                 title: "",
                 isEnabled: false
-            ),
-        ] + actions + [
+            )
+        ] + actionEntries + [
             StatusMenuEntry(
                 kind: .separator,
                 title: "",
