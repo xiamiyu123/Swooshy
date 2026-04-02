@@ -639,17 +639,6 @@ final class DockGestureController {
         anchorPoint: CGPoint,
         touches: [TrackpadTouchSample]
     ) {
-        guard
-            let frontmostApplication = NSWorkspace.shared.frontmostApplication,
-            frontmostApplication.processIdentifier == event.application.processIdentifier
-        else {
-            DebugLog.debug(
-                DebugLog.dock,
-                "Ignoring title-bar gesture \(event.gesture.rawValue) because frontmost app changed"
-            )
-            return
-        }
-
         guard let action = titleBarAction(for: event.gesture) else {
             DebugLog.debug(DebugLog.dock, "Ignoring unsupported title-bar gesture \(event.gesture.rawValue)")
             return
@@ -668,7 +657,14 @@ final class DockGestureController {
             return
         }
 
-        let window = try? windowManager.focusedWindowElement(in: AXUIElementCreateApplication(frontmostApplication.processIdentifier))
+        let app = try? windowManager.runningApplication(matching: event.application)
+        let window = app.flatMap { application in
+            try? windowManager.preferredWindowActionTarget(
+                in: application,
+                appElement: AXUIElementCreateApplication(application.processIdentifier),
+                preferredAppKitPoint: anchorPoint
+            )
+        }
         let isInFullScreen = window.map { windowManager.isFullScreen($0) } ?? false
 
         // Whitelist: In Full Screen, ONLY Pinch In is allowed (for smart exit).
@@ -704,7 +700,7 @@ final class DockGestureController {
         let persistent = settingsStore.executeGestureOnRelease
         let useSmoothWindowPreview = shouldUseSmoothWindowPreview(for: action)
         let preview = persistent && useSmoothWindowPreview == false
-            ? snapPreview(for: action, anchorPoint: anchorPoint)
+            ? snapPreview(for: action, application: event.application, anchorPoint: anchorPoint)
             : nil
         gestureFeedbackPresenter.show(
             gesture: event.gesture,
@@ -728,7 +724,11 @@ final class DockGestureController {
             )
             if useSmoothWindowPreview {
                 finishSmoothWindowPreview(restore: false)
-                beginSmoothPreviewIfNeeded(for: action, anchorPoint: anchorPoint)
+                beginSmoothPreviewIfNeeded(
+                    for: action,
+                    application: event.application,
+                    anchorPoint: anchorPoint
+                )
             } else {
                 finishSmoothWindowPreview(restore: true)
             }
@@ -755,8 +755,11 @@ final class DockGestureController {
         do {
             if settingsStore.smartPinchExitFullScreenEnabled, event.gesture == .pinchIn {
                 let app = try windowManager.runningApplication(matching: event.application)
-                let appElement = AXUIElementCreateApplication(app.processIdentifier)
-                if let window = try? windowManager.focusedWindowElement(in: appElement),
+                if let window = try? windowManager.preferredWindowActionTarget(
+                    in: app,
+                    appElement: AXUIElementCreateApplication(app.processIdentifier),
+                    preferredAppKitPoint: anchorPoint
+                ),
                    windowManager.isFullScreen(window) {
                     try windowManager.setFullScreen(false, for: window)
                     DebugLog.info(DebugLog.dock, "Smart intercept: pinched in on full screen window, forced exit.")
@@ -781,6 +784,7 @@ final class DockGestureController {
 
             try windowManager.perform(
                 action,
+                on: event.application,
                 layoutEngine: layoutEngine,
                 preferredAppKitPoint: anchorPoint
             )
@@ -796,13 +800,18 @@ final class DockGestureController {
         settingsStore.titleBarGestureAction(for: gesture)
     }
 
-    private func snapPreview(for action: WindowAction, anchorPoint: CGPoint) -> WindowActionPreview? {
+    private func snapPreview(
+        for action: WindowAction,
+        application: DockApplicationTarget,
+        anchorPoint: CGPoint
+    ) -> WindowActionPreview? {
         guard action.supportsSnapPreview else {
             return nil
         }
 
         return try? windowManager.previewTarget(
             for: action,
+            on: application,
             layoutEngine: layoutEngine,
             preferredAppKitPoint: anchorPoint
         )
@@ -882,6 +891,7 @@ final class DockGestureController {
                     case .titleBar:
                         try windowManager.previewTarget(
                             for: action,
+                            on: application,
                             layoutEngine: layoutEngine,
                             preferredAppKitPoint: preferredAppKitPoint
                         )
@@ -1229,6 +1239,7 @@ final class DockGestureController {
             case .titleBar:
                 try windowManager.perform(
                     action,
+                    on: application,
                     layoutEngine: layoutEngine,
                     preferredAppKitPoint: anchorPoint
                 )
@@ -1338,7 +1349,11 @@ final class DockGestureController {
             action?.supportsSnapPreview == true
     }
 
-    private func beginSmoothPreviewIfNeeded(for action: WindowAction, anchorPoint: CGPoint) {
+    private func beginSmoothPreviewIfNeeded(
+        for action: WindowAction,
+        application: DockApplicationTarget,
+        anchorPoint: CGPoint
+    ) {
         guard shouldUseSmoothWindowPreview(for: action) else {
             finishSmoothWindowPreview(restore: true)
             return
@@ -1348,6 +1363,7 @@ final class DockGestureController {
             do {
                 smoothWindowPreviewSession = try windowManager.beginSmoothPreviewSession(
                     for: action,
+                    on: application,
                     layoutEngine: layoutEngine,
                     preferredAppKitPoint: anchorPoint
                 )
@@ -1361,6 +1377,7 @@ final class DockGestureController {
         do {
             let targetFrame = try windowManager.smoothPreviewTargetFrame(
                 for: action,
+                on: application,
                 layoutEngine: layoutEngine,
                 preferredAppKitPoint: anchorPoint
             )
@@ -1394,6 +1411,7 @@ final class DockGestureController {
                 case .titleBar:
                     smoothWindowPreviewSession = try windowManager.beginSmoothPreviewSession(
                         for: action,
+                        on: application,
                         layoutEngine: layoutEngine,
                         preferredAppKitPoint: anchorPoint
                     )
@@ -1418,6 +1436,7 @@ final class DockGestureController {
             case .titleBar:
                 targetFrame = try windowManager.smoothPreviewTargetFrame(
                     for: action,
+                    on: application,
                     layoutEngine: layoutEngine,
                     preferredAppKitPoint: anchorPoint
                 )
@@ -1747,6 +1766,11 @@ private final class TitleBarAccessibilityProbe {
         let expiresAt: Date
     }
 
+    private struct HoveredWindowTarget {
+        let application: DockApplicationTarget
+        let window: AXUIElement
+    }
+
     func clearCache() {
         cachedHitRegion = nil
         lastProbeLogAt = .distantPast
@@ -1793,19 +1817,13 @@ private final class TitleBarAccessibilityProbe {
             return nil
         }
 
-        guard
-            let frontmostApplication = NSWorkspace.shared.frontmostApplication,
-            frontmostApplication.isTerminated == false
-        else {
+        guard let hoveredTarget = hoveredWindowTarget(at: appKitPoint) else {
             cachedHitRegion = nil
             return nil
         }
 
-        let appElement = AXUIElementCreateApplication(frontmostApplication.processIdentifier)
-        guard
-            let window = focusedOrMainWindow(in: appElement),
-            let appKitWindowFrame = appKitFrame(of: window)
-        else {
+        let window = hoveredTarget.window
+        guard let appKitWindowFrame = appKitFrame(of: window) else {
             cachedHitRegion = nil
             return nil
         }
@@ -1822,16 +1840,7 @@ private final class TitleBarAccessibilityProbe {
             return nil
         }
 
-        let aliases = RunningApplicationIdentity.aliases(for: frontmostApplication)
-        let fallbackName = frontmostApplication.bundleIdentifier ?? "Application"
-        let resolvedName = frontmostApplication.localizedName ?? aliases.first ?? fallbackName
-        let target = DockApplicationTarget(
-            dockItemName: resolvedName,
-            resolvedApplicationName: resolvedName,
-            processIdentifier: frontmostApplication.processIdentifier,
-            bundleIdentifier: frontmostApplication.bundleIdentifier,
-            aliases: aliases
-        )
+        let target = hoveredTarget.application
 
         cachedHitRegion = CachedHitRegion(
             application: target,
@@ -1884,6 +1893,67 @@ private final class TitleBarAccessibilityProbe {
                 "Pointer missed title-bar region for \(target.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(titleBarFrame))"
             }
         )
+        return nil
+    }
+
+    private func hoveredWindowTarget(at appKitPoint: CGPoint) -> HoveredWindowTarget? {
+        guard let hitElement = axHitElement(at: appKitPoint) else {
+            return nil
+        }
+
+        var hitProcessIdentifier: pid_t = 0
+        guard AXUIElementGetPid(hitElement, &hitProcessIdentifier) == .success else {
+            return nil
+        }
+
+        guard
+            let application = NSRunningApplication(processIdentifier: hitProcessIdentifier),
+            application.isTerminated == false
+        else {
+            return nil
+        }
+
+        let aliases = RunningApplicationIdentity.aliases(for: application)
+        let fallbackName = application.bundleIdentifier ?? "Application"
+        let resolvedName = application.localizedName ?? aliases.first ?? fallbackName
+        let target = DockApplicationTarget(
+            dockItemName: resolvedName,
+            resolvedApplicationName: resolvedName,
+            processIdentifier: application.processIdentifier,
+            bundleIdentifier: application.bundleIdentifier,
+            aliases: aliases
+        )
+
+        if let window = windowElement(containing: hitElement) {
+            return HoveredWindowTarget(application: target, window: window)
+        }
+
+        let appElement = AXUIElementCreateApplication(application.processIdentifier)
+        guard let fallbackWindow = focusedOrMainWindow(in: appElement) else {
+            return nil
+        }
+
+        return HoveredWindowTarget(application: target, window: fallbackWindow)
+    }
+
+    private func windowElement(containing element: AXUIElement) -> AXUIElement? {
+        if let window = AXAttributeReader.element(kAXWindowAttribute as CFString, from: element) {
+            return window
+        }
+
+        var current: AXUIElement? = element
+        for _ in 0..<12 {
+            guard let node = current else {
+                break
+            }
+
+            if AXAttributeReader.string(kAXRoleAttribute as CFString, from: node) == kAXWindowRole as String {
+                return node
+            }
+
+            current = AXAttributeReader.element(kAXParentAttribute as CFString, from: node)
+        }
+
         return nil
     }
 
@@ -1959,6 +2029,20 @@ private final class TitleBarAccessibilityProbe {
 }
 
 private func axHitProcessIdentifier(at appKitPoint: CGPoint) -> pid_t? {
+    guard let hitElement = axHitElement(at: appKitPoint) else {
+        return nil
+    }
+
+    var hitProcessIdentifier: pid_t = 0
+    let pidResult = AXUIElementGetPid(hitElement, &hitProcessIdentifier)
+    guard pidResult == .success else {
+        return nil
+    }
+
+    return hitProcessIdentifier
+}
+
+private func axHitElement(at appKitPoint: CGPoint) -> AXUIElement? {
     let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
     let axPoint = geometry.axPoint(fromAppKitPoint: appKitPoint)
     let systemWideElement = AXUIElementCreateSystemWide()
@@ -1970,17 +2054,11 @@ private func axHitProcessIdentifier(at appKitPoint: CGPoint) -> pid_t? {
         &hitElement
     )
 
-    guard result == .success, let hitElement else {
+    guard result == .success else {
         return nil
     }
 
-    var hitProcessIdentifier: pid_t = 0
-    let pidResult = AXUIElementGetPid(hitElement, &hitProcessIdentifier)
-    guard pidResult == .success else {
-        return nil
-    }
-
-    return hitProcessIdentifier
+    return hitElement
 }
 
 @MainActor

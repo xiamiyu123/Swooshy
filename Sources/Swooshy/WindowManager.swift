@@ -628,7 +628,11 @@ struct WindowManager: WindowManaging {
             break
         }
 
-        let targetWindow = try preferredWindowActionTarget(in: app, appElement: appElement)
+        let targetWindow = try preferredWindowActionTarget(
+            in: app,
+            appElement: appElement,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
         try bringWindowToFront(targetWindow, for: app)
 
         let resolvedLayout = try resolvedWindowActionLayout(
@@ -697,7 +701,11 @@ struct WindowManager: WindowManaging {
 
         let app = try runningApplication(matching: target)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let targetWindow = try preferredWindowActionTarget(in: app, appElement: appElement)
+        let targetWindow = try preferredWindowActionTarget(
+            in: app,
+            appElement: appElement,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
         let resolvedLayout = try resolvedWindowActionLayout(
             for: action,
             application: app,
@@ -742,7 +750,11 @@ struct WindowManager: WindowManaging {
     ) throws -> SmoothWindowPreviewSession {
         let app = try runningApplication(matching: target)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let targetWindow = try preferredWindowActionTarget(in: app, appElement: appElement)
+        let targetWindow = try preferredWindowActionTarget(
+            in: app,
+            appElement: appElement,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
         try bringWindowToFront(targetWindow, for: app)
         let resolvedLayout = try resolvedWindowActionLayout(
             for: action,
@@ -787,7 +799,11 @@ struct WindowManager: WindowManaging {
     ) throws -> CGRect {
         let app = try runningApplication(matching: target)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let targetWindow = try preferredWindowActionTarget(in: app, appElement: appElement)
+        let targetWindow = try preferredWindowActionTarget(
+            in: app,
+            appElement: appElement,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
         let resolvedLayout = try resolvedWindowActionLayout(
             for: action,
             application: app,
@@ -928,10 +944,22 @@ struct WindowManager: WindowManaging {
         )
     }
 
-    private func preferredWindowActionTarget(
+    func preferredWindowActionTarget(
         in app: NSRunningApplication,
-        appElement: AXUIElement
+        appElement: AXUIElement,
+        preferredAppKitPoint: CGPoint?
     ) throws -> AXUIElement {
+        if
+            let preferredAppKitPoint,
+            let window = try windowContainingPoint(
+                preferredAppKitPoint,
+                in: app,
+                appElement: appElement
+            )
+        {
+            return window
+        }
+
         let visibleWindows = try orderedVisibleWindowElements(in: app, appElement: appElement)
         if let window = visibleWindows.first {
             return window
@@ -942,6 +970,71 @@ struct WindowManager: WindowManaging {
         }
 
         throw WindowManagerError.noFocusedWindow
+    }
+
+    private func windowContainingPoint(
+        _ appKitPoint: CGPoint,
+        in app: NSRunningApplication,
+        appElement: AXUIElement
+    ) throws -> AXUIElement? {
+        if let hitWindow = hitTestWindow(at: appKitPoint, processIdentifier: app.processIdentifier) {
+            DebugLog.debug(
+                DebugLog.windows,
+                "Resolved preferred window from hit-test at \(NSStringFromPoint(appKitPoint)): \(windowSummary([hitWindow]))"
+            )
+            return hitWindow
+        }
+
+        let visibleWindows = try orderedVisibleWindowElements(in: app, appElement: appElement)
+        let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
+        for window in visibleWindows {
+            let appKitFrame = geometry.appKitFrame(fromAXFrame: try frame(of: window))
+            if appKitFrame.contains(appKitPoint) {
+                DebugLog.debug(
+                    DebugLog.windows,
+                    "Resolved preferred window by frame containment at \(NSStringFromPoint(appKitPoint)): \(windowSummary([window]))"
+                )
+                return window
+            }
+        }
+
+        return nil
+    }
+
+    private func hitTestWindow(
+        at appKitPoint: CGPoint,
+        processIdentifier: pid_t
+    ) -> AXUIElement? {
+        guard let hitElement = axHitElement(at: appKitPoint) else {
+            return nil
+        }
+
+        var hitProcessIdentifier: pid_t = 0
+        guard
+            AXUIElementGetPid(hitElement, &hitProcessIdentifier) == .success,
+            hitProcessIdentifier == processIdentifier
+        else {
+            return nil
+        }
+
+        if let window = AXAttributeReader.element(kAXWindowAttribute as CFString, from: hitElement) {
+            return window
+        }
+
+        var current: AXUIElement? = hitElement
+        for _ in 0..<12 {
+            guard let node = current else {
+                break
+            }
+
+            if AXAttributeReader.string(kAXRoleAttribute as CFString, from: node) == kAXWindowRole as String {
+                return node
+            }
+
+            current = AXAttributeReader.element(kAXParentAttribute as CFString, from: node)
+        }
+
+        return nil
     }
 
     private func observedConstraintObservation(
@@ -2405,4 +2498,23 @@ enum WindowManagerError: LocalizedError, Equatable {
             return L10n.string("error.no_alternate_window")
         }
     }
+}
+
+private func axHitElement(at appKitPoint: CGPoint) -> AXUIElement? {
+    let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
+    let axPoint = geometry.axPoint(fromAppKitPoint: appKitPoint)
+    let systemWideElement = AXUIElementCreateSystemWide()
+    var hitElement: AXUIElement?
+    let result = AXUIElementCopyElementAtPosition(
+        systemWideElement,
+        Float(axPoint.x),
+        Float(axPoint.y),
+        &hitElement
+    )
+
+    guard result == .success else {
+        return nil
+    }
+
+    return hitElement
 }

@@ -68,8 +68,8 @@ Hover over an app icon in the Dock and use a pinch gesture:
 <details>
 <summary><b>Page 4: Title bar gesture - fill screen and minimize fast</b></summary>
 
-Move the pointer over the title bar area of the frontmost window, which acts as
-the gesture trigger band:
+Move the pointer over the title bar area of the window you want to control,
+which acts as the gesture trigger band:
 
 * **Two-finger swipe up**: Expand the current window to fill the visible screen
   area.

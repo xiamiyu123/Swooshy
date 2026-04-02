@@ -32,7 +32,7 @@
 "alert.permission_required.message" = "Swooshy 需要辅助功能权限来读取和移动当前窗口。\n请打开“系统设置” > “隐私与安全性” > “辅助功能”，启用 Swooshy，然后回到菜单中刷新权限状态。";
 "alert.window_action_failed.title" = "无法执行操作";
 "alert.about.title" = "使用说明";
-"alert.about.message" = "开始使用：\n1. 点击菜单栏图标并先确认已授予辅助功能权限。\n2. 打开“设置…”，按需调整手势映射和全局快捷键。\n3. 鼠标悬停在 Dock 项目上后，使用双指手势操作对应应用窗口。\n4. 鼠标悬停在最前窗口标题栏后，使用双指手势操作当前窗口。\n\n如果权限或行为异常，可在设置中删除Swooshy后重新授予权限，并在菜单中点击“刷新权限状态”后重试。";
+"alert.about.message" = "开始使用：\n1. 点击菜单栏图标并先确认已授予辅助功能权限。\n2. 打开“设置…”，按需调整手势映射和全局快捷键。\n3. 鼠标悬停在 Dock 项目上后，使用双指手势操作对应应用窗口。\n4. 鼠标悬停在目标窗口标题栏后，使用双指手势操作该窗口。\n\n如果权限或行为异常，可在设置中删除Swooshy后重新授予权限，并在菜单中点击“刷新权限状态”后重试。";
 
 "welcome.window.title" = "欢迎";
 "welcome.title" = "欢迎使用 Swooshy";
@@ -70,7 +70,7 @@
 "guide.page.dock_quit.bullet3" = "若只想关闭单个窗口，可在设置中把该手势改成别的动作。";
 
 "guide.page.titlebar_vertical.title" = "标题栏手势：快速全屏与最小化";
-"guide.page.titlebar_vertical.message" = "将鼠标悬停在最前窗口的标题栏区域，再做上下滑动，就能快速处理当前窗口。";
+"guide.page.titlebar_vertical.message" = "将鼠标悬停在目标窗口的标题栏区域，再做上下滑动，就能快速处理该窗口。";
 "guide.page.titlebar_vertical.bullet1" = "双指上滑：让当前窗口填充整个屏幕可视区域。";
 "guide.page.titlebar_vertical.bullet2" = "双指下滑：把当前窗口最小化到 Dock。";
 "guide.page.titlebar_vertical.bullet3" = "先把指针停在标题栏，再做手势，识别会更稳定。";
@@ -142,7 +142,7 @@
 "settings.gesture_hud.style.elegant" = "优雅";
 "settings.gesture_hud.style.minimal" = "极简";
 "settings.dock_gestures.footer" = "这些映射只在指针悬停在 Dock 项目上时生效。";
-"settings.title_bar_gestures.footer" = "这些映射只在指针悬停在最前窗口的标题栏上时生效。";
+"settings.title_bar_gestures.footer" = "这些映射只在指针悬停在窗口标题栏上时生效。";
 "settings.dock_gestures.gesture.swipe_left" = "双指左滑";
 "settings.dock_gestures.gesture.swipe_right" = "双指右滑";
 "settings.dock_gestures.gesture.swipe_down" = "双指下滑";

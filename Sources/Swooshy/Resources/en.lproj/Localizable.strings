@@ -32,7 +32,7 @@
 "alert.permission_required.message" = "Swooshy needs Accessibility permission to read and move the focused window.\nOpen System Settings > Privacy & Security > Accessibility, enable Swooshy, then refresh this menu.";
 "alert.window_action_failed.title" = "Unable to Execute Action";
 "alert.about.title" = "How to Use Swooshy";
-"alert.about.message" = "Quick start:\n1. Click the menu bar icon and make sure Accessibility permission is granted.\n2. Open Settings… to customize gesture mappings and global hotkeys.\n3. Hover the pointer over a Dock item, then use two-finger gestures to control that app's windows.\n4. Hover the pointer over the frontmost window's title bar, then use two-finger gestures to control the current window.\n\nIf permissions or behavior are abnormal, remove Swooshy from Accessibility settings, grant permission again, then choose Refresh Permission State from the menu and try again.";
+"alert.about.message" = "Quick start:\n1. Click the menu bar icon and make sure Accessibility permission is granted.\n2. Open Settings… to customize gesture mappings and global hotkeys.\n3. Hover the pointer over a Dock item, then use two-finger gestures to control that app's windows.\n4. Hover the pointer over the target window's title bar, then use two-finger gestures to control that window.\n\nIf permissions or behavior are abnormal, remove Swooshy from Accessibility settings, grant permission again, then choose Refresh Permission State from the menu and try again.";
 
 "welcome.window.title" = "Welcome";
 "welcome.title" = "Welcome to Swooshy";
@@ -70,7 +70,7 @@
 "guide.page.dock_quit.bullet3" = "If you would rather close a window instead, remap this gesture in Settings.";
 
 "guide.page.titlebar_vertical.title" = "Title Bar Gestures: Fill Screen and Minimize";
-"guide.page.titlebar_vertical.message" = "Hover over the frontmost window's title bar, then use vertical swipes to quickly manage the current window.";
+"guide.page.titlebar_vertical.message" = "Hover over the target window's title bar, then use vertical swipes to quickly manage that window.";
 "guide.page.titlebar_vertical.bullet1" = "Two-finger swipe up: expand the current window to the visible screen area.";
 "guide.page.titlebar_vertical.bullet2" = "Two-finger swipe down: minimize the current window to the Dock.";
 "guide.page.titlebar_vertical.bullet3" = "Recognition is most reliable when the pointer is already resting on the title bar.";
@@ -142,7 +142,7 @@
 "settings.gesture_hud.style.elegant" = "Elegant";
 "settings.gesture_hud.style.minimal" = "Minimal";
 "settings.dock_gestures.footer" = "These mappings apply when the pointer is over a Dock item.";
-"settings.title_bar_gestures.footer" = "These mappings apply when the pointer is over the frontmost window's title bar.";
+"settings.title_bar_gestures.footer" = "These mappings apply when the pointer is over a window's title bar.";
 "settings.dock_gestures.gesture.swipe_left" = "Two-finger swipe left";
 "settings.dock_gestures.gesture.swipe_right" = "Two-finger swipe right";
 "settings.dock_gestures.gesture.swipe_down" = "Two-finger swipe down";
