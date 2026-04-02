@@ -598,7 +598,7 @@ struct WindowManager: WindowManaging {
             _ = try minimizeVisibleWindow(of: target)
             return
         case .closeWindow:
-            _ = try closeVisibleWindow(of: target)
+            _ = try closeWindow(of: target, preferredAppKitPoint: preferredAppKitPoint)
             return
         case .toggleFullScreen:
             _ = try toggleFullScreenWindow(of: target)
@@ -1319,6 +1319,106 @@ struct WindowManager: WindowManaging {
         return false
     }
 
+    func closeWindow(
+        of application: DockApplicationTarget,
+        preferredAppKitPoint: CGPoint?
+    ) throws -> Bool {
+        guard AXIsProcessTrusted() else {
+            throw WindowManagerError.accessibilityPermissionMissing
+        }
+
+        let app = try runningApplication(matching: application)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+        if let preferredAppKitPoint {
+            DebugLog.info(
+                DebugLog.windows,
+                "Attempting to close pointed window for \(application.logDescription) at \(NSStringFromPoint(preferredAppKitPoint))"
+            )
+            let targetWindow = try preferredWindowActionTarget(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
+            if try closeWindow(targetWindow, owningApp: app) {
+                cycleSessions.invalidate(for: app.processIdentifier)
+                DebugLog.info(DebugLog.windows, "Closed pointed window for \(application.logDescription)")
+                return true
+            }
+            DebugLog.debug(DebugLog.windows, "Pointed window was not closeable for \(application.logDescription)")
+            return false
+        }
+
+        switch application.dockItemKind {
+        case .applicationIcon:
+            if try closeVisibleWindow(of: application) {
+                return true
+            }
+            return try closeRecentWindow(of: application)
+        case .recentWindow:
+            DebugLog.info(
+                DebugLog.windows,
+                "Attempting to close Dock-referenced window for \(application.logDescription) using item \(application.dockItemName)"
+            )
+            let windows = try windowElements(in: appElement)
+            DebugLog.debug(
+                DebugLog.windows,
+                "Dock-referenced close candidates for \(application.logDescription): [\(windowSummary(windows))]"
+            )
+            guard let targetWindow = dockReferencedWindow(named: application.dockItemName, in: windows) else {
+                DebugLog.debug(
+                    DebugLog.windows,
+                    "No Dock-referenced window matched item \(application.dockItemName) for \(application.logDescription)"
+                )
+                return false
+            }
+
+            if try closeWindow(targetWindow, owningApp: app) {
+                cycleSessions.invalidate(for: app.processIdentifier)
+                DebugLog.info(DebugLog.windows, "Closed Dock-referenced window for \(application.logDescription)")
+                return true
+            }
+
+            DebugLog.debug(
+                DebugLog.windows,
+                "Dock-referenced window was not closeable for item \(application.dockItemName) in \(application.logDescription)"
+            )
+            return false
+        }
+    }
+
+    private func closeRecentWindow(of application: DockApplicationTarget) throws -> Bool {
+        let app = try runningApplication(matching: application)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let windows = try recentWindowCandidates(in: app, appElement: appElement)
+        DebugLog.debug(
+            DebugLog.windows,
+            "Recent-window fallback candidates for \(application.logDescription): [\(windowSummary(windows))]"
+        )
+
+        guard let targetWindow = windows.first else {
+            DebugLog.debug(DebugLog.windows, "No recent window candidate found for \(application.logDescription)")
+            return false
+        }
+
+        if try closeWindow(targetWindow, owningApp: app) {
+            cycleSessions.invalidate(for: app.processIdentifier)
+            DebugLog.info(DebugLog.windows, "Closed recent-window fallback target for \(application.logDescription)")
+            return true
+        }
+
+        for fallbackWindow in windows.dropFirst() {
+            if try closeWindow(fallbackWindow, owningApp: app) {
+                cycleSessions.invalidate(for: app.processIdentifier)
+                DebugLog.info(DebugLog.windows, "Closed fallback recent-window candidate for \(application.logDescription)")
+                return true
+            }
+        }
+
+        DebugLog.debug(DebugLog.windows, "No closeable recent-window fallback candidate found for \(application.logDescription)")
+        return false
+    }
+
     func quitApplication(matching target: DockApplicationTarget) throws -> Bool {
         guard AXIsProcessTrusted() else {
             throw WindowManagerError.accessibilityPermissionMissing
@@ -1447,6 +1547,64 @@ struct WindowManager: WindowManaging {
 
         if let helperRange = bundleIdentifier.range(of: ".helper", options: [.caseInsensitive]) {
             appendCandidate(String(bundleIdentifier[..<helperRange.lowerBound]))
+        }
+
+        return candidates
+    }
+
+    private func dockReferencedWindow(named dockItemName: String, in windows: [AXUIElement]) -> AXUIElement? {
+        let normalizedDockName = RunningApplicationIdentity.normalizedAlias(dockItemName)
+        guard normalizedDockName.isEmpty == false else {
+            return nil
+        }
+
+        var prefixSuffixMatch: AXUIElement?
+
+        for window in windows {
+            guard let title = AXAttributeReader.string(kAXTitleAttribute as CFString, from: window) else {
+                continue
+            }
+
+            let normalizedTitle = RunningApplicationIdentity.normalizedAlias(title)
+            if normalizedTitle == normalizedDockName {
+                return window
+            }
+
+            if normalizedTitle.hasPrefix(normalizedDockName) || normalizedTitle.hasSuffix(normalizedDockName) {
+                prefixSuffixMatch = prefixSuffixMatch ?? window
+            }
+        }
+
+        return prefixSuffixMatch
+    }
+
+    private func recentWindowCandidates(
+        in app: NSRunningApplication,
+        appElement: AXUIElement
+    ) throws -> [AXUIElement] {
+        let allWindows = try windowElements(in: appElement)
+        guard allWindows.isEmpty == false else {
+            return []
+        }
+
+        let visibleWindows = allWindows.filter { !isMinimized($0) }
+        var orderedVisibleWindows: [AXUIElement] = []
+        if visibleWindows.isEmpty == false {
+            orderedVisibleWindows = try orderedVisibleWindowElements(in: app, appElement: appElement)
+        }
+
+        var candidates: [AXUIElement] = []
+
+        if let referenceWindow = preferredCycleReferenceWindow(in: appElement) {
+            candidates.append(referenceWindow)
+        }
+
+        for window in orderedVisibleWindows where candidates.contains(where: { sameWindow($0, window) }) == false {
+            candidates.append(window)
+        }
+
+        for window in allWindows where candidates.contains(where: { sameWindow($0, window) }) == false {
+            candidates.append(window)
         }
 
         return candidates

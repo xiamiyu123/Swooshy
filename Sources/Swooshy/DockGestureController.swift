@@ -613,7 +613,7 @@ final class DockGestureController {
             case .cycleWindowsBackward:
                 _ = try windowManager.cycleVisibleWindows(of: application, direction: .backward)
             case .closeWindow:
-                _ = try windowManager.closeVisibleWindow(of: application)
+                _ = try windowManager.closeWindow(of: application, preferredAppKitPoint: nil)
             case .closeTab:
                 guard BrowserTabProbe.simulateMiddleClickAtMouseLocation() else {
                     throw WindowManagerError.unableToPerformAction
@@ -2237,12 +2237,16 @@ private final class DockAccessibilityProbe {
             let appKitFrame = geometry.appKitFrame(
                 fromAXFrame: CGRect(origin: axPosition, size: axSize)
             )
+            let normalizedDockName = RunningApplicationIdentity.normalizedAlias(itemName)
+            let dockItemKind: DockItemKind =
+                matchedRecord.normalizedAliases.contains(normalizedDockName) ? .applicationIcon : .recentWindow
             let target = DockApplicationTarget(
                 dockItemName: itemName,
                 resolvedApplicationName: matchedApplication.localizedName ?? itemName,
                 processIdentifier: matchedApplication.processIdentifier,
                 bundleIdentifier: matchedApplication.bundleIdentifier,
-                aliases: matchedRecord.aliases
+                aliases: matchedRecord.aliases,
+                dockItemKind: dockItemKind
             )
             let candidate = DockHoverCandidate(
                 target: target,

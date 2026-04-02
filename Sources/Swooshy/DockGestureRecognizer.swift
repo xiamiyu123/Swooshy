@@ -11,12 +11,34 @@ struct TrackpadTouchFrame: Equatable {
     let timestamp: TimeInterval
 }
 
+enum DockItemKind: Equatable {
+    case applicationIcon
+    case recentWindow
+}
+
 struct DockApplicationTarget: Equatable {
     let dockItemName: String
     let resolvedApplicationName: String
     let processIdentifier: pid_t
     let bundleIdentifier: String?
     let aliases: [String]
+    let dockItemKind: DockItemKind
+
+    init(
+        dockItemName: String,
+        resolvedApplicationName: String,
+        processIdentifier: pid_t,
+        bundleIdentifier: String?,
+        aliases: [String],
+        dockItemKind: DockItemKind = .applicationIcon
+    ) {
+        self.dockItemName = dockItemName
+        self.resolvedApplicationName = resolvedApplicationName
+        self.processIdentifier = processIdentifier
+        self.bundleIdentifier = bundleIdentifier
+        self.aliases = aliases
+        self.dockItemKind = dockItemKind
+    }
 
     var logDescription: String {
         if let bundleIdentifier, bundleIdentifier.isEmpty == false {
