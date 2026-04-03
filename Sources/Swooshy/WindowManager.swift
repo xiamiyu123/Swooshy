@@ -359,6 +359,7 @@ final class SmoothWindowPreviewSession {
     private let applyAppKitFrame: (CGRect) throws -> Void
     private var animationTask: Task<Void, Never>?
     private var lastTargetFrame: CGRect?
+    private var lastAppliedFrame: CGRect?
 
     init(
         originalAppKitFrame: CGRect,
@@ -382,7 +383,7 @@ final class SmoothWindowPreviewSession {
         animationTask?.cancel()
         lastTargetFrame = targetFrame
 
-        let currentFrame = loadCurrentAppKitFrame() ?? originalAppKitFrame
+        let currentFrame = lastAppliedFrame ?? loadCurrentAppKitFrame() ?? originalAppKitFrame
         let clampedTargetFrame = targetFrame.integral
 
         guard currentFrame.integral != clampedTargetFrame else {
@@ -391,8 +392,8 @@ final class SmoothWindowPreviewSession {
 
         animationTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let steps = 6
-            let stepDuration: UInt64 = 18_000_000
+            let steps = 10
+            let stepDuration: UInt64 = 12_000_000
 
             for step in 1 ... steps {
                 if Task.isCancelled {
@@ -408,6 +409,7 @@ final class SmoothWindowPreviewSession {
 
                 do {
                     try applyAppKitFrame(interpolatedFrame)
+                    self.lastAppliedFrame = interpolatedFrame
                 } catch {
                     DebugLog.debug(
                         DebugLog.windows,
@@ -433,11 +435,12 @@ final class SmoothWindowPreviewSession {
     }
 
     private func interpolated(from start: CGRect, to end: CGRect, progress: CGFloat) -> CGRect {
-        CGRect(
-            x: start.minX + ((end.minX - start.minX) * progress),
-            y: start.minY + ((end.minY - start.minY) * progress),
-            width: start.width + ((end.width - start.width) * progress),
-            height: start.height + ((end.height - start.height) * progress)
+        let t = 1 - pow(1 - progress, 3) // ease-out cubic
+        return CGRect(
+            x: start.minX + ((end.minX - start.minX) * t),
+            y: start.minY + ((end.minY - start.minY) * t),
+            width: start.width + ((end.width - start.width) * t),
+            height: start.height + ((end.height - start.height) * t)
         ).integral
     }
 }
