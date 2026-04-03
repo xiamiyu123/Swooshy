@@ -36,7 +36,11 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
         .toggleFullScreen,
     ]
 
-    static let gestureCases: [WindowAction] = allCases + [.exitFullScreen]
+    private static let gestureOnlyCases: [WindowAction] = [
+        .exitFullScreen,
+    ]
+
+    static let gestureCases: [WindowAction] = allCases + gestureOnlyCases
 
     var title: String {
         title()
