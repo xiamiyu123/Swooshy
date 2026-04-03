@@ -71,144 +71,128 @@ private struct SettingsView: View {
     @State private var launchAtLoginController = LaunchAtLoginController()
     @State private var showingAdvancedSettings = false
 
+    private var preferredLanguages: [String] {
+        settingsStore.preferredLanguages
+    }
+
+    private var languageOptions: [SettingsPickerOption<AppLanguage>] {
+        AppLanguage.allCases.map { language in
+            SettingsPickerOption(value: language, title: languageTitle(for: language))
+        }
+    }
+
+    private var statusItemIconOptions: [SettingsPickerOption<StatusItemIcon>] {
+        StatusItemIcon.allCases.map { icon in
+            SettingsPickerOption(
+                value: icon,
+                title: icon.title(preferredLanguages: preferredLanguages),
+                systemImage: icon.symbolName,
+                image: icon.symbolName == nil
+                    ? icon.makeImage(accessibilityDescription: icon.title(preferredLanguages: preferredLanguages))
+                    : nil
+            )
+        }
+    }
+
+    private var gestureHUDStyleOptions: [SettingsPickerOption<GestureHUDStyle>] {
+        GestureHUDStyle.allCases.map { style in
+            SettingsPickerOption(value: style, title: style.title(preferredLanguages: preferredLanguages))
+        }
+    }
+
+    private var gesturePreviewItems: [GestureHUDPreviewItem] {
+        [
+            GestureHUDPreviewItem(
+                style: settingsStore.gestureHUDStyle,
+                gesture: .pinchIn,
+                gestureTitle: DockGestureKind.pinchIn.title(preferredLanguages: preferredLanguages),
+                actionTitle: settingsStore.dockGestureAction(for: .pinchIn).title(preferredLanguages: preferredLanguages)
+            ),
+            GestureHUDPreviewItem(
+                style: settingsStore.gestureHUDStyle,
+                gesture: .swipeUp,
+                gestureTitle: DockGestureKind.swipeUp.title(preferredLanguages: preferredLanguages),
+                actionTitle: settingsStore.dockGestureAction(for: .swipeUp).title(preferredLanguages: preferredLanguages)
+            ),
+        ]
+    }
+
+    private var dockGestureRows: [GestureActionRowModel<DockGestureKind, DockGestureAction>] {
+        DockGestureKind.allCases.map { gesture in
+            GestureActionRowModel(
+                gesture: gesture,
+                title: gesture.title(preferredLanguages: preferredLanguages),
+                isEnabled: settingsStore.dockGestureIsEnabled(for: gesture),
+                selectedAction: settingsStore.dockGestureAction(for: gesture),
+                availableActions: DockGestureAction.allCases.map {
+                    SettingsPickerOption(
+                        value: $0,
+                        title: $0.title(preferredLanguages: preferredLanguages),
+                        isDisabled: $0 == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false
+                    )
+                }
+            )
+        }
+    }
+
+    private var titleBarGestureRows: [GestureActionRowModel<DockGestureKind, WindowAction>] {
+        TitleBarGestureBindings.supportedGestures.map { gesture in
+            GestureActionRowModel(
+                gesture: gesture,
+                title: gesture.title(preferredLanguages: preferredLanguages),
+                isEnabled: settingsStore.titleBarGestureIsEnabled(for: gesture),
+                selectedAction: settingsStore.titleBarGestureAction(for: gesture)
+                    ?? TitleBarGestureBindings.fallbackBinding(for: gesture).action,
+                availableActions: WindowAction.gestureCases.map {
+                    SettingsPickerOption(
+                        value: $0,
+                        title: $0.title(preferredLanguages: preferredLanguages),
+                        isDisabled: $0 == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false
+                    )
+                }
+            )
+        }
+    }
+
+    private var hotKeyRows: [HotKeyRowModel] {
+        WindowAction.allCases.map { action in
+            HotKeyRowModel(
+                action: action,
+                title: action.title(preferredLanguages: preferredLanguages),
+                binding: settingsStore.hotKeyBinding(for: action)
+            )
+        }
+    }
+
     var body: some View {
         Form {
-            Section {
-                Picker(
-                    settingsStore.localized("settings.language.label"),
-                    selection: $settingsStore.languageOverride
-                ) {
-                    ForEach(AppLanguage.allCases) { language in
-                        Text(title(for: language)).tag(language)
-                    }
-                }
-                .pickerStyle(.menu)
+            GeneralSettingsSection(
+                settingsStore: settingsStore,
+                launchAtLoginController: $launchAtLoginController,
+                languageOptions: languageOptions,
+                statusItemIconOptions: statusItemIconOptions
+            )
 
-                Toggle(
-                    settingsStore.localized("settings.hotkeys.enabled"),
-                    isOn: $settingsStore.hotKeysEnabled
-                )
+            GestureSettingsSection(
+                settingsStore: settingsStore,
+                gestureHUDStyleOptions: gestureHUDStyleOptions,
+                previewItems: gesturePreviewItems
+            )
 
-                Toggle(
-                    settingsStore.localized("settings.launch_at_login.enabled"),
-                    isOn: Binding(
-                        get: { launchAtLoginController.isEnabled },
-                        set: { launchAtLoginController.setEnabled($0, localize: settingsStore.localized) }
-                    )
-                )
+            DockGestureMappingsSection(
+                settingsStore: settingsStore,
+                rows: dockGestureRows
+            )
 
-                SettingsHintGroup {
-                    Text(settingsStore.localized("settings.launch_at_login.footer"))
+            TitleBarGestureMappingsSection(
+                settingsStore: settingsStore,
+                rows: titleBarGestureRows
+            )
 
-                    if let statusMessage = launchAtLoginController.statusMessage,
-                       statusMessage.isEmpty == false {
-                        Text(statusMessage)
-                    }
-                }
-
-                Picker(
-                    settingsStore.localized("settings.status_item_icon.label"),
-                    selection: $settingsStore.statusItemIcon
-                ) {
-                    ForEach(StatusItemIcon.allCases) { icon in
-                        statusItemIconLabel(for: icon).tag(icon)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Toggle(
-                    settingsStore.localized("settings.status_item_window_actions_collapsed.enabled"),
-                    isOn: $settingsStore.collapseStatusItemWindowActions
-                )
-
-                SettingsHintGroup {
-                    Text(settingsStore.localized("settings.status_item_window_actions_collapsed.footer"))
-                }
-            } header: {
-                Text(settingsStore.localized("settings.section.general"))
-            }
-
-            Section {
-                Toggle(
-                    settingsStore.localized("settings.dock_gestures.enabled"),
-                    isOn: $settingsStore.dockGesturesEnabled
-                )
-                Toggle(
-                    settingsStore.localized("settings.title_bar_gestures.enabled"),
-                    isOn: $settingsStore.titleBarGesturesEnabled
-                )
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(settingsStore.localized("guide.page.interaction.title"))
-                        .font(.subheadline.weight(.medium))
-
-                    HStack(spacing: 12) {
-                        CompactInteractionStyleCard(
-                            title: settingsStore.localized("guide.page.interaction.immediate.title"),
-                            description: settingsStore.localized("guide.page.interaction.immediate.description"),
-                            systemImage: "bolt.fill",
-                            isSelected: !settingsStore.executeGestureOnRelease,
-                            action: { settingsStore.executeGestureOnRelease = false }
-                        )
-
-                        CompactInteractionStyleCard(
-                            title: settingsStore.localized("guide.page.interaction.on_release.title"),
-                            description: settingsStore.localized("guide.page.interaction.on_release.description"),
-                            systemImage: "hand.raised.fill",
-                            isSelected: settingsStore.executeGestureOnRelease,
-                            action: { settingsStore.executeGestureOnRelease = true }
-                        )
-                    }
-                }
-                .padding(.vertical, 4)
-
-                Picker(
-                    settingsStore.localized("settings.gesture_hud.style.label"),
-                    selection: $settingsStore.gestureHUDStyle
-                ) {
-                    ForEach(GestureHUDStyle.allCases) { style in
-                        Text(style.title(preferredLanguages: settingsStore.preferredLanguages)).tag(style)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                SettingsHintGroup {
-                    Text(settingsStore.localized("settings.gesture_hud.footer"))
-                    Text(settingsStore.localized("settings.gesture_execute_on_release.footer"))
-                }
-
-                Toggle(
-                    settingsStore.localized("settings.smooth_window_preview.enabled"),
-                    isOn: $settingsStore.smoothWindowPreviewEnabled
-                )
-                .disabled(settingsStore.executeGestureOnRelease == false)
-
-                SettingsHintGroup {
-                    Text(settingsStore.localized("settings.smooth_window_preview.footer"))
-                }
-
-                GestureHUDPreviewStrip(settingsStore: settingsStore)
-            } header: {
-                Text(settingsStore.localized("settings.section.gestures"))
-            } footer: {
-                Text(settingsStore.localized("settings.gestures.footer"))
-            }
-
-            DockGestureMappingsSection(settingsStore: settingsStore)
-
-            TitleBarGestureMappingsSection(settingsStore: settingsStore)
-
-            Section {
-                ForEach(WindowAction.allCases, id: \.self) { action in
-                    HotKeyEditorRow(settingsStore: settingsStore, action: action)
-                }
-
-                Button(settingsStore.localized("settings.shortcuts.reset")) {
-                    settingsStore.resetHotKeysToDefaults()
-                }
-            } header: {
-                Text(settingsStore.localized("settings.section.shortcuts"))
-            }
+            HotKeysSection(
+                settingsStore: settingsStore,
+                rows: hotKeyRows
+            )
 
             Section {
                 Button {
@@ -231,7 +215,7 @@ private struct SettingsView: View {
         }
     }
 
-    private func title(for language: AppLanguage) -> String {
+    private func languageTitle(for language: AppLanguage) -> String {
         switch language {
         case .system:
             return settingsStore.localized("settings.language.system")
@@ -241,22 +225,180 @@ private struct SettingsView: View {
             return settingsStore.localized("settings.language.simplified_chinese")
         }
     }
+}
 
-    @ViewBuilder
-    private func statusItemIconLabel(for icon: StatusItemIcon) -> some View {
-        let title = icon.title(preferredLanguages: settingsStore.preferredLanguages)
+private struct SettingsPickerOption<Value: Hashable>: Identifiable {
+    let value: Value
+    let title: String
+    var systemImage: String? = nil
+    var image: NSImage? = nil
+    var isDisabled = false
 
-        if let symbolName = icon.symbolName {
-            Label(title, systemImage: symbolName)
-        } else if let image = icon.makeImage(accessibilityDescription: title) {
-            Label {
-                Text(title)
-            } icon: {
-                Image(nsImage: image)
-                    .renderingMode(.template)
+    var id: Value { value }
+}
+
+private struct GestureHUDPreviewItem: Identifiable, Equatable {
+    let style: GestureHUDStyle
+    let gesture: DockGestureKind
+    let gestureTitle: String
+    let actionTitle: String
+
+    var id: DockGestureKind { gesture }
+}
+
+private struct GestureActionRowModel<Gesture: Hashable & Identifiable, Action: Hashable>: Identifiable {
+    let gesture: Gesture
+    let title: String
+    let isEnabled: Bool
+    let selectedAction: Action
+    let availableActions: [SettingsPickerOption<Action>]
+
+    var id: Gesture { gesture }
+}
+
+private struct HotKeyRowModel: Identifiable {
+    let action: WindowAction
+    let title: String
+    let binding: HotKeyBinding
+
+    var id: WindowAction { action }
+}
+
+private struct GeneralSettingsSection: View {
+    @Bindable var settingsStore: SettingsStore
+    @Binding var launchAtLoginController: LaunchAtLoginController
+    let languageOptions: [SettingsPickerOption<AppLanguage>]
+    let statusItemIconOptions: [SettingsPickerOption<StatusItemIcon>]
+
+    var body: some View {
+        Section {
+            Picker(
+                settingsStore.localized("settings.language.label"),
+                selection: $settingsStore.languageOverride
+            ) {
+                ForEach(languageOptions) { option in
+                    Text(option.title).tag(option.value)
+                }
             }
-        } else {
-            Text(title)
+            .pickerStyle(.menu)
+
+            Toggle(
+                settingsStore.localized("settings.hotkeys.enabled"),
+                isOn: $settingsStore.hotKeysEnabled
+            )
+
+            Toggle(
+                settingsStore.localized("settings.launch_at_login.enabled"),
+                isOn: Binding(
+                    get: { launchAtLoginController.isEnabled },
+                    set: { launchAtLoginController.setEnabled($0, localize: settingsStore.localized) }
+                )
+            )
+
+            SettingsHintGroup {
+                Text(settingsStore.localized("settings.launch_at_login.footer"))
+
+                if let statusMessage = launchAtLoginController.statusMessage,
+                   statusMessage.isEmpty == false {
+                    Text(statusMessage)
+                }
+            }
+
+            Picker(
+                settingsStore.localized("settings.status_item_icon.label"),
+                selection: $settingsStore.statusItemIcon
+            ) {
+                ForEach(statusItemIconOptions) { option in
+                    SettingsPickerOptionLabel(option: option)
+                        .tag(option.value)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Toggle(
+                settingsStore.localized("settings.status_item_window_actions_collapsed.enabled"),
+                isOn: $settingsStore.collapseStatusItemWindowActions
+            )
+
+            SettingsHintGroup {
+                Text(settingsStore.localized("settings.status_item_window_actions_collapsed.footer"))
+            }
+        } header: {
+            Text(settingsStore.localized("settings.section.general"))
+        }
+    }
+}
+
+private struct GestureSettingsSection: View {
+    @Bindable var settingsStore: SettingsStore
+    let gestureHUDStyleOptions: [SettingsPickerOption<GestureHUDStyle>]
+    let previewItems: [GestureHUDPreviewItem]
+
+    var body: some View {
+        Section {
+            Toggle(
+                settingsStore.localized("settings.dock_gestures.enabled"),
+                isOn: $settingsStore.dockGesturesEnabled
+            )
+            Toggle(
+                settingsStore.localized("settings.title_bar_gestures.enabled"),
+                isOn: $settingsStore.titleBarGesturesEnabled
+            )
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text(settingsStore.localized("guide.page.interaction.title"))
+                    .font(.subheadline.weight(.medium))
+
+                HStack(spacing: 12) {
+                    CompactInteractionStyleCard(
+                        title: settingsStore.localized("guide.page.interaction.immediate.title"),
+                        description: settingsStore.localized("guide.page.interaction.immediate.description"),
+                        systemImage: "bolt.fill",
+                        isSelected: !settingsStore.executeGestureOnRelease,
+                        action: { settingsStore.executeGestureOnRelease = false }
+                    )
+
+                    CompactInteractionStyleCard(
+                        title: settingsStore.localized("guide.page.interaction.on_release.title"),
+                        description: settingsStore.localized("guide.page.interaction.on_release.description"),
+                        systemImage: "hand.raised.fill",
+                        isSelected: settingsStore.executeGestureOnRelease,
+                        action: { settingsStore.executeGestureOnRelease = true }
+                    )
+                }
+            }
+            .padding(.vertical, 4)
+
+            Picker(
+                settingsStore.localized("settings.gesture_hud.style.label"),
+                selection: $settingsStore.gestureHUDStyle
+            ) {
+                ForEach(gestureHUDStyleOptions) { option in
+                    Text(option.title).tag(option.value)
+                }
+            }
+            .pickerStyle(.menu)
+
+            SettingsHintGroup {
+                Text(settingsStore.localized("settings.gesture_hud.footer"))
+                Text(settingsStore.localized("settings.gesture_execute_on_release.footer"))
+            }
+
+            Toggle(
+                settingsStore.localized("settings.smooth_window_preview.enabled"),
+                isOn: $settingsStore.smoothWindowPreviewEnabled
+            )
+            .disabled(settingsStore.executeGestureOnRelease == false)
+
+            SettingsHintGroup {
+                Text(settingsStore.localized("settings.smooth_window_preview.footer"))
+            }
+
+            GestureHUDPreviewStrip(items: previewItems)
+        } header: {
+            Text(settingsStore.localized("settings.section.gestures"))
+        } footer: {
+            Text(settingsStore.localized("settings.gestures.footer"))
         }
     }
 }
@@ -550,6 +692,7 @@ private struct SettingsMappingCard<Rows: View>: View {
 
 private struct DockGestureMappingsSection: View {
     @Bindable var settingsStore: SettingsStore
+    let rows: [GestureActionRowModel<DockGestureKind, DockGestureAction>]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -562,11 +705,21 @@ private struct DockGestureMappingsSection: View {
             .disabled(settingsStore.dockGesturesEnabled == false)
 
             SettingsMappingCard {
-                ForEach(Array(DockGestureKind.allCases.enumerated()), id: \.element) { index, gesture in
-                    DockGestureActionRow(settingsStore: settingsStore, gesture: gesture)
-                        .disabled(settingsStore.dockGesturesEnabled == false)
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    DockGestureActionRow(
+                        row: row,
+                        isSectionEnabled: settingsStore.dockGesturesEnabled,
+                        toggleBinding: Binding(
+                            get: { settingsStore.dockGestureIsEnabled(for: row.gesture) },
+                            set: { settingsStore.updateDockGestureEnabled($0, for: row.gesture) }
+                        ),
+                        actionBinding: Binding(
+                            get: { settingsStore.dockGestureAction(for: row.gesture) },
+                            set: { settingsStore.updateDockGestureAction($0, for: row.gesture) }
+                        )
+                    )
 
-                    if index < DockGestureKind.allCases.count - 1 {
+                    if index < rows.count - 1 {
                         Divider()
                     }
                 }
@@ -588,6 +741,7 @@ private struct DockGestureMappingsSection: View {
 
 private struct TitleBarGestureMappingsSection: View {
     @Bindable var settingsStore: SettingsStore
+    let rows: [GestureActionRowModel<DockGestureKind, WindowAction>]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -600,11 +754,24 @@ private struct TitleBarGestureMappingsSection: View {
             .disabled(settingsStore.titleBarGesturesEnabled == false)
 
             SettingsMappingCard {
-                ForEach(Array(TitleBarGestureBindings.supportedGestures.enumerated()), id: \.element) { index, gesture in
-                    TitleBarGestureActionRow(settingsStore: settingsStore, gesture: gesture)
-                        .disabled(settingsStore.titleBarGesturesEnabled == false)
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    TitleBarGestureActionRow(
+                        row: row,
+                        isSectionEnabled: settingsStore.titleBarGesturesEnabled,
+                        toggleBinding: Binding(
+                            get: { settingsStore.titleBarGestureIsEnabled(for: row.gesture) },
+                            set: { settingsStore.updateTitleBarGestureEnabled($0, for: row.gesture) }
+                        ),
+                        actionBinding: Binding(
+                            get: {
+                                settingsStore.titleBarGestureAction(for: row.gesture)
+                                ?? TitleBarGestureBindings.fallbackBinding(for: row.gesture).action
+                            },
+                            set: { settingsStore.updateTitleBarGestureAction($0, for: row.gesture) }
+                        )
+                    )
 
-                    if index < TitleBarGestureBindings.supportedGestures.count - 1 {
+                    if index < rows.count - 1 {
                         Divider()
                     }
                 }
@@ -625,61 +792,42 @@ private struct TitleBarGestureMappingsSection: View {
 }
 
 private struct GestureHUDPreviewStrip: View {
-    @Bindable var settingsStore: SettingsStore
+    let items: [GestureHUDPreviewItem]
 
     var body: some View {
-        let previewStyle = settingsStore.gestureHUDStyle
-
         VStack(alignment: .leading, spacing: 10) {
-            GestureHUDPreviewCard(
-                style: previewStyle,
-                gesture: .pinchIn,
-                gestureTitle: DockGestureKind.pinchIn.title(preferredLanguages: settingsStore.preferredLanguages),
-                actionTitle: settingsStore.dockGestureAction(for: .pinchIn).title(
-                    preferredLanguages: settingsStore.preferredLanguages
-                )
-            )
-
-            GestureHUDPreviewCard(
-                style: previewStyle,
-                gesture: .swipeUp,
-                gestureTitle: DockGestureKind.swipeUp.title(preferredLanguages: settingsStore.preferredLanguages),
-                actionTitle: settingsStore.dockGestureAction(for: .swipeUp).title(
-                    preferredLanguages: settingsStore.preferredLanguages
-                )
-            )
+            ForEach(items) { item in
+                GestureHUDPreviewCard(item: item)
+            }
         }
         .padding(.top, 4)
     }
 }
 
 private struct GestureHUDPreviewCard: View {
-    let style: GestureHUDStyle
-    let gesture: DockGestureKind
-    let gestureTitle: String
-    let actionTitle: String
+    let item: GestureHUDPreviewItem
 
     private var model: GestureHUDRenderModel {
         GestureHUDRenderModel(
-            style: style,
-            glyph: .gesture(gesture),
-            gestureTitle: gestureTitle,
-            actionTitle: actionTitle
+            style: item.style,
+            glyph: .gesture(item.gesture),
+            gestureTitle: item.gestureTitle,
+            actionTitle: item.actionTitle
         )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(gestureTitle)
+            Text(item.gestureTitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             GestureHUDPreviewSnapshot(model: model)
-            .frame(
-                width: GestureHUDRenderView.panelSize(for: style).width,
-                height: GestureHUDRenderView.panelSize(for: style).height,
-                alignment: .leading
-            )
+                .frame(
+                    width: GestureHUDRenderView.panelSize(for: item.style).width,
+                    height: GestureHUDRenderView.panelSize(for: item.style).height,
+                    alignment: .leading
+                )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -699,8 +847,20 @@ private struct GestureHUDPreviewSnapshot: View {
             }
         }
         .task(id: model) {
-            snapshot = Self.makeSnapshot(for: model)
+            snapshot = Self.cachedSnapshot(for: model)
         }
+    }
+
+    private static func cachedSnapshot(for model: GestureHUDRenderModel) -> NSImage? {
+        if let snapshot = GestureHUDPreviewSnapshotCache.shared.snapshot(for: model) {
+            return snapshot
+        }
+
+        let snapshot = makeSnapshot(for: model)
+        if let snapshot {
+            GestureHUDPreviewSnapshotCache.shared.store(snapshot, for: model)
+        }
+        return snapshot
     }
 
     private static func makeSnapshot(for model: GestureHUDRenderModel) -> NSImage? {
@@ -721,95 +881,140 @@ private struct GestureHUDPreviewSnapshot: View {
     }
 }
 
+@MainActor
+private final class GestureHUDPreviewSnapshotCache {
+    static let shared = GestureHUDPreviewSnapshotCache()
+
+    private let cache = NSCache<NSString, NSImage>()
+
+    private init() {}
+
+    func snapshot(for model: GestureHUDRenderModel) -> NSImage? {
+        cache.object(forKey: cacheKey(for: model) as NSString)
+    }
+
+    func store(_ image: NSImage, for model: GestureHUDRenderModel) {
+        cache.setObject(image, forKey: cacheKey(for: model) as NSString)
+    }
+
+    private func cacheKey(for model: GestureHUDRenderModel) -> String {
+        "\(model.style.storageValue)|\(String(describing: model.glyph))|\(model.gestureTitle)|\(model.actionTitle)"
+    }
+}
+
 private struct DockGestureActionRow: View {
-    @Bindable var settingsStore: SettingsStore
-    let gesture: DockGestureKind
+    let row: GestureActionRowModel<DockGestureKind, DockGestureAction>
+    let isSectionEnabled: Bool
+    let toggleBinding: Binding<Bool>
+    let actionBinding: Binding<DockGestureAction>
 
     var body: some View {
         HStack(spacing: 20) {
-            Toggle(
-                gesture.title(preferredLanguages: settingsStore.preferredLanguages),
-                isOn: Binding(
-                    get: { settingsStore.dockGestureIsEnabled(for: gesture) },
-                    set: { settingsStore.updateDockGestureEnabled($0, for: gesture) }
-                )
-            )
-            .toggleStyle(.switch)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Picker(
-                "",
-                selection: Binding(
-                    get: { settingsStore.dockGestureAction(for: gesture) },
-                    set: { settingsStore.updateDockGestureAction($0, for: gesture) }
-                )
-            ) {
-                ForEach(DockGestureAction.allCases) { action in
-                    Text(action.title(preferredLanguages: settingsStore.preferredLanguages))
-                        .tag(action)
-                        .disabled(action == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false)
+            Toggle(row.title, isOn: toggleBinding)
+                .toggleStyle(.switch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Picker("", selection: actionBinding) {
+                ForEach(row.availableActions) { option in
+                    Text(option.title)
+                        .tag(option.value)
+                        .disabled(option.isDisabled)
                 }
             }
             .pickerStyle(.menu)
             .labelsHidden()
             .frame(width: 220)
-            .disabled(settingsStore.dockGestureIsEnabled(for: gesture) == false)
+            .disabled(isSectionEnabled == false || row.isEnabled == false)
         }
+        .disabled(isSectionEnabled == false)
         .padding(.vertical, 14)
     }
 }
 
 private struct TitleBarGestureActionRow: View {
-    @Bindable var settingsStore: SettingsStore
-    let gesture: DockGestureKind
+    let row: GestureActionRowModel<DockGestureKind, WindowAction>
+    let isSectionEnabled: Bool
+    let toggleBinding: Binding<Bool>
+    let actionBinding: Binding<WindowAction>
 
     var body: some View {
         HStack(spacing: 20) {
-            Toggle(
-                gesture.title(preferredLanguages: settingsStore.preferredLanguages),
-                isOn: Binding(
-                    get: { settingsStore.titleBarGestureIsEnabled(for: gesture) },
-                    set: { settingsStore.updateTitleBarGestureEnabled($0, for: gesture) }
-                )
-            )
-            .toggleStyle(.switch)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Picker(
-                "",
-                selection: Binding(
-                    get: {
-                        settingsStore.titleBarGestureAction(for: gesture)
-                        ?? TitleBarGestureBindings.fallbackBinding(for: gesture).action
-                    },
-                    set: { settingsStore.updateTitleBarGestureAction($0, for: gesture) }
-                )
-            ) {
-                ForEach(WindowAction.gestureCases, id: \.self) { action in
-                    Text(action.title(preferredLanguages: settingsStore.preferredLanguages))
-                        .tag(action)
-                        .disabled(action == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false)
+            Toggle(row.title, isOn: toggleBinding)
+                .toggleStyle(.switch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Picker("", selection: actionBinding) {
+                ForEach(row.availableActions) { option in
+                    Text(option.title)
+                        .tag(option.value)
+                        .disabled(option.isDisabled)
                 }
             }
             .pickerStyle(.menu)
             .labelsHidden()
             .frame(width: 220)
-            .disabled(settingsStore.titleBarGestureIsEnabled(for: gesture) == false)
+            .disabled(isSectionEnabled == false || row.isEnabled == false)
         }
+        .disabled(isSectionEnabled == false)
         .padding(.vertical, 14)
     }
 }
 
-private struct HotKeyEditorRow: View {
+private struct HotKeysSection: View {
     @Bindable var settingsStore: SettingsStore
-    let action: WindowAction
+    let rows: [HotKeyRowModel]
+
+    var body: some View {
+        Section {
+            ForEach(rows) { row in
+                HotKeyEditorRow(
+                    row: row,
+                    placeholder: settingsStore.localized("settings.shortcuts.recorder_placeholder"),
+                    onChange: { settingsStore.updateHotKeyBinding($0) }
+                )
+            }
+
+            Button(settingsStore.localized("settings.shortcuts.reset")) {
+                settingsStore.resetHotKeysToDefaults()
+            }
+        } header: {
+            Text(settingsStore.localized("settings.section.shortcuts"))
+        }
+    }
+}
+
+private struct SettingsPickerOptionLabel<Value: Hashable>: View {
+    let option: SettingsPickerOption<Value>
+
+    var body: some View {
+        if let systemImage = option.systemImage {
+            Label(option.title, systemImage: systemImage)
+        } else if let image = option.image {
+            Label {
+                Text(option.title)
+            } icon: {
+                Image(nsImage: image)
+                    .renderingMode(.template)
+            }
+        } else {
+            Text(option.title)
+        }
+    }
+}
+
+private struct HotKeyEditorRow: View {
+    let row: HotKeyRowModel
+    let placeholder: String
+    let onChange: (HotKeyBinding) -> Void
 
     var body: some View {
         HStack {
-            Text(action.title(preferredLanguages: settingsStore.preferredLanguages))
+            Text(row.title)
             Spacer()
             ShortcutRecorderField(
-                binding: settingsStore.hotKeyBinding(for: action),
-                placeholder: settingsStore.localized("settings.shortcuts.recorder_placeholder"),
-                onChange: { settingsStore.updateHotKeyBinding($0) }
+                binding: row.binding,
+                placeholder: placeholder,
+                onChange: onChange
             )
             .frame(width: 160, height: 28)
         }
@@ -850,8 +1055,12 @@ private struct ShortcutRecorderField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: ShortcutRecorderControl, context: Context) {
-        nsView.placeholder = placeholder
-        nsView.binding = binding
+        if nsView.placeholder != placeholder {
+            nsView.placeholder = placeholder
+        }
+        if nsView.binding != binding {
+            nsView.binding = binding
+        }
         nsView.onChange = { key, modifiers in
             onChange(
                 HotKeyBinding(
