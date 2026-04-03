@@ -157,30 +157,25 @@ struct DockGestureBinding: Codable, Equatable, Hashable, Sendable {
 }
 
 enum DockGestureBindings {
-    static let defaults: [DockGestureBinding] = [
-        DockGestureBinding(gesture: .swipeLeft, action: .cycleWindowsForward),
-        DockGestureBinding(gesture: .swipeRight, action: .cycleWindowsBackward),
-        DockGestureBinding(gesture: .swipeDown, action: .minimizeWindow),
-        DockGestureBinding(gesture: .swipeUp, action: .restoreWindow),
-        DockGestureBinding(gesture: .pinchIn, action: .quitApplication),
-        DockGestureBinding(gesture: .pinchOut, action: .toggleFullScreenWindow),
+    private static let defaultActionsByGesture: [(DockGestureKind, DockGestureAction)] = [
+        (.swipeLeft, .cycleWindowsForward),
+        (.swipeRight, .cycleWindowsBackward),
+        (.swipeDown, .minimizeWindow),
+        (.swipeUp, .restoreWindow),
+        (.pinchIn, .quitApplication),
+        (.pinchOut, .toggleFullScreenWindow),
     ]
 
+    static let defaults: [DockGestureBinding] = defaultActionsByGesture.map { gesture, action in
+        DockGestureBinding(gesture: gesture, action: action)
+    }
+
     static func fallbackBinding(for gesture: DockGestureKind) -> DockGestureBinding {
-        switch gesture {
-        case .swipeLeft:
-            return DockGestureBinding(gesture: .swipeLeft, action: .cycleWindowsForward)
-        case .swipeRight:
-            return DockGestureBinding(gesture: .swipeRight, action: .cycleWindowsBackward)
-        case .swipeDown:
-            return DockGestureBinding(gesture: .swipeDown, action: .minimizeWindow)
-        case .swipeUp:
-            return DockGestureBinding(gesture: .swipeUp, action: .restoreWindow)
-        case .pinchIn:
-            return DockGestureBinding(gesture: .pinchIn, action: .quitApplication)
-        case .pinchOut:
-            return DockGestureBinding(gesture: .pinchOut, action: .toggleFullScreenWindow)
+        if let action = defaultActionsByGesture.first(where: { $0.0 == gesture })?.1 {
+            return DockGestureBinding(gesture: gesture, action: action)
         }
+
+        return DockGestureBinding(gesture: gesture, action: .quitApplication)
     }
 
     static func binding(
@@ -233,30 +228,25 @@ enum TitleBarGestureBindings {
         .pinchOut,
     ]
 
-    static let defaults: [TitleBarGestureBinding] = [
-        TitleBarGestureBinding(gesture: .swipeLeft, action: .leftHalf),
-        TitleBarGestureBinding(gesture: .swipeRight, action: .rightHalf),
-        TitleBarGestureBinding(gesture: .swipeDown, action: .minimize),
-        TitleBarGestureBinding(gesture: .swipeUp, action: .center),
-        TitleBarGestureBinding(gesture: .pinchIn, action: .closeWindow),
-        TitleBarGestureBinding(gesture: .pinchOut, action: .toggleFullScreen),
+    private static let defaultActionsByGesture: [(DockGestureKind, WindowAction)] = [
+        (.swipeLeft, .leftHalf),
+        (.swipeRight, .rightHalf),
+        (.swipeDown, .minimize),
+        (.swipeUp, .center),
+        (.pinchIn, .closeWindow),
+        (.pinchOut, .toggleFullScreen),
     ]
 
+    static let defaults: [TitleBarGestureBinding] = defaultActionsByGesture.map { gesture, action in
+        TitleBarGestureBinding(gesture: gesture, action: action)
+    }
+
     static func fallbackBinding(for gesture: DockGestureKind) -> TitleBarGestureBinding {
-        switch gesture {
-        case .swipeLeft:
-            return TitleBarGestureBinding(gesture: .swipeLeft, action: .leftHalf)
-        case .swipeRight:
-            return TitleBarGestureBinding(gesture: .swipeRight, action: .rightHalf)
-        case .swipeDown:
-            return TitleBarGestureBinding(gesture: .swipeDown, action: .minimize)
-        case .swipeUp:
-            return TitleBarGestureBinding(gesture: .swipeUp, action: .center)
-        case .pinchIn:
-            return TitleBarGestureBinding(gesture: .pinchIn, action: .closeWindow)
-        case .pinchOut:
-            return TitleBarGestureBinding(gesture: .pinchOut, action: .toggleFullScreen)
+        if let action = defaultActionsByGesture.first(where: { $0.0 == gesture })?.1 {
+            return TitleBarGestureBinding(gesture: gesture, action: action)
         }
+
+        return TitleBarGestureBinding(gesture: gesture, action: .center)
     }
 
     static func binding(
