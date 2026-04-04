@@ -1951,6 +1951,7 @@ private final class TitleBarAccessibilityProbe {
 
         preheatTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            guard !Task.isCancelled else { return }
 
             let mouseLocation = NSEvent.mouseLocation
 
@@ -1983,6 +1984,11 @@ private final class TitleBarAccessibilityProbe {
             let titleBarFrame = self.titleBarFrame(for: appKitWindowFrame, titleBarHeight: titleBarHeight)
             guard titleBarFrame.isEmpty == false else {
                 self.cachedHitRegion = nil
+                self.preheatTask = nil
+                return
+            }
+
+            guard !Task.isCancelled else {
                 self.preheatTask = nil
                 return
             }
@@ -2315,6 +2321,7 @@ private final class DockAccessibilityProbe {
 
         preheatTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            guard !Task.isCancelled else { return }
 
             let newSnapshot = self.rebuildDockSnapshot()
             let now = Date()

@@ -392,6 +392,7 @@ final class SmoothWindowPreviewSession {
     func finish() {
         animationTask?.cancel()
         animationTask = nil
+        currentTarget = nil
     }
 
     private func startChaseLoop() {
@@ -2065,8 +2066,15 @@ struct WindowManager: WindowManaging {
                 else {
                     throw WindowManagerError.unableToSetFrame
                 }
-                AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
-                AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+                let sizeError = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+                let positionError = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+                guard sizeError == .success, positionError == .success else {
+                    DebugLog.error(
+                        DebugLog.accessibility,
+                        "Failed to set smooth preview AX frame; sizeError = \(sizeError.rawValue), positionError = \(positionError.rawValue)"
+                    )
+                    throw WindowManagerError.unableToSetFrame
+                }
             }
         )
     }
