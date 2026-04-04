@@ -100,6 +100,30 @@ struct WindowLayoutEngine {
         }
     }
 
+    func constrainedTargetFrame(
+        for action: WindowAction,
+        targetFrame: CGRect,
+        observation: WindowActionPreview.Observation?
+    ) -> CGRect {
+        guard let observation, observation.sizeBounds.hasConstraints else {
+            return targetFrame
+        }
+
+        guard let previewBehavior = action.previewBehavior else {
+            return targetFrame
+        }
+
+        switch previewBehavior {
+        case .area(let defaultHorizontalAnchor, let defaultVerticalAnchor):
+            return areaPreviewFrame(
+                targetFrame: targetFrame,
+                observation: observation,
+                defaultHorizontalAnchor: defaultHorizontalAnchor,
+                defaultVerticalAnchor: defaultVerticalAnchor
+            )
+        }
+    }
+
     func preview(
         for action: WindowAction,
         targetFrame: CGRect,

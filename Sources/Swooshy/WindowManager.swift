@@ -938,21 +938,31 @@ struct WindowManager: WindowManaging {
             currentVisibleFrame: currentScreenFrame
         )
 
-        DebugLog.debug(
-            DebugLog.windows,
-            "Calculated target frame \(NSStringFromRect(targetFrame)) from current frame \(NSStringFromRect(currentFrame))"
+        let observedObservation = observedConstraintObservation(
+            for: application,
+            action: action
+        )
+        let constrainedTargetFrame = layoutEngine.constrainedTargetFrame(
+            for: action,
+            targetFrame: targetFrame,
+            observation: observedObservation
         )
 
-        let targetAXFrame = screenGeometry.axFrame(fromAppKitFrame: targetFrame)
         DebugLog.debug(
             DebugLog.windows,
-            "Writing target AX frame \(NSStringFromRect(targetAXFrame)) converted from AppKit target \(NSStringFromRect(targetFrame))"
+            "Calculated target frame \(NSStringFromRect(constrainedTargetFrame)) from current frame \(NSStringFromRect(currentFrame))"
+        )
+
+        let targetAXFrame = screenGeometry.axFrame(fromAppKitFrame: constrainedTargetFrame)
+        DebugLog.debug(
+            DebugLog.windows,
+            "Writing target AX frame \(NSStringFromRect(targetAXFrame)) converted from AppKit target \(NSStringFromRect(constrainedTargetFrame))"
         )
 
         return ResolvedWindowActionLayout(
             focusedWindow: window,
             screenGeometry: screenGeometry,
-            targetFrame: targetFrame,
+            targetFrame: constrainedTargetFrame,
             targetAXFrame: targetAXFrame
         )
     }
