@@ -4,6 +4,14 @@ import Testing
 
 @MainActor
 struct WelcomeWindowControllerTests {
+    private struct PermissionManagerStub: AccessibilityPermissionManaging {
+        var isTrustedValue = true
+
+        func isTrusted(promptIfNeeded: Bool) -> Bool {
+            isTrustedValue
+        }
+    }
+
     @Test
     func welcomeContentUsesCurrentLanguageOverride() {
         let suiteName = "Swooshy.WelcomeWindowControllerTests.\(UUID().uuidString)"
@@ -40,5 +48,34 @@ struct WelcomeWindowControllerTests {
         let store = SettingsStore(userDefaults: defaults)
 
         #expect(store.titleBarCornerDragHoldDuration == 0.2)
+    }
+
+    @Test
+    func welcomeGuideExperimentalOptionsUseSameGateAsSettings() {
+        let suiteName = "Swooshy.WelcomeWindowControllerTests.Experimental.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+        let viewModel = WelcomeGuideViewModel(
+            settingsStore: store,
+            permissionManager: PermissionManagerStub(),
+            onOpenSettings: {},
+            onDismiss: {}
+        )
+
+        #expect(viewModel.experimentalBrowserTabCloseEnabled == false)
+        #expect(viewModel.smartBrowserTabCloseEnabled == false)
+
+        viewModel.experimentalBrowserTabCloseEnabled = true
+        viewModel.smartBrowserTabCloseEnabled = true
+
+        #expect(store.experimentalBrowserTabCloseEnabled == true)
+        #expect(store.smartBrowserTabCloseEnabled == true)
+
+        viewModel.experimentalBrowserTabCloseEnabled = false
+
+        #expect(viewModel.experimentalBrowserTabCloseEnabled == false)
+        #expect(viewModel.smartBrowserTabCloseEnabled == false)
     }
 }

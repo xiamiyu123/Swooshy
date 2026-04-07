@@ -317,6 +317,11 @@ final class WelcomeGuideViewModel: ObservableObject {
         set { settingsStore.executeGestureOnRelease = newValue }
     }
 
+    var experimentalBrowserTabCloseEnabled: Bool {
+        get { settingsStore.experimentalBrowserTabCloseEnabled }
+        set { settingsStore.experimentalBrowserTabCloseEnabled = newValue }
+    }
+
     var smartBrowserTabCloseEnabled: Bool {
         get { settingsStore.smartBrowserTabCloseEnabled }
         set { settingsStore.smartBrowserTabCloseEnabled = newValue }
@@ -524,22 +529,20 @@ private struct WelcomeGuideView: View {
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Toggle(
-                    viewModel.localized("settings.experimental.smart_browser_tab_close.enabled"),
-                    isOn: $viewModel.smartBrowserTabCloseEnabled
-                )
-                .controlSize(.large)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                )
-                .padding(.vertical, 8)
+                VStack(alignment: .leading, spacing: 12) {
+                    experimentalToggleCard(
+                        title: viewModel.localized("settings.experimental.browser_tab_close.enabled"),
+                        isOn: $viewModel.experimentalBrowserTabCloseEnabled,
+                        footer: viewModel.localized("settings.experimental.browser_tab_close.footer")
+                    )
+
+                    experimentalToggleCard(
+                        title: viewModel.localized("settings.experimental.smart_browser_tab_close.enabled"),
+                        isOn: $viewModel.smartBrowserTabCloseEnabled,
+                        footer: viewModel.localized("settings.experimental.smart_browser_tab_close.footer"),
+                        isEnabled: viewModel.experimentalBrowserTabCloseEnabled
+                    )
+                }
 
                 Text(viewModel.localized("settings.experimental.opt_in_persistence.footer"))
                     .font(.caption)
@@ -554,6 +557,36 @@ private struct WelcomeGuideView: View {
             }
             .padding(.trailing, 10)
         }
+    }
+
+    private func experimentalToggleCard(
+        title: String,
+        isOn: Binding<Bool>,
+        footer: String,
+        isEnabled: Bool = true
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(title, isOn: isOn)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(footer)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+        )
+        .opacity(isEnabled ? 1 : 0.65)
+        .disabled(isEnabled == false)
     }
 
     private func tutorialContent(page: WelcomeGuideContent.Page) -> some View {
