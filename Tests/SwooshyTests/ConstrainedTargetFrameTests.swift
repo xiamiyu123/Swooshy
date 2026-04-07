@@ -89,4 +89,28 @@ struct ConstrainedTargetFrameTests {
 
         #expect(result.origin.y == 0)
     }
+
+    @Test
+    func constrainedTargetFrameKeepsTopRightQuarterFlushWithOuterEdges() {
+        let target = CGRect(x: 704, y: 468, width: 704, height: 383)
+
+        let observation = WindowActionPreview.Observation(
+            sizeBounds: .init(
+                minimumWidth: nil,
+                maximumWidth: 560,
+                minimumHeight: 672,
+                maximumHeight: nil
+            ),
+            horizontalAnchor: .leadingEdge,
+            verticalAnchor: .trailingEdge
+        )
+
+        let result = engine.constrainedTargetFrame(
+            for: .topRightQuarter,
+            targetFrame: target,
+            observation: observation
+        )
+
+        #expect(result == CGRect(x: 848, y: 179, width: 560, height: 672))
+    }
 }

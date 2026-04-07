@@ -395,63 +395,86 @@ struct ObservedWindowConstraintStoreTests {
 
         #expect(survivingObservation?.sizeBounds.maximumWidth == 1200)
     }
-}
 
-@MainActor
-struct SmoothPreviewConstraintStoreTests {
     @Test
-    func sharedBoundsRemainIndependentFromObservedStore() {
-        let observedStore = ObservedWindowConstraintStore()
-        let smoothStore = SmoothPreviewConstraintStore()
+    func latestMinimumConstraintClearsConflictingMaximumBound() {
+        let store = ObservedWindowConstraintStore()
 
-        observedStore.record(
+        store.record(
             sizeBounds: WindowActionPreview.SizeBounds(
                 minimumWidth: nil,
-                maximumWidth: 1200,
+                maximumWidth: 182,
                 minimumHeight: nil,
-                maximumHeight: 800
+                maximumHeight: 40
             ),
-            horizontalAnchor: .centered,
-            verticalAnchor: .centered,
-            action: .maximize,
-            for: "com.example.app"
+            horizontalAnchor: .trailingEdge,
+            verticalAnchor: .trailingEdge,
+            action: .topRightQuarter,
+            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
         )
 
-        let smoothObservationBeforeRecord = smoothStore.observation(
-            for: "com.example.app",
-            action: .leftHalf
-        )
-        #expect(smoothObservationBeforeRecord == nil)
-
-        smoothStore.record(
+        store.record(
             sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 860,
+                minimumWidth: 560,
                 maximumWidth: nil,
-                minimumHeight: 520,
+                minimumHeight: 672,
                 maximumHeight: nil
             ),
             horizontalAnchor: .leadingEdge,
-            verticalAnchor: .leadingEdge,
-            action: .leftHalf,
-            for: "com.example.app"
+            verticalAnchor: .trailingEdge,
+            action: .topRightQuarter,
+            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
         )
 
-        let observedFallback = observedStore.observation(
-            for: "com.example.app",
-            action: .rightHalf
+        let observation = store.observation(
+            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>",
+            action: .topRightQuarter
         )
-        #expect(observedFallback?.sizeBounds.maximumWidth == 1200)
-        #expect(observedFallback?.sizeBounds.maximumHeight == 800)
-        #expect(observedFallback?.sizeBounds.minimumWidth == nil)
-        #expect(observedFallback?.sizeBounds.minimumHeight == nil)
 
-        let smoothFallback = smoothStore.observation(
-            for: "com.example.app",
-            action: .rightHalf
+        #expect(observation?.sizeBounds.minimumWidth == 560)
+        #expect(observation?.sizeBounds.maximumWidth == nil)
+        #expect(observation?.sizeBounds.minimumHeight == 672)
+        #expect(observation?.sizeBounds.maximumHeight == nil)
+    }
+
+    @Test
+    func latestMaximumConstraintClearsConflictingMinimumBound() {
+        let store = ObservedWindowConstraintStore()
+
+        store.record(
+            sizeBounds: WindowActionPreview.SizeBounds(
+                minimumWidth: 560,
+                maximumWidth: nil,
+                minimumHeight: 672,
+                maximumHeight: nil
+            ),
+            horizontalAnchor: .leadingEdge,
+            verticalAnchor: .trailingEdge,
+            action: .topRightQuarter,
+            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
         )
-        #expect(smoothFallback?.sizeBounds.minimumWidth == 860)
-        #expect(smoothFallback?.sizeBounds.minimumHeight == 520)
-        #expect(smoothFallback?.sizeBounds.maximumWidth == nil)
-        #expect(smoothFallback?.sizeBounds.maximumHeight == nil)
+
+        store.record(
+            sizeBounds: WindowActionPreview.SizeBounds(
+                minimumWidth: nil,
+                maximumWidth: 182,
+                minimumHeight: nil,
+                maximumHeight: 40
+            ),
+            horizontalAnchor: .trailingEdge,
+            verticalAnchor: .trailingEdge,
+            action: .topRightQuarter,
+            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
+        )
+
+        let observation = store.observation(
+            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>",
+            action: .topRightQuarter
+        )
+
+        #expect(observation?.sizeBounds.minimumWidth == nil)
+        #expect(observation?.sizeBounds.maximumWidth == 182)
+        #expect(observation?.sizeBounds.minimumHeight == nil)
+        #expect(observation?.sizeBounds.maximumHeight == 40)
     }
 }

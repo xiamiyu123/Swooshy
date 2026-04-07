@@ -79,7 +79,7 @@
 "guide.page.titlebar_horizontal.message" = "The title bar trigger area also supports horizontal swipes for fast window arrangement.";
 "guide.page.titlebar_horizontal.bullet1" = "Two-finger swipe left: snap the current window to the left half of the screen.";
 "guide.page.titlebar_horizontal.bullet2" = "Two-finger swipe right: snap the current window to the right half of the screen.";
-"guide.page.titlebar_horizontal.bullet3" = "Preview: you can see where the window will snap. For some apps with size constraints, Swooshy may preview the wrong frame, then remember that mismatch and improve the preview next time.";
+"guide.page.titlebar_horizontal.bullet3" = "Hold-to-release mode moves the real window toward its snap target immediately. Press Esc or reverse the gesture to return it to the original frame before release.";
 
 "guide.page.corner_snap.title" = "Title Bar Gestures: Corner Snap Mode";
 "guide.page.corner_snap.message" = "After hovering over the title bar or Dock, you can also long-press briefly to switch into corner snapping.";
@@ -135,9 +135,7 @@
 "settings.gesture_hud.style.label" = "Gesture HUD style";
 "settings.gesture_hud.footer" = "Dock and title-bar gestures share the same trackpad monitor. Choose how the on-screen gesture HUD should look.";
 "settings.gesture_execute_on_release.enabled" = "Execute gesture on release";
-"settings.gesture_execute_on_release.footer" = "When enabled, gestures are recognized and previewed immediately, but the action is only executed after you lift your fingers. Press Esc to cancel a pending gesture.";
-"settings.smooth_window_preview.enabled" = "Move the window smoothly instead of showing snap preview";
-"settings.smooth_window_preview.footer" = "Only applies when Execute gesture on release is enabled. Supported title-bar snap gestures and corner snap move the real window first, then return it if you reverse-cancel or press Esc.";
+"settings.gesture_execute_on_release.footer" = "When enabled, supported snap gestures start moving the real window immediately, but the action is only committed after you lift your fingers. Press Esc to cancel a pending gesture and return the window.";
 "settings.gesture_hud.style.classic" = "Detailed";
 "settings.gesture_hud.style.elegant" = "Elegant";
 "settings.gesture_hud.style.minimal" = "Minimal";

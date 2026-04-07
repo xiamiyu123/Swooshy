@@ -31,7 +31,6 @@ struct SettingsStoreTests {
         store.collapseStatusItemWindowActions = true
         store.titleBarOverlayProtectionEnabled = true
         store.smartBrowserTabCloseEnabled = true
-        store.smoothWindowPreviewEnabled = true
         store.titleBarTriggerHeight = 42
         store.titleBarCornerDragHoldDuration = 0.9
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
@@ -51,7 +50,6 @@ struct SettingsStoreTests {
         #expect(reloadedStore.collapseStatusItemWindowActions == true)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == true)
-        #expect(reloadedStore.smoothWindowPreviewEnabled == true)
         #expect(reloadedStore.titleBarTriggerHeight == 42)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == 0.9)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .closeWindow)
@@ -156,7 +154,6 @@ struct SettingsStoreTests {
         store.collapseStatusItemWindowActions = true
         store.titleBarOverlayProtectionEnabled = true
         store.smartBrowserTabCloseEnabled = true
-        store.smoothWindowPreviewEnabled = true
         store.titleBarTriggerHeight = 40
         store.titleBarCornerDragHoldDuration = 1.2
         store.statusItemIcon = .windowGrid
@@ -176,7 +173,6 @@ struct SettingsStoreTests {
         #expect(reloadedStore.collapseStatusItemWindowActions == true)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == false)
-        #expect(reloadedStore.smoothWindowPreviewEnabled == false)
         #expect(reloadedStore.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
         #expect(reloadedStore.statusItemIcon == .gale)

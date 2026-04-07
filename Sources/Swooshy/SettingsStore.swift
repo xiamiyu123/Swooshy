@@ -150,15 +150,6 @@ final class SettingsStore {
         }
     }
 
-    var smoothWindowPreviewEnabled: Bool {
-        didSet {
-            guard oldValue != smoothWindowPreviewEnabled else { return }
-            userDefaults.set(smoothWindowPreviewEnabled, forKey: Keys.smoothWindowPreviewEnabled)
-            DebugLog.info(DebugLog.settings, "Smooth window preview enabled set to \(smoothWindowPreviewEnabled)")
-            notifyDidChange(.advancedGestureBehavior)
-        }
-    }
-
     var reverseCancelEnabled: Bool {
         didSet {
             guard oldValue != reverseCancelEnabled else { return }
@@ -370,11 +361,6 @@ final class SettingsStore {
             defaultValue: false,
             in: userDefaults
         )
-        self.smoothWindowPreviewEnabled = Self.boolValue(
-            forKey: Keys.smoothWindowPreviewEnabled,
-            defaultValue: false,
-            in: userDefaults
-        )
         self.reverseCancelEnabled = Self.boolValue(
             forKey: Keys.reverseCancelEnabled,
             defaultValue: true,
@@ -448,7 +434,6 @@ final class SettingsStore {
             Keys.titleBarOverlayProtectionEnabled,
             Keys.smartBrowserTabCloseEnabled,
             Keys.executeGestureOnRelease,
-            Keys.smoothWindowPreviewEnabled,
             Keys.reverseCancelEnabled,
             Keys.reverseCancelSensitivity,
             Keys.swipeSensitivity,
@@ -795,7 +780,6 @@ final class SettingsStore {
         static let smartBrowserTabCloseEnabled = "settings.smartBrowserTabCloseEnabled"
         static let experimentalBrowserTabCloseEnabled = "settings.experimentalBrowserTabCloseEnabled"
         static let executeGestureOnRelease = "settings.executeGestureOnRelease"
-        static let smoothWindowPreviewEnabled = "settings.smoothWindowPreviewEnabled"
         static let reverseCancelEnabled = "settings.reverseCancelEnabled"
         static let reverseCancelSensitivity = "settings.reverseCancelSensitivity"
         static let swipeSensitivity = "settings.swipeSensitivity"

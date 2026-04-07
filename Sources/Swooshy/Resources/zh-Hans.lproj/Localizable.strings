@@ -79,7 +79,7 @@
 "guide.page.titlebar_horizontal.message" = "标题栏区域同样支持左右滑动，用来快速整理当前窗口布局。";
 "guide.page.titlebar_horizontal.bullet1" = "双指左滑：将当前窗口贴靠到屏幕左半边。";
 "guide.page.titlebar_horizontal.bullet2" = "双指右滑：将当前窗口贴靠到屏幕右半边。";
-"guide.page.titlebar_horizontal.bullet3" = "预览：可以直观观察窗口贴靠后所处位置。对于部分有大小限制的应用，Swooshy 可能出现预览错误；此时 Swooshy 会记忆这次偏差，并在下一次改进预览。";
+"guide.page.titlebar_horizontal.bullet3" = "在“松手后执行”模式下，窗口会立刻朝目标停靠区域平滑移动。松手前按 Esc 或反向撤回手势，会让窗口回到原始位置。";
 
 "guide.page.corner_snap.title" = "标题栏手势：角落贴靠模式";
 "guide.page.corner_snap.message" = "在标题栏或 Dock 上悬停后，你也可以进入专门的角落贴靠模式。";
@@ -135,9 +135,7 @@
 "settings.gesture_hud.style.label" = "手势 HUD 风格";
 "settings.gesture_hud.footer" = "Dock 和标题栏手势共用同一个触控板监控。你可以在这里切换屏幕上的手势提示风格。";
 "settings.gesture_execute_on_release.enabled" = "松手后执行手势";
-"settings.gesture_execute_on_release.footer" = "开启后，手势识别时会立即显示 HUD 预览，但实际操作会在你松开手指后才执行。松手前按 Esc 可取消已识别的手势。";
-"settings.smooth_window_preview.enabled" = "以平滑移动窗口代替停靠预览";
-"settings.smooth_window_preview.footer" = "仅在“松手后执行手势”开启时生效。对支持停靠预览的标题栏手势和角落贴靠，会先直接平滑移动窗口；若反向取消或按 Esc，会回到原位置。";
+"settings.gesture_execute_on_release.footer" = "开启后，支持停靠的手势会立即开始平滑移动真实窗口，但只有在你松手后才会正式提交。松手前按 Esc 可取消已识别的手势并让窗口回到原位置。";
 "settings.gesture_hud.style.classic" = "详细";
 "settings.gesture_hud.style.elegant" = "优雅";
 "settings.gesture_hud.style.minimal" = "极简";

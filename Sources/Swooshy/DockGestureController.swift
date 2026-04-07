@@ -47,8 +47,7 @@ final class DockGestureController {
     private var activeCornerDragAnchorPoint: CGPoint?
     private var activeCornerDragTouchOrigin: CGPoint?
     private var activeCornerDragTouchReferencePoint: CGPoint?
-    private var cornerDragPreviewCache = CornerDragPreviewCache()
-    private var smoothWindowPreviewSession: SmoothWindowPreviewSession?
+    private var smoothDockingSession: SmoothDockingSession?
     private let cornerDragTranslationThreshold: CGFloat = 0.06
 
     private enum PendingReleaseAction {
@@ -104,47 +103,6 @@ final class DockGestureController {
         let activeCornerDragProcessIdentifier: pid_t?
     }
 
-    private struct CornerDragPreviewCache {
-        private struct Key: Equatable {
-            let processIdentifier: pid_t
-            let action: WindowAction
-            let screenFrame: CGRect
-        }
-
-        private var key: Key?
-        private var preview: WindowActionPreview?
-
-        mutating func resolvePreview(
-            for application: DockApplicationTarget,
-            action: WindowAction,
-            anchorPoint: CGPoint,
-            previewProvider: (WindowAction, CGPoint?) throws -> WindowActionPreview?
-        ) -> WindowActionPreview? {
-            let screenFrame = NSScreen.screens
-                .map(\.visibleFrame)
-                .first(where: { $0.contains(anchorPoint) })
-
-            let resolvedKey = Key(
-                processIdentifier: application.processIdentifier,
-                action: action,
-                screenFrame: screenFrame ?? .null
-            )
-
-            if key == resolvedKey {
-                return preview
-            }
-
-            key = resolvedKey
-            preview = try? previewProvider(action, anchorPoint)
-            return preview
-        }
-
-        mutating func clear() {
-            key = nil
-            preview = nil
-        }
-    }
-
     init(
         windowManager: WindowManager,
         layoutEngine: WindowLayoutEngine,
@@ -191,8 +149,7 @@ final class DockGestureController {
         activeCornerDragAnchorPoint = nil
         activeCornerDragTouchOrigin = nil
         activeCornerDragTouchReferencePoint = nil
-        cornerDragPreviewCache.clear()
-        finishSmoothWindowPreview(restore: true)
+        endSmoothDockingSession(restore: true)
         dockProbe.clearCache()
         titleBarProbe.clearCache()
         windowManager.shutdown()
@@ -250,8 +207,7 @@ final class DockGestureController {
         activeCornerDragAnchorPoint = nil
         activeCornerDragTouchOrigin = nil
         activeCornerDragTouchReferencePoint = nil
-        cornerDragPreviewCache.clear()
-        finishSmoothWindowPreview(restore: true)
+        endSmoothDockingSession(restore: true)
         dockProbe.clearCache()
         titleBarProbe.clearCache()
         pendingTouchFrame = nil
@@ -351,6 +307,9 @@ final class DockGestureController {
             hasActiveCornerDrag: activeCornerDragApplication != nil
         ) {
             if dockCornerDragRecognizer.isActive || titleBarCornerDragRecognizer.isActive {
+                if pendingReleaseAction == nil {
+                    endSmoothDockingSession(restore: true)
+                }
                 resetCornerDragSession(dismissFeedback: pendingReleaseAction == nil)
             }
             if pendingReleaseAction != nil {
@@ -551,7 +510,7 @@ final class DockGestureController {
             }
             pendingReleaseAction = nil
             clearTouchAnchor()
-            finishSmoothWindowPreview(restore: false)
+            endSmoothDockingSession(restore: false)
             gestureFeedbackPresenter.dismiss()
             activeCornerDragApplication = application
             activeCornerDragSource = source
@@ -559,7 +518,6 @@ final class DockGestureController {
             activeCornerDragAnchorPoint = anchorPoint
             activeCornerDragTouchOrigin = startAveragePoint
             activeCornerDragTouchReferencePoint = startAveragePoint
-            cornerDragPreviewCache.clear()
             installEscMonitor()
             updateCornerDragFeedback(
                 currentTouchPoint: currentAveragePoint,
@@ -730,17 +688,13 @@ final class DockGestureController {
         }
 
         let persistent = settingsStore.executeGestureOnRelease
-        let useSmoothWindowPreview = shouldUseSmoothWindowPreview(for: action)
-        let preview = persistent && useSmoothWindowPreview == false
-            ? snapPreview(for: action, application: event.application, anchorPoint: anchorPoint)
-            : nil
         gestureFeedbackPresenter.show(
             gesture: event.gesture,
             gestureTitle: event.gesture.title(preferredLanguages: settingsStore.preferredLanguages),
             actionTitle: actionTitle,
             anchor: anchorPoint,
             persistent: persistent,
-            preview: preview
+            preview: nil
         )
         DebugLog.info(
             DebugLog.dock,
@@ -754,21 +708,20 @@ final class DockGestureController {
                 anchorPoint: anchorPoint,
                 replacesWithTabClose: replacesWithTabClose
             )
-            if useSmoothWindowPreview {
-                finishSmoothWindowPreview(restore: false)
-                beginSmoothPreviewIfNeeded(
+            if action.supportsSmoothDocking {
+                startOrUpdateSmoothDockingSession(
                     for: action,
                     application: event.application,
                     anchorPoint: anchorPoint
                 )
             } else {
-                finishSmoothWindowPreview(restore: true)
+                endSmoothDockingSession(restore: true)
             }
             storeTouchAnchor(gesture: event.gesture, touches: touches)
             installEscMonitor()
             DebugLog.info(DebugLog.dock, "Deferred title-bar action \(String(describing: action)) until finger release")
         } else {
-            finishSmoothWindowPreview(restore: true)
+            endSmoothDockingSession(restore: true)
             executeTitleBarAction(
                 action,
                 event: event,
@@ -832,23 +785,6 @@ final class DockGestureController {
         settingsStore.titleBarGestureAction(for: gesture)
     }
 
-    private func snapPreview(
-        for action: WindowAction,
-        application: DockApplicationTarget,
-        anchorPoint: CGPoint
-    ) -> WindowActionPreview? {
-        guard action.supportsSnapPreview else {
-            return nil
-        }
-
-        return try? windowManager.previewTarget(
-            for: action,
-            on: application,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: anchorPoint
-        )
-    }
-
     private func updateCornerDragFeedback(
         currentTouchPoint: CGPoint,
         forcePresentation: Bool = false
@@ -905,33 +841,6 @@ final class DockGestureController {
             return
         }
 
-        let useSmoothWindowPreview = shouldUseSmoothWindowPreview(for: nextAction)
-        let preview = useSmoothWindowPreview ? nil : nextAction.flatMap { action in
-            cornerDragPreviewCache.resolvePreview(
-                for: application,
-                action: action,
-                anchorPoint: anchorPoint,
-                previewProvider: { [windowManager, layoutEngine] action, preferredAppKitPoint in
-                    switch source {
-                    case .dock:
-                        try windowManager.previewTarget(
-                            for: action,
-                            on: application,
-                            layoutEngine: layoutEngine,
-                            preferredAppKitPoint: preferredAppKitPoint
-                        )
-                    case .titleBar:
-                        try windowManager.previewTarget(
-                            for: action,
-                            on: application,
-                            layoutEngine: layoutEngine,
-                            preferredAppKitPoint: preferredAppKitPoint
-                        )
-                    }
-                }
-            )
-        }
-
         let actionTitle = nextAction?.title(preferredLanguages: settingsStore.preferredLanguages)
             ?? settingsStore.localized("gesture.corner_drag.waiting")
 
@@ -946,18 +855,17 @@ final class DockGestureController {
             actionTitle: actionTitle,
             anchor: anchorPoint,
             persistent: true,
-            preview: preview
+            preview: nil
         )
 
-        if useSmoothWindowPreview {
-            updateSmoothPreview(
+        if let nextAction {
+            startOrUpdateSmoothDockingSession(
                 for: nextAction,
                 application: application,
-                anchorPoint: anchorPoint,
-                source: source
+                anchorPoint: anchorPoint
             )
         } else {
-            finishSmoothWindowPreview(restore: true)
+            restoreSmoothDockingSessionIfNeeded()
         }
     }
 
@@ -979,8 +887,6 @@ final class DockGestureController {
         activeCornerDragAnchorPoint = nil
         activeCornerDragTouchOrigin = nil
         activeCornerDragTouchReferencePoint = nil
-        cornerDragPreviewCache.clear()
-        finishSmoothWindowPreview(restore: dismissFeedback)
         if dismissFeedback {
             gestureFeedbackPresenter.dismiss()
             removeEscMonitor()
@@ -1044,7 +950,7 @@ final class DockGestureController {
         pendingReleaseAction = nil
         clearTouchAnchor()
         resetStandardRecognizers(rebuildRecognizers: rebuildRecognizers)
-        finishSmoothWindowPreview(restore: true)
+        endSmoothDockingSession(restore: true)
         resetCornerDragSession(
             dismissFeedback: false,
             rebuildRecognizers: rebuildRecognizers
@@ -1212,7 +1118,7 @@ final class DockGestureController {
 
     private func cancelPendingReleaseAction() {
         guard pendingReleaseAction != nil || activeCornerDragApplication != nil else {
-            finishSmoothWindowPreview(restore: true)
+            endSmoothDockingSession(restore: true)
             removeEscMonitor()
             return
         }
@@ -1225,29 +1131,33 @@ final class DockGestureController {
         pendingReleaseAction = nil
         clearTouchAnchor()
         removeEscMonitor()
-        finishSmoothWindowPreview(restore: false)
         gestureFeedbackPresenter.scheduleDismiss()
 
         switch action {
         case .dock(let dockAction, let application):
+            endSmoothDockingSession(restore: false)
             DebugLog.info(DebugLog.dock, "Executing deferred dock action \(dockAction.rawValue) on finger release")
             scheduleDockGestureAction(dockAction, for: application)
         case .titleBar(let windowAction, let event, let anchorPoint, let replacesWithTabClose):
             DebugLog.info(DebugLog.dock, "Executing deferred title-bar action \(String(describing: windowAction)) on finger release")
-            executeTitleBarAction(
-                windowAction,
-                event: event,
-                anchorPoint: anchorPoint,
-                replacesWithTabClose: replacesWithTabClose
-            )
+            if commitSmoothDockingSessionIfNeeded(for: windowAction) == false {
+                executeTitleBarAction(
+                    windowAction,
+                    event: event,
+                    anchorPoint: anchorPoint,
+                    replacesWithTabClose: replacesWithTabClose
+                )
+            }
         case .cornerDrag(let windowAction, let application, let anchorPoint, let source):
             DebugLog.info(DebugLog.dock, "Executing deferred corner drag action \(String(describing: windowAction)) on finger release")
-            executeCornerDragAction(
-                windowAction,
-                application: application,
-                anchorPoint: anchorPoint,
-                source: source
-            )
+            if commitSmoothDockingSessionIfNeeded(for: windowAction) == false {
+                executeCornerDragAction(
+                    windowAction,
+                    application: application,
+                    anchorPoint: anchorPoint,
+                    source: source
+                )
+            }
         }
 
         resetStandardRecognizers()
@@ -1375,129 +1285,85 @@ final class DockGestureController {
         }
     }
 
-    private func shouldUseSmoothWindowPreview(for action: WindowAction?) -> Bool {
-        settingsStore.smoothWindowPreviewEnabled &&
-            action?.supportsSnapPreview == true
-    }
-
-    private func beginSmoothPreviewIfNeeded(
+    private func startOrUpdateSmoothDockingSession(
         for action: WindowAction,
         application: DockApplicationTarget,
         anchorPoint: CGPoint
     ) {
-        guard shouldUseSmoothWindowPreview(for: action) else {
-            finishSmoothWindowPreview(restore: true)
+        guard action.supportsSmoothDocking else {
+            endSmoothDockingSession(restore: true)
             return
         }
 
-        if smoothWindowPreviewSession == nil {
+        if smoothDockingSession == nil {
             do {
-                smoothWindowPreviewSession = try windowManager.beginSmoothPreviewSession(
-                    for: action,
+                smoothDockingSession = try windowManager.beginSmoothDockingSession(
                     on: application,
-                    layoutEngine: layoutEngine,
                     preferredAppKitPoint: anchorPoint
                 )
+            } catch let error as WindowManagerError {
+                handleWindowManagerError(error)
+                smoothDockingSession = nil
+                return
             } catch {
-                DebugLog.debug(DebugLog.dock, "Unable to start smooth window preview: \(error.localizedDescription)")
-                smoothWindowPreviewSession = nil
+                DebugLog.debug(DebugLog.dock, "Unable to begin smooth docking session: \(error.localizedDescription)")
+                smoothDockingSession = nil
                 return
             }
         }
 
-        do {
-            let targetFrame = try windowManager.smoothPreviewTargetFrame(
-                for: action,
-                on: application,
-                layoutEngine: layoutEngine,
-                preferredAppKitPoint: anchorPoint
-            )
-            smoothWindowPreviewSession?.animate(to: targetFrame)
-        } catch {
-            DebugLog.debug(DebugLog.dock, "Unable to update smooth window preview target: \(error.localizedDescription)")
-        }
+        smoothDockingSession?.update(action: action)
     }
 
-    private func updateSmoothPreview(
-        for action: WindowAction?,
-        application: DockApplicationTarget,
-        anchorPoint: CGPoint,
-        source: CornerDragSource
-    ) {
-        guard let action, shouldUseSmoothWindowPreview(for: action) else {
-            finishSmoothWindowPreview(restore: true)
-            return
-        }
+    private func restoreSmoothDockingSessionIfNeeded() {
+        smoothDockingSession?.restore()
+    }
 
-        if smoothWindowPreviewSession == nil {
-            do {
-                switch source {
-                case .dock:
-                    smoothWindowPreviewSession = try windowManager.beginSmoothPreviewSession(
-                        for: action,
-                        on: application,
-                        layoutEngine: layoutEngine,
-                        preferredAppKitPoint: anchorPoint
-                    )
-                case .titleBar:
-                    smoothWindowPreviewSession = try windowManager.beginSmoothPreviewSession(
-                        for: action,
-                        on: application,
-                        layoutEngine: layoutEngine,
-                        preferredAppKitPoint: anchorPoint
-                    )
-                }
-            } catch {
-                DebugLog.debug(DebugLog.dock, "Unable to start corner smooth preview: \(error.localizedDescription)")
-                smoothWindowPreviewSession = nil
-                return
-            }
+    private func commitSmoothDockingSessionIfNeeded(for action: WindowAction) -> Bool {
+        guard action.supportsSmoothDocking, let smoothDockingSession else {
+            endSmoothDockingSession(restore: false)
+            return false
         }
 
         do {
-            let targetFrame: CGRect
-            switch source {
-            case .dock:
-                targetFrame = try windowManager.smoothPreviewTargetFrame(
-                    for: action,
-                    on: application,
-                    layoutEngine: layoutEngine,
-                    preferredAppKitPoint: anchorPoint
-                )
-            case .titleBar:
-                targetFrame = try windowManager.smoothPreviewTargetFrame(
-                    for: action,
-                    on: application,
-                    layoutEngine: layoutEngine,
-                    preferredAppKitPoint: anchorPoint
-                )
-            }
-            smoothWindowPreviewSession?.animate(to: targetFrame)
+            _ = try smoothDockingSession.commit()
+            smoothDockingSession.finish()
+            self.smoothDockingSession = nil
+            return true
+        } catch let error as WindowManagerError {
+            handleWindowManagerError(error)
         } catch {
-            DebugLog.debug(DebugLog.dock, "Unable to update corner smooth preview: \(error.localizedDescription)")
+            NSSound.beep()
+            DebugLog.error(DebugLog.dock, "Smooth docking commit failed: \(error.localizedDescription)")
         }
+
+        smoothDockingSession.finish()
+        self.smoothDockingSession = nil
+        return false
     }
 
-    private func finishSmoothWindowPreview(restore: Bool) {
-        guard let smoothWindowPreviewSession else {
+    private func endSmoothDockingSession(restore: Bool) {
+        guard let smoothDockingSession else {
             return
         }
 
         if restore {
-            smoothWindowPreviewSession.restore()
-            let session = smoothWindowPreviewSession
+            smoothDockingSession.restore()
+            let session = smoothDockingSession
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 160_000_000)
-                guard let self, self.smoothWindowPreviewSession === session else {
+                guard let self, self.smoothDockingSession === session else {
                     return
                 }
+
                 session.finish()
-                self.smoothWindowPreviewSession = nil
+                self.smoothDockingSession = nil
             }
-        } else {
-            smoothWindowPreviewSession.finish()
-            self.smoothWindowPreviewSession = nil
+            return
         }
+
+        smoothDockingSession.finish()
+        self.smoothDockingSession = nil
     }
 
     private func makeConfiguredRecognizer() -> DockGestureRecognizer {

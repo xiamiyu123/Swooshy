@@ -24,7 +24,7 @@ struct WelcomeWindowControllerTests {
         #expect(englishContent.welcomeTitle == "Welcome to Swooshy")
         #expect(englishContent.pages[1].title == "Dock Gestures: Switch Windows for the Same App")
         #expect(englishContent.pages[5].bullets.count == 3)
-        #expect(englishContent.pages[5].bullets[2].contains("Preview"))
+        #expect(englishContent.pages[5].bullets[2].contains("real window"))
         #expect(englishContent.pages[6].title == "Title Bar Gestures: Corner Snap Mode")
         #expect(englishContent.pages[6].bullets.count == 3)
         #expect(englishContent.pages[6].message.contains("title bar or Dock"))

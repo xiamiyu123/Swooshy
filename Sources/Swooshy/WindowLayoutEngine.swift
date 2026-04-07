@@ -116,6 +116,7 @@ struct WindowLayoutEngine {
         switch previewBehavior {
         case .area(let defaultHorizontalAnchor, let defaultVerticalAnchor):
             return areaPreviewFrame(
+                for: action,
                 targetFrame: targetFrame,
                 observation: observation,
                 defaultHorizontalAnchor: defaultHorizontalAnchor,
@@ -136,6 +137,7 @@ struct WindowLayoutEngine {
         switch previewBehavior {
         case .area(let defaultHorizontalAnchor, let defaultVerticalAnchor):
             let frame = areaPreviewFrame(
+                for: action,
                 targetFrame: targetFrame,
                 observation: observation,
                 defaultHorizontalAnchor: defaultHorizontalAnchor,
@@ -200,6 +202,7 @@ struct WindowLayoutEngine {
     }
 
     private func areaPreviewFrame(
+        for action: WindowAction,
         targetFrame: CGRect,
         observation: WindowActionPreview.Observation?,
         defaultHorizontalAnchor: WindowActionPreview.AxisAnchor,
@@ -218,6 +221,15 @@ struct WindowLayoutEngine {
 
         if let sizeBounds {
             let constrainedSize = resolvedSize
+
+            if action.prefersOuterEdgeAnchoringWhenConstrained {
+                if abs(constrainedSize.width - targetFrame.width) > 1 {
+                    horizontalAnchor = defaultHorizontalAnchor
+                }
+                if abs(constrainedSize.height - targetFrame.height) > 1 {
+                    verticalAnchor = defaultVerticalAnchor
+                }
+            }
 
             if sizeBounds.maximumWidth != nil,
                constrainedSize.width <= targetFrame.width,
@@ -352,6 +364,28 @@ struct WindowLayoutEngine {
             width: maxX - minX,
             height: maxY - minY
         ).integral
+    }
+}
+
+private extension WindowAction {
+    var prefersOuterEdgeAnchoringWhenConstrained: Bool {
+        switch self {
+        case .topLeftQuarter, .topRightQuarter, .bottomLeftQuarter, .bottomRightQuarter:
+            return true
+        case .leftHalf,
+             .rightHalf,
+             .maximize,
+             .center,
+             .minimize,
+             .closeWindow,
+             .closeTab,
+             .quitApplication,
+             .cycleSameAppWindowsForward,
+             .cycleSameAppWindowsBackward,
+             .toggleFullScreen,
+             .exitFullScreen:
+            return false
+        }
     }
 }
 

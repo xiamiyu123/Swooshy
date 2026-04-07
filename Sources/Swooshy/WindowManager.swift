@@ -35,6 +35,176 @@ private struct FrameWriteResult {
     }
 }
 
+struct WindowConstraintObservationScope: Equatable {
+    let applicationKey: String
+    let role: String
+    let subrole: String
+    let title: String
+
+    var storageKey: String {
+        [
+            applicationKey,
+            "role=\(role)",
+            "subrole=\(subrole)",
+            "title=\(title)"
+        ].joined(separator: "|")
+    }
+
+    init(
+        applicationKey: String,
+        role: String?,
+        subrole: String?,
+        title: String?
+    ) {
+        self.applicationKey = applicationKey
+        self.role = Self.normalizedComponent(role, fallback: "AXWindow")
+        self.subrole = Self.normalizedComponent(subrole, fallback: "<none>")
+        self.title = Self.normalizedTitleComponent(title)
+    }
+
+    private static func normalizedComponent(_ value: String?, fallback: String) -> String {
+        let collapsed = collapsedWhitespace(value)
+        return collapsed.isEmpty ? fallback : collapsed
+    }
+
+    private static func normalizedTitleComponent(_ value: String?) -> String {
+        let collapsed = collapsedWhitespace(value)
+        guard collapsed.isEmpty == false else {
+            return "<untitled>"
+        }
+
+        return String(collapsed.prefix(80))
+    }
+
+    private static func collapsedWhitespace(_ value: String?) -> String {
+        guard let value else {
+            return ""
+        }
+
+        let folded = value.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+        return folded
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+}
+
+private func mergedConstraintSizeBounds(
+    _ lhs: WindowActionPreview.SizeBounds,
+    with rhs: WindowActionPreview.SizeBounds
+) -> WindowActionPreview.SizeBounds {
+    let mergedBounds = WindowActionPreview.SizeBounds(
+        minimumWidth: mergeConstraintMaximum(lhs.minimumWidth, rhs.minimumWidth),
+        maximumWidth: mergeConstraintMinimum(lhs.maximumWidth, rhs.maximumWidth),
+        minimumHeight: mergeConstraintMaximum(lhs.minimumHeight, rhs.minimumHeight),
+        maximumHeight: mergeConstraintMinimum(lhs.maximumHeight, rhs.maximumHeight)
+    )
+
+    return normalizedConstraintSizeBounds(mergedBounds, favoring: rhs)
+}
+
+private func mergeConstraintMaximum(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
+    switch (lhs, rhs) {
+    case let (.some(lhs), .some(rhs)):
+        return max(lhs, rhs)
+    case let (.some(lhs), .none):
+        return lhs
+    case let (.none, .some(rhs)):
+        return rhs
+    case (.none, .none):
+        return nil
+    }
+}
+
+private func mergeConstraintMinimum(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
+    switch (lhs, rhs) {
+    case let (.some(lhs), .some(rhs)):
+        return min(lhs, rhs)
+    case let (.some(lhs), .none):
+        return lhs
+    case let (.none, .some(rhs)):
+        return rhs
+    case (.none, .none):
+        return nil
+    }
+}
+
+private func normalizedConstraintSizeBounds(
+    _ bounds: WindowActionPreview.SizeBounds,
+    favoring latest: WindowActionPreview.SizeBounds
+) -> WindowActionPreview.SizeBounds {
+    WindowActionPreview.SizeBounds(
+        minimumWidth: normalizedConstraintMinimum(
+            minimum: bounds.minimumWidth,
+            maximum: bounds.maximumWidth,
+            latestMinimum: latest.minimumWidth,
+            latestMaximum: latest.maximumWidth
+        ),
+        maximumWidth: normalizedConstraintMaximum(
+            minimum: bounds.minimumWidth,
+            maximum: bounds.maximumWidth,
+            latestMinimum: latest.minimumWidth,
+            latestMaximum: latest.maximumWidth
+        ),
+        minimumHeight: normalizedConstraintMinimum(
+            minimum: bounds.minimumHeight,
+            maximum: bounds.maximumHeight,
+            latestMinimum: latest.minimumHeight,
+            latestMaximum: latest.maximumHeight
+        ),
+        maximumHeight: normalizedConstraintMaximum(
+            minimum: bounds.minimumHeight,
+            maximum: bounds.maximumHeight,
+            latestMinimum: latest.minimumHeight,
+            latestMaximum: latest.maximumHeight
+        )
+    )
+}
+
+private func normalizedConstraintMinimum(
+    minimum: CGFloat?,
+    maximum: CGFloat?,
+    latestMinimum: CGFloat?,
+    latestMaximum: CGFloat?
+) -> CGFloat? {
+    guard
+        let minimum,
+        let maximum,
+        minimum > maximum
+    else {
+        return minimum
+    }
+
+    if latestMaximum != nil, latestMinimum == nil {
+        return nil
+    }
+
+    return minimum
+}
+
+private func normalizedConstraintMaximum(
+    minimum: CGFloat?,
+    maximum: CGFloat?,
+    latestMinimum: CGFloat?,
+    latestMaximum: CGFloat?
+) -> CGFloat? {
+    guard
+        let minimum,
+        let maximum,
+        minimum > maximum
+    else {
+        return maximum
+    }
+
+    if latestMinimum != nil, latestMaximum == nil {
+        return nil
+    }
+
+    return maximum
+}
+
 @MainActor
 final class ObservedWindowConstraintStore {
     private static let persistenceKey = "windowManager.observedWindowConstraintStore"
@@ -303,301 +473,13 @@ final class ObservedWindowConstraintStore {
         _ lhs: WindowActionPreview.SizeBounds,
         with rhs: WindowActionPreview.SizeBounds
     ) -> WindowActionPreview.SizeBounds {
-        WindowActionPreview.SizeBounds(
-            minimumWidth: mergeMaximum(lhs.minimumWidth, rhs.minimumWidth),
-            maximumWidth: mergeMinimum(lhs.maximumWidth, rhs.maximumWidth),
-            minimumHeight: mergeMaximum(lhs.minimumHeight, rhs.minimumHeight),
-            maximumHeight: mergeMinimum(lhs.maximumHeight, rhs.maximumHeight)
-        )
-    }
-
-    private func emptySizeBounds() -> WindowActionPreview.SizeBounds {
-        WindowActionPreview.SizeBounds(
-            minimumWidth: nil,
-            maximumWidth: nil,
-            minimumHeight: nil,
-            maximumHeight: nil
-        )
-    }
-
-    private func mergeMaximum(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
-        switch (lhs, rhs) {
-        case let (.some(lhs), .some(rhs)):
-            return max(lhs, rhs)
-        case let (.some(lhs), .none):
-            return lhs
-        case let (.none, .some(rhs)):
-            return rhs
-        case (.none, .none):
-            return nil
-        }
-    }
-
-    private func mergeMinimum(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
-        switch (lhs, rhs) {
-        case let (.some(lhs), .some(rhs)):
-            return min(lhs, rhs)
-        case let (.some(lhs), .none):
-            return lhs
-        case let (.none, .some(rhs)):
-            return rhs
-        case (.none, .none):
-            return nil
-        }
+        mergedConstraintSizeBounds(lhs, with: rhs)
     }
 }
 
-@MainActor
-final class SmoothPreviewConstraintStore {
-    private struct ApplicationConstraints {
-        var sharedSizeBounds = WindowActionPreview.SizeBounds(
-            minimumWidth: nil,
-            maximumWidth: nil,
-            minimumHeight: nil,
-            maximumHeight: nil
-        )
-        var observationsByAction: [WindowAction: WindowActionPreview.Observation] = [:]
-        var lastUsedAt: Date
-    }
-
-    private let now: () -> Date
-    private var constraintsByApplicationKey: [String: ApplicationConstraints] = [:]
-    private let expirationInterval: TimeInterval = 7 * 24 * 60 * 60
-
-    init(now: @escaping () -> Date = Date.init) {
-        self.now = now
-    }
-
-    func observation(
-        for applicationKey: String,
-        action: WindowAction
-    ) -> WindowActionPreview.Observation? {
-        pruneExpiredConstraints()
-
-        guard var applicationConstraints = constraintsByApplicationKey[applicationKey] else {
-            return nil
-        }
-
-        applicationConstraints.lastUsedAt = now()
-        constraintsByApplicationKey[applicationKey] = applicationConstraints
-
-        if let actionObservation = applicationConstraints.observationsByAction[action] {
-            guard
-                actionObservation.sizeBounds.hasConstraints ||
-                actionObservation.horizontalAnchor != nil ||
-                actionObservation.verticalAnchor != nil
-            else {
-                return nil
-            }
-
-            return actionObservation
-        }
-
-        guard applicationConstraints.sharedSizeBounds.hasConstraints else {
-            return nil
-        }
-
-        return WindowActionPreview.Observation(
-            sizeBounds: applicationConstraints.sharedSizeBounds,
-            horizontalAnchor: nil,
-            verticalAnchor: nil
-        )
-    }
-
-    func record(
-        sizeBounds: WindowActionPreview.SizeBounds,
-        horizontalAnchor: WindowActionPreview.AxisAnchor?,
-        verticalAnchor: WindowActionPreview.AxisAnchor?,
-        action: WindowAction,
-        for applicationKey: String
-    ) {
-        pruneExpiredConstraints()
-
-        let currentDate = now()
-        var applicationConstraints = constraintsByApplicationKey[applicationKey] ?? ApplicationConstraints(
-            lastUsedAt: currentDate
-        )
-
-        if sizeBounds.hasConstraints {
-            applicationConstraints.sharedSizeBounds = merged(
-                applicationConstraints.sharedSizeBounds,
-                with: sizeBounds
-            )
-        }
-
-        if var existingObservation = applicationConstraints.observationsByAction[action] {
-            existingObservation.sizeBounds = merged(
-                existingObservation.sizeBounds,
-                with: sizeBounds
-            )
-            if let horizontalAnchor {
-                existingObservation.horizontalAnchor = horizontalAnchor
-            }
-            if let verticalAnchor {
-                existingObservation.verticalAnchor = verticalAnchor
-            }
-            applicationConstraints.observationsByAction[action] = existingObservation
-        } else {
-            applicationConstraints.observationsByAction[action] = WindowActionPreview.Observation(
-                sizeBounds: sizeBounds,
-                horizontalAnchor: horizontalAnchor,
-                verticalAnchor: verticalAnchor
-            )
-        }
-
-        applicationConstraints.lastUsedAt = currentDate
-        constraintsByApplicationKey[applicationKey] = applicationConstraints
-    }
-
-    private func pruneExpiredConstraints(referenceDate: Date? = nil) {
-        let currentDate = referenceDate ?? now()
-        let cutoffDate = currentDate.addingTimeInterval(-expirationInterval)
-        constraintsByApplicationKey = constraintsByApplicationKey.filter { _, constraints in
-            constraints.lastUsedAt >= cutoffDate
-        }
-    }
-
-    private func merged(
-        _ lhs: WindowActionPreview.SizeBounds,
-        with rhs: WindowActionPreview.SizeBounds
-    ) -> WindowActionPreview.SizeBounds {
-        WindowActionPreview.SizeBounds(
-            minimumWidth: mergeMaximum(lhs.minimumWidth, rhs.minimumWidth),
-            maximumWidth: mergeMinimum(lhs.maximumWidth, rhs.maximumWidth),
-            minimumHeight: mergeMaximum(lhs.minimumHeight, rhs.minimumHeight),
-            maximumHeight: mergeMinimum(lhs.maximumHeight, rhs.maximumHeight)
-        )
-    }
-
-    private func mergeMaximum(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
-        switch (lhs, rhs) {
-        case let (.some(lhs), .some(rhs)):
-            return max(lhs, rhs)
-        case let (.some(lhs), .none):
-            return lhs
-        case let (.none, .some(rhs)):
-            return rhs
-        case (.none, .none):
-            return nil
-        }
-    }
-
-    private func mergeMinimum(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
-        switch (lhs, rhs) {
-        case let (.some(lhs), .some(rhs)):
-            return min(lhs, rhs)
-        case let (.some(lhs), .none):
-            return lhs
-        case let (.none, .some(rhs)):
-            return rhs
-        case (.none, .none):
-            return nil
-        }
-    }
-}
 @MainActor
 protocol WindowManaging {
     func perform(_ action: WindowAction, layoutEngine: WindowLayoutEngine) throws
-}
-
-@MainActor
-final class SmoothWindowPreviewSession {
-    private let originalAppKitFrame: CGRect
-    private let loadCurrentAppKitFrame: () -> CGRect?
-    private let applyAppKitFrame: (CGRect) throws -> Void
-    private var animationTask: Task<Void, Never>?
-    private var currentTarget: CGRect?
-
-    init(
-        originalAppKitFrame: CGRect,
-        loadCurrentAppKitFrame: @escaping () -> CGRect?,
-        applyAppKitFrame: @escaping (CGRect) throws -> Void
-    ) {
-        self.originalAppKitFrame = originalAppKitFrame
-        self.loadCurrentAppKitFrame = loadCurrentAppKitFrame
-        self.applyAppKitFrame = applyAppKitFrame
-    }
-
-    deinit {
-        animationTask?.cancel()
-    }
-
-    func animate(to targetFrame: CGRect) {
-        let clampedTarget = targetFrame.integral
-        guard currentTarget != clampedTarget else { return }
-        currentTarget = clampedTarget
-
-        guard animationTask == nil else { return }
-        startChaseLoop()
-    }
-
-    func restore() {
-        animate(to: originalAppKitFrame)
-    }
-
-    func finish() {
-        animationTask?.cancel()
-        animationTask = nil
-        currentTarget = nil
-    }
-
-    private func startChaseLoop() {
-        animationTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            let stepDuration: UInt64 = 12_000_000
-            let chaseFactor: CGFloat = 0.32
-            let snapThreshold: CGFloat = 0.5
-
-            var previousFrame = self.loadCurrentAppKitFrame() ?? self.originalAppKitFrame
-
-            while !Task.isCancelled {
-                guard let target = self.currentTarget else { break }
-                let current = self.loadCurrentAppKitFrame() ?? previousFrame
-
-                if self.framesAreClose(current, target, threshold: snapThreshold) {
-                    if current.integral != target {
-                        do {
-                            try self.applyAppKitFrame(target)
-                        } catch {
-                            DebugLog.debug(
-                                DebugLog.windows,
-                                "Smooth preview snap failed: \(error.localizedDescription)"
-                            )
-                        }
-                    }
-                    break
-                }
-
-                let next = CGRect(
-                    x: current.minX + (target.minX - current.minX) * chaseFactor,
-                    y: current.minY + (target.minY - current.minY) * chaseFactor,
-                    width: current.width + (target.width - current.width) * chaseFactor,
-                    height: current.height + (target.height - current.height) * chaseFactor
-                ).integral
-
-                do {
-                    try self.applyAppKitFrame(next)
-                    previousFrame = next
-                } catch {
-                    DebugLog.debug(
-                        DebugLog.windows,
-                        "Smooth preview move failed: \(error.localizedDescription)"
-                    )
-                    break
-                }
-
-                try? await Task.sleep(nanoseconds: stepDuration)
-            }
-            self.animationTask = nil
-        }
-    }
-
-    private func framesAreClose(_ a: CGRect, _ b: CGRect, threshold: CGFloat) -> Bool {
-        abs(a.minX - b.minX) < threshold
-            && abs(a.minY - b.minY) < threshold
-            && abs(a.width - b.width) < threshold
-            && abs(a.height - b.height) < threshold
-    }
 }
 
 @MainActor
@@ -605,7 +487,6 @@ struct WindowManager: WindowManaging {
     private let windowOrdering = WindowOrdering()
     private let cycleSessions = WindowCycleSessionStore()
     private let observedWindowConstraintStore = ObservedWindowConstraintStore()
-    private let smoothWindowConstraintStore = SmoothPreviewConstraintStore()
 
     private struct ResolvedWindowActionLayout {
         let focusedWindow: AXUIElement
@@ -647,11 +528,21 @@ struct WindowManager: WindowManaging {
 
         switch action {
         case .minimize:
-            let window = try focusedWindowElement(in: appElement)
+            let window = try targetedWindow(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint,
+                fallback: { try focusedWindowElement(in: appElement) }
+            )
             try setMinimized(true, for: window)
             return
         case .closeWindow:
-            let window = try focusedWindowElement(in: appElement)
+            let window = try targetedWindow(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint,
+                fallback: { try focusedWindowElement(in: appElement) }
+            )
             guard try closeWindow(window, owningApp: app) else {
                 throw WindowManagerError.unableToPerformAction
             }
@@ -662,7 +553,12 @@ struct WindowManager: WindowManaging {
             }
             return
         case .cycleSameAppWindowsForward:
-            let currentWindow = try focusedWindowElement(in: appElement)
+            let currentWindow = try targetedWindow(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint,
+                fallback: { try focusedWindowElement(in: appElement) }
+            )
             try focusAdjacentVisibleWindow(
                 in: app,
                 appElement: appElement,
@@ -671,7 +567,12 @@ struct WindowManager: WindowManaging {
             )
             return
         case .cycleSameAppWindowsBackward:
-            let currentWindow = try focusedWindowElement(in: appElement)
+            let currentWindow = try targetedWindow(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint,
+                fallback: { try focusedWindowElement(in: appElement) }
+            )
             try focusAdjacentVisibleWindow(
                 in: app,
                 appElement: appElement,
@@ -687,50 +588,42 @@ struct WindowManager: WindowManaging {
              .bottomRightQuarter,
              .maximize,
              .center:
-            break
+            let window = try focusedWindowElement(in: appElement)
+            try performSmoothDockingAction(
+                action,
+                application: app,
+                window: window,
+                preferredAppKitPoint: preferredAppKitPoint,
+                bringToFront: false
+            )
+            return
         case .quitApplication:
             return
         case .toggleFullScreen:
-            let window = try focusedWindowElement(in: appElement)
+            let window = try targetedWindow(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint,
+                fallback: { try focusedWindowElement(in: appElement) }
+            )
             let isFullScreen = isFullScreen(window)
             if !isFullScreen {
                 try setFullScreen(true, for: window)
             }
             return
         case .exitFullScreen:
-            let window = try focusedWindowElement(in: appElement)
+            let window = try targetedWindow(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint,
+                fallback: { try focusedWindowElement(in: appElement) }
+            )
             if isFullScreen(window) {
                 try setFullScreen(false, for: window)
             }
             return
         }
 
-        let resolvedLayout = try resolvedWindowActionLayout(
-            for: action,
-            application: app,
-            appElement: appElement,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-
-        let frameOutcome = try setFrame(resolvedLayout.targetAXFrame, for: resolvedLayout.focusedWindow)
-        let appliedAXFrame: CGRect
-        switch frameOutcome {
-        case .exact(let frame), .constrained(let frame):
-            appliedAXFrame = frame
-        }
-
-        let appliedAppKitFrame = resolvedLayout.screenGeometry.appKitFrame(fromAXFrame: appliedAXFrame)
-        recordObservedConstraintIfNeeded(
-            requestedFrame: resolvedLayout.targetFrame,
-            appliedFrame: appliedAppKitFrame,
-            action: action,
-            application: app
-        )
-        DebugLog.debug(
-            DebugLog.windows,
-            "Read back window frame after \(String(describing: action)): AX \(NSStringFromRect(appliedAXFrame)), AppKit \(NSStringFromRect(appliedAppKitFrame))"
-        )
     }
 
     func perform(
@@ -754,16 +647,25 @@ struct WindowManager: WindowManaging {
             _ = try quitApplication(matching: target)
             return
         case .minimize:
-            _ = try minimizeVisibleWindow(of: target)
+            _ = try minimizeVisibleWindow(
+                of: target,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
             return
         case .closeWindow:
             _ = try closeWindow(of: target, preferredAppKitPoint: preferredAppKitPoint)
             return
         case .toggleFullScreen:
-            _ = try toggleFullScreenWindow(of: target)
+            _ = try toggleFullScreenWindow(
+                of: target,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
             return
         case .exitFullScreen:
-            _ = try exitFullScreenWindow(of: target)
+            _ = try exitFullScreenWindow(
+                of: target,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
             return
         case .closeTab:
             guard BrowserTabProbe.simulateMiddleClick(at: preferredAppKitPoint ?? NSEvent.mouseLocation) else {
@@ -771,10 +673,18 @@ struct WindowManager: WindowManaging {
             }
             return
         case .cycleSameAppWindowsForward:
-            _ = try cycleVisibleWindows(of: target, direction: .forward)
+            _ = try cycleVisibleWindows(
+                of: target,
+                direction: .forward,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
             return
         case .cycleSameAppWindowsBackward:
-            _ = try cycleVisibleWindows(of: target, direction: .backward)
+            _ = try cycleVisibleWindows(
+                of: target,
+                direction: .backward,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
             return
         case .leftHalf,
              .rightHalf,
@@ -784,259 +694,110 @@ struct WindowManager: WindowManaging {
              .bottomRightQuarter,
              .maximize,
              .center:
-            break
-        }
-
-        let targetWindow = try preferredWindowActionTarget(
-            in: app,
-            appElement: appElement,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-        try bringWindowToFront(targetWindow, for: app)
-
-        let resolvedLayout = try resolvedWindowActionLayout(
-            for: action,
-            application: app,
-            window: targetWindow,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-
-        let frameOutcome = try setFrame(resolvedLayout.targetAXFrame, for: resolvedLayout.focusedWindow)
-        let appliedAXFrame: CGRect
-        switch frameOutcome {
-        case .exact(let frame), .constrained(let frame):
-            appliedAXFrame = frame
-        }
-
-        let appliedAppKitFrame = resolvedLayout.screenGeometry.appKitFrame(fromAXFrame: appliedAXFrame)
-        recordObservedConstraintIfNeeded(
-            requestedFrame: resolvedLayout.targetFrame,
-            appliedFrame: appliedAppKitFrame,
-            action: action,
-            application: app
-        )
-        DebugLog.debug(
-            DebugLog.windows,
-            "Read back Dock-target window frame after \(String(describing: action)): AX \(NSStringFromRect(appliedAXFrame)), AppKit \(NSStringFromRect(appliedAppKitFrame))"
-        )
-    }
-
-    func previewTarget(
-        for action: WindowAction,
-        layoutEngine: WindowLayoutEngine,
-        preferredAppKitPoint: CGPoint?
-    ) throws -> WindowActionPreview? {
-        guard action.supportsSnapPreview else {
-            throw WindowManagerError.unableToPerformAction
-        }
-
-        let app = try frontmostApplication()
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let resolvedLayout = try resolvedWindowActionLayout(
-            for: action,
-            application: app,
-            appElement: appElement,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-        let observedObservation = observedConstraintObservation(for: app, action: action)
-        return layoutEngine.preview(
-            for: action,
-            targetFrame: resolvedLayout.targetFrame,
-            observation: observedObservation
-        )
-    }
-
-    func previewTarget(
-        for action: WindowAction,
-        on target: DockApplicationTarget,
-        layoutEngine: WindowLayoutEngine,
-        preferredAppKitPoint: CGPoint?
-    ) throws -> WindowActionPreview? {
-        guard action.supportsSnapPreview else {
-            throw WindowManagerError.unableToPerformAction
-        }
-
-        let app = try runningApplication(matching: target)
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let targetWindow = try preferredWindowActionTarget(
-            in: app,
-            appElement: appElement,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-        let resolvedLayout = try resolvedWindowActionLayout(
-            for: action,
-            application: app,
-            window: targetWindow,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-        let observedObservation = observedConstraintObservation(for: app, action: action)
-        return layoutEngine.preview(
-            for: action,
-            targetFrame: resolvedLayout.targetFrame,
-            observation: observedObservation
-        )
-    }
-
-    func beginSmoothPreviewSession(
-        for action: WindowAction,
-        layoutEngine: WindowLayoutEngine,
-        preferredAppKitPoint: CGPoint?
-    ) throws -> SmoothWindowPreviewSession {
-        let app = try frontmostApplication()
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let focusedWindow = try focusedWindowElement(in: appElement)
-        let resolvedLayout = try resolvedWindowActionLayout(
-            for: action,
-            application: app,
-            window: focusedWindow,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-
-        let screens = NSScreen.screens
-        let screenGeometry = resolvedLayout.screenGeometry
-        let currentAXFrame = try frame(of: focusedWindow)
-        let currentFrame = screenGeometry.appKitFrame(fromAXFrame: currentAXFrame)
-        let visibleFrames = screens.map(\.visibleFrame)
-        let visibleFrame = layoutEngine.resolvedVisibleFrame(
-            preferredPoint: preferredAppKitPoint,
-            currentWindowFrame: currentFrame,
-            screenFrames: visibleFrames
-        ) ?? visibleFrames.first ?? currentFrame
-
-        return smoothPreviewSession(
-            for: focusedWindow,
-            initialAppKitFrame: currentFrame,
-            visibleFrame: visibleFrame,
-            action: action,
-            application: app,
-            screenGeometry: screenGeometry
-        )
-    }
-
-    func beginSmoothPreviewSession(
-        for action: WindowAction,
-        on target: DockApplicationTarget,
-        layoutEngine: WindowLayoutEngine,
-        preferredAppKitPoint: CGPoint?
-    ) throws -> SmoothWindowPreviewSession {
-        let app = try runningApplication(matching: target)
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let targetWindow = try preferredWindowActionTarget(
-            in: app,
-            appElement: appElement,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-        try bringWindowToFront(targetWindow, for: app)
-        let resolvedLayout = try resolvedWindowActionLayout(
-            for: action,
-            application: app,
-            window: targetWindow,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-
-        let screens = NSScreen.screens
-        let screenGeometry = resolvedLayout.screenGeometry
-        let currentAXFrame = try frame(of: targetWindow)
-        let currentFrame = screenGeometry.appKitFrame(fromAXFrame: currentAXFrame)
-        let visibleFrames = screens.map(\.visibleFrame)
-        let visibleFrame = layoutEngine.resolvedVisibleFrame(
-            preferredPoint: preferredAppKitPoint,
-            currentWindowFrame: currentFrame,
-            screenFrames: visibleFrames
-        ) ?? visibleFrames.first ?? currentFrame
-
-        return smoothPreviewSession(
-            for: targetWindow,
-            initialAppKitFrame: currentFrame,
-            visibleFrame: visibleFrame,
-            action: action,
-            application: app,
-            screenGeometry: screenGeometry
-        )
-    }
-
-    func smoothPreviewTargetFrame(
-        for action: WindowAction,
-        layoutEngine: WindowLayoutEngine,
-        preferredAppKitPoint: CGPoint?
-    ) throws -> CGRect {
-        let app = try frontmostApplication()
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let resolvedLayout = try resolvedWindowActionLayout(
-            for: action,
-            application: app,
-            appElement: appElement,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: preferredAppKitPoint,
-            usesObservedConstraints: false
-        )
-        return effectiveSmoothPreviewFrame(
-            for: action,
-            application: app,
-            targetFrame: resolvedLayout.targetFrame,
-            layoutEngine: layoutEngine
-        )
-    }
-
-    func smoothPreviewTargetFrame(
-        for action: WindowAction,
-        on target: DockApplicationTarget,
-        layoutEngine: WindowLayoutEngine,
-        preferredAppKitPoint: CGPoint?
-    ) throws -> CGRect {
-        let app = try runningApplication(matching: target)
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let targetWindow = try preferredWindowActionTarget(
-            in: app,
-            appElement: appElement,
-            preferredAppKitPoint: preferredAppKitPoint
-        )
-        let resolvedLayout = try resolvedWindowActionLayout(
-            for: action,
-            application: app,
-            window: targetWindow,
-            layoutEngine: layoutEngine,
-            preferredAppKitPoint: preferredAppKitPoint,
-            usesObservedConstraints: false
-        )
-        return effectiveSmoothPreviewFrame(
-            for: action,
-            application: app,
-            targetFrame: resolvedLayout.targetFrame,
-            layoutEngine: layoutEngine
-        )
-    }
-
-    private func effectiveSmoothPreviewFrame(
-        for action: WindowAction,
-        application: NSRunningApplication,
-        targetFrame: CGRect,
-        layoutEngine: WindowLayoutEngine
-    ) -> CGRect {
-        guard action.supportsSnapPreview else {
-            return targetFrame
-        }
-
-        let observedObservation = smoothObservedConstraintObservation(for: application, action: action)
-        let previewFrame = layoutEngine.preview(
-            for: action,
-            targetFrame: targetFrame,
-            observation: observedObservation
-        )?.frame
-
-        if let previewFrame, previewFrame != targetFrame {
-            DebugLog.debug(
-                DebugLog.windows,
-                "Resolved smooth preview frame \(NSStringFromRect(previewFrame)) from target \(NSStringFromRect(targetFrame)) for \(application.bundleIdentifier ?? application.localizedName ?? "unknown")"
+            let targetWindow = try preferredWindowActionTarget(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint
             )
+            try performSmoothDockingAction(
+                action,
+                application: app,
+                window: targetWindow,
+                preferredAppKitPoint: preferredAppKitPoint,
+                bringToFront: true
+            )
+            return
+        }
+    }
+
+    func previewTarget(
+        for action: WindowAction,
+        layoutEngine: WindowLayoutEngine,
+        preferredAppKitPoint: CGPoint?
+    ) throws -> WindowActionPreview? {
+        guard action.supportsSnapPreview else {
+            throw WindowManagerError.unableToPerformAction
         }
 
-        return previewFrame ?? targetFrame
+        let app = try frontmostApplication()
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let resolvedLayout = try resolvedWindowActionLayout(
+            for: action,
+            application: app,
+            appElement: appElement,
+            layoutEngine: layoutEngine,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
+        let observedObservation = observedConstraintObservation(
+            for: app,
+            window: resolvedLayout.focusedWindow,
+            action: action
+        )
+        return layoutEngine.preview(
+            for: action,
+            targetFrame: resolvedLayout.targetFrame,
+            observation: observedObservation
+        )
+    }
+
+    func previewTarget(
+        for action: WindowAction,
+        on target: DockApplicationTarget,
+        layoutEngine: WindowLayoutEngine,
+        preferredAppKitPoint: CGPoint?
+    ) throws -> WindowActionPreview? {
+        guard action.supportsSnapPreview else {
+            throw WindowManagerError.unableToPerformAction
+        }
+
+        let app = try runningApplication(matching: target)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let targetWindow = try preferredWindowActionTarget(
+            in: app,
+            appElement: appElement,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
+        let resolvedLayout = try resolvedWindowActionLayout(
+            for: action,
+            application: app,
+            window: targetWindow,
+            layoutEngine: layoutEngine,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
+        let observedObservation = observedConstraintObservation(
+            for: app,
+            window: targetWindow,
+            action: action
+        )
+        return layoutEngine.preview(
+            for: action,
+            targetFrame: resolvedLayout.targetFrame,
+            observation: observedObservation
+        )
+    }
+
+    func beginSmoothDockingSession(
+        on target: DockApplicationTarget,
+        preferredAppKitPoint: CGPoint?
+    ) throws -> SmoothDockingSession {
+        guard AXIsProcessTrusted() else {
+            throw WindowManagerError.accessibilityPermissionMissing
+        }
+
+        let app = try runningApplication(matching: target)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let targetWindow = try preferredWindowActionTarget(
+            in: app,
+            appElement: appElement,
+            preferredAppKitPoint: preferredAppKitPoint
+        )
+
+        return try makeSmoothDockingSession(
+            application: app,
+            window: targetWindow,
+            preferredAppKitPoint: preferredAppKitPoint,
+            bringToFront: true
+        )
     }
 
     private func frontmostApplication() throws -> NSRunningApplication {
@@ -1122,7 +883,7 @@ struct WindowManager: WindowManaging {
         )
 
         let observedObservation = usesObservedConstraints
-            ? observedConstraintObservation(for: application, action: action)
+            ? observedConstraintObservation(for: application, window: window, action: action)
             : nil
         let constrainedTargetFrame = layoutEngine.constrainedTargetFrame(
             for: action,
@@ -1176,6 +937,23 @@ struct WindowManager: WindowManaging {
         }
 
         throw WindowManagerError.noFocusedWindow
+    }
+
+    private func targetedWindow(
+        in app: NSRunningApplication,
+        appElement: AXUIElement,
+        preferredAppKitPoint: CGPoint?,
+        fallback: () throws -> AXUIElement
+    ) throws -> AXUIElement {
+        if let preferredAppKitPoint {
+            return try preferredWindowActionTarget(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
+        }
+
+        return try fallback()
     }
 
     private func windowContainingPoint(
@@ -1243,12 +1021,130 @@ struct WindowManager: WindowManaging {
         return nil
     }
 
+    private func performSmoothDockingAction(
+        _ action: WindowAction,
+        application: NSRunningApplication,
+        window: AXUIElement,
+        preferredAppKitPoint: CGPoint?,
+        bringToFront: Bool
+    ) throws {
+        let session = try makeSmoothDockingSession(
+            application: application,
+            window: window,
+            preferredAppKitPoint: preferredAppKitPoint,
+            bringToFront: bringToFront
+        )
+
+        session.update(action: action)
+        let appliedFrame = try session.commit()
+        session.finish()
+
+        DebugLog.debug(
+            DebugLog.windows,
+            "Applied smooth docking frame \(NSStringFromRect(appliedFrame)) for \(String(describing: action)) in \(application.bundleIdentifier ?? application.localizedName ?? "unknown")"
+        )
+    }
+
+    private func makeSmoothDockingSession(
+        application: NSRunningApplication,
+        window: AXUIElement,
+        preferredAppKitPoint: CGPoint?,
+        bringToFront: Bool
+    ) throws -> SmoothDockingSession {
+        if bringToFront {
+            try bringWindowToFront(window, for: application)
+        }
+
+        let screens = NSScreen.screens
+        guard screens.isEmpty == false else {
+            throw WindowManagerError.unableToResolveScreen
+        }
+
+        logScreenConfiguration(screens, preferredAppKitPoint: preferredAppKitPoint)
+
+        let screenGeometry = ScreenGeometry(screenFrames: screens.map(\.frame))
+        let currentAXFrame = try frame(of: window)
+        let currentFrame = screenGeometry.appKitFrame(fromAXFrame: currentAXFrame)
+        let dockingResolver = SmoothDockingResolver()
+        guard let desktopFrame = dockingResolver.desktopFrame(
+            preferredPoint: preferredAppKitPoint,
+            currentWindowFrame: currentFrame,
+            screens: screens
+        ) else {
+            throw WindowManagerError.unableToResolveScreen
+        }
+
+        let sizeConstraints = smoothDockingSizeConstraints(for: window)
+        DebugLog.debug(
+            DebugLog.windows,
+            "Prepared smooth docking session for \(application.bundleIdentifier ?? application.localizedName ?? "unknown"): currentFrame = \(NSStringFromRect(currentFrame)), desktopFrame = \(NSStringFromRect(desktopFrame)), sizeConstraints = \(smoothDockingSizeConstraintDescription(sizeConstraints))"
+        )
+
+        return SmoothDockingSession(
+            originalFrame: currentFrame,
+            desktopFrame: desktopFrame,
+            baseSizeConstraints: sizeConstraints,
+            loadCurrentFrame: { [window] in
+                guard let currentAXFrame = self.readFrameBestEffort(of: window, context: "during smooth docking") else {
+                    return nil
+                }
+
+                return screenGeometry.appKitFrame(fromAXFrame: currentAXFrame)
+            },
+            applyFrame: { [window] targetAppKitFrame in
+                let targetAXFrame = screenGeometry.axFrame(fromAppKitFrame: targetAppKitFrame.integral)
+                let outcome = try self.setFrame(targetAXFrame, for: window)
+
+                let appliedAXFrame: CGRect
+                switch outcome {
+                case .exact(let frame), .constrained(let frame):
+                    appliedAXFrame = frame
+                }
+
+                return screenGeometry.appKitFrame(fromAXFrame: appliedAXFrame)
+            }
+        )
+    }
+
+    private func smoothDockingSizeConstraints(for window: AXUIElement) -> SmoothDockingSizeConstraints {
+        let minimumSize = AXAttributeReader.size("AXMinSize" as CFString, from: window)
+        let maximumSize = AXAttributeReader.size("AXMaxSize" as CFString, from: window)
+
+        return SmoothDockingSizeConstraints(
+            minimumWidth: normalizedSmoothDockingConstraintDimension(minimumSize?.width),
+            maximumWidth: normalizedSmoothDockingConstraintDimension(maximumSize?.width),
+            minimumHeight: normalizedSmoothDockingConstraintDimension(minimumSize?.height),
+            maximumHeight: normalizedSmoothDockingConstraintDimension(maximumSize?.height)
+        )
+    }
+
+    private func normalizedSmoothDockingConstraintDimension(_ value: CGFloat?) -> CGFloat? {
+        guard let value, value.isFinite, value > 1 else {
+            return nil
+        }
+
+        return value
+    }
+
+    private func smoothDockingSizeConstraintDescription(_ constraints: SmoothDockingSizeConstraints) -> String {
+        "[minWidth=\(smoothDockingConstraintValue(constraints.minimumWidth)), maxWidth=\(smoothDockingConstraintValue(constraints.maximumWidth)), minHeight=\(smoothDockingConstraintValue(constraints.minimumHeight)), maxHeight=\(smoothDockingConstraintValue(constraints.maximumHeight))]"
+    }
+
+    private func smoothDockingConstraintValue(_ value: CGFloat?) -> String {
+        guard let value else {
+            return "nil"
+        }
+
+        return String(format: "%.1f", value)
+    }
+
     private func observedConstraintObservation(
         for application: NSRunningApplication,
+        window: AXUIElement,
         action: WindowAction
     ) -> WindowActionPreview.Observation? {
         observedWindowConstraintStore.observation(
-            for: observationKey(for: application),
+            for: observationKey(for: application, window: window),
             action: action
         )
     }
@@ -1258,67 +1154,15 @@ struct WindowManager: WindowManaging {
         horizontalAnchor: WindowActionPreview.AxisAnchor?,
         verticalAnchor: WindowActionPreview.AxisAnchor?,
         action: WindowAction,
-        for application: NSRunningApplication
+        for application: NSRunningApplication,
+        window: AXUIElement
     ) {
         observedWindowConstraintStore.record(
             sizeBounds: sizeBounds,
             horizontalAnchor: horizontalAnchor,
             verticalAnchor: verticalAnchor,
             action: action,
-            for: observationKey(for: application)
-        )
-    }
-
-    private func smoothObservedConstraintObservation(
-        for application: NSRunningApplication,
-        action: WindowAction
-    ) -> WindowActionPreview.Observation? {
-        smoothWindowConstraintStore.observation(
-            for: observationKey(for: application),
-            action: action
-        )
-    }
-
-    private func recordSmoothObservedConstraintBounds(
-        _ sizeBounds: WindowActionPreview.SizeBounds,
-        horizontalAnchor: WindowActionPreview.AxisAnchor?,
-        verticalAnchor: WindowActionPreview.AxisAnchor?,
-        action: WindowAction,
-        for application: NSRunningApplication
-    ) {
-        smoothWindowConstraintStore.record(
-            sizeBounds: sizeBounds,
-            horizontalAnchor: horizontalAnchor,
-            verticalAnchor: verticalAnchor,
-            action: action,
-            for: observationKey(for: application)
-        )
-    }
-
-    private func recordSmoothObservedConstraintIfNeeded(
-        requestedFrame: CGRect,
-        appliedFrame: CGRect,
-        action: WindowAction,
-        application: NSRunningApplication
-    ) {
-        guard action.supportsSnapPreview else {
-            return
-        }
-
-        let previewObservation = observedPreviewObservation(
-            requestedFrame: requestedFrame,
-            appliedFrame: appliedFrame
-        )
-        guard previewObservation.sizeBounds.hasConstraints else {
-            return
-        }
-
-        recordSmoothObservedConstraintBounds(
-            previewObservation.sizeBounds,
-            horizontalAnchor: previewObservation.horizontalAnchor,
-            verticalAnchor: previewObservation.verticalAnchor,
-            action: action,
-            for: application
+            for: observationKey(for: application, window: window)
         )
     }
 
@@ -1351,7 +1195,7 @@ struct WindowManager: WindowManaging {
         )
     }
 
-    private func observationKey(for application: NSRunningApplication) -> String {
+    private func baseObservationKey(for application: NSRunningApplication) -> String {
         if let bundleIdentifier = application.bundleIdentifier, bundleIdentifier.isEmpty == false {
             return bundleIdentifier
         }
@@ -1363,11 +1207,39 @@ struct WindowManager: WindowManaging {
         return "pid:\(application.processIdentifier)"
     }
 
+    private func observationKey(
+        for application: NSRunningApplication,
+        window: AXUIElement
+    ) -> String {
+        WindowConstraintObservationScope(
+            applicationKey: baseObservationKey(for: application),
+            role: readOptionalAXAttribute(
+                context: "AXRole in observationKey",
+                fallback: nil as String?
+            ) {
+                try stringAttribute(kAXRoleAttribute as CFString, from: window)
+            },
+            subrole: readOptionalAXAttribute(
+                context: "AXSubrole in observationKey",
+                fallback: nil as String?
+            ) {
+                try stringAttribute(kAXSubroleAttribute as CFString, from: window)
+            },
+            title: readOptionalAXAttribute(
+                context: "AXTitle in observationKey",
+                fallback: nil as String?
+            ) {
+                try stringAttribute(kAXTitleAttribute as CFString, from: window)
+            }
+        ).storageKey
+    }
+
     private func recordObservedConstraintIfNeeded(
         requestedFrame: CGRect,
         appliedFrame: CGRect,
         action: WindowAction,
-        application: NSRunningApplication
+        application: NSRunningApplication,
+        window: AXUIElement
     ) {
         guard action.supportsSnapPreview else {
             return
@@ -1386,7 +1258,8 @@ struct WindowManager: WindowManaging {
             horizontalAnchor: previewObservation.horizontalAnchor,
             verticalAnchor: previewObservation.verticalAnchor,
             action: action,
-            for: application
+            for: application,
+            window: window
         )
         DebugLog.debug(
             DebugLog.windows,
@@ -1431,7 +1304,10 @@ struct WindowManager: WindowManaging {
         return String(format: "%.1f", value)
     }
 
-    func minimizeVisibleWindow(of application: DockApplicationTarget) throws -> Bool {
+    func minimizeVisibleWindow(
+        of application: DockApplicationTarget,
+        preferredAppKitPoint: CGPoint? = nil
+    ) throws -> Bool {
         guard AXIsProcessTrusted() else {
             throw WindowManagerError.accessibilityPermissionMissing
         }
@@ -1440,21 +1316,59 @@ struct WindowManager: WindowManaging {
 
         let app = try runningApplication(matching: application)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+        if let preferredAppKitPoint {
+            DebugLog.info(
+                DebugLog.windows,
+                "Attempting to minimize pointed window for \(application.logDescription) at \(NSStringFromPoint(preferredAppKitPoint))"
+            )
+            let targetWindow = try preferredWindowActionTarget(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
+
+            do {
+                try setMinimized(true, for: targetWindow)
+                cycleSessions.invalidate(for: app.processIdentifier)
+                DebugLog.info(DebugLog.windows, "Minimized pointed window for \(application.logDescription)")
+                return true
+            } catch {
+                DebugLog.debug(
+                    DebugLog.windows,
+                    "Pointed window was not minimizable for \(application.logDescription): \(windowSummary([targetWindow]))"
+                )
+                return false
+            }
+        }
+
         let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
         DebugLog.debug(
             DebugLog.windows,
             "Visible window candidates for \(application.logDescription): [\(windowSummary(windows))]"
         )
 
-        guard let targetWindow = windows.first else {
+        guard windows.isEmpty == false else {
             DebugLog.debug(DebugLog.windows, "No visible window found to minimize for \(application.logDescription)")
             return false
         }
 
-        try setMinimized(true, for: targetWindow)
-        cycleSessions.invalidate(for: app.processIdentifier)
-        DebugLog.info(DebugLog.windows, "Minimized one visible window for \(application.logDescription)")
-        return true
+        for targetWindow in windows {
+            do {
+                try setMinimized(true, for: targetWindow)
+                cycleSessions.invalidate(for: app.processIdentifier)
+                DebugLog.info(DebugLog.windows, "Minimized one visible window for \(application.logDescription)")
+                return true
+            } catch {
+                DebugLog.debug(
+                    DebugLog.windows,
+                    "Visible window candidate was not minimizable for \(application.logDescription): \(windowSummary([targetWindow]))"
+                )
+            }
+        }
+
+        DebugLog.debug(DebugLog.windows, "No minimizable visible window found for \(application.logDescription)")
+        return false
     }
 
     func restoreMinimizedWindow(of application: DockApplicationTarget) throws -> Bool {
@@ -1485,7 +1399,10 @@ struct WindowManager: WindowManaging {
         return true
     }
 
-    func toggleFullScreenWindow(of application: DockApplicationTarget) throws -> Bool {
+    func toggleFullScreenWindow(
+        of application: DockApplicationTarget,
+        preferredAppKitPoint: CGPoint? = nil
+    ) throws -> Bool {
         guard AXIsProcessTrusted() else {
             throw WindowManagerError.accessibilityPermissionMissing
         }
@@ -1494,25 +1411,56 @@ struct WindowManager: WindowManaging {
 
         let app = try runningApplication(matching: application)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+        if let preferredAppKitPoint {
+            let targetWindow = try preferredWindowActionTarget(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
+
+            try bringWindowToFront(targetWindow, for: app)
+            if isFullScreen(targetWindow) == false {
+                try setFullScreen(true, for: targetWindow)
+            }
+
+            cycleSessions.invalidate(for: app.processIdentifier)
+            DebugLog.info(DebugLog.windows, "Entered full screen for pointed window of \(application.logDescription)")
+            return true
+        }
+
         let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
-        
-        guard let targetWindow = windows.first else {
+        guard windows.isEmpty == false else {
             DebugLog.debug(DebugLog.windows, "No visible window found to toggle full screen for \(application.logDescription)")
             return false
         }
 
-        try bringWindowToFront(targetWindow, for: app)
-        let currentState = isFullScreen(targetWindow)
-        if !currentState {
-            try setFullScreen(true, for: targetWindow)
+        for targetWindow in windows {
+            do {
+                try bringWindowToFront(targetWindow, for: app)
+                if isFullScreen(targetWindow) == false {
+                    try setFullScreen(true, for: targetWindow)
+                }
+
+                cycleSessions.invalidate(for: app.processIdentifier)
+                DebugLog.info(DebugLog.windows, "Entered full screen for one visible window of \(application.logDescription)")
+                return true
+            } catch {
+                DebugLog.debug(
+                    DebugLog.windows,
+                    "Visible window candidate could not enter full screen for \(application.logDescription): \(windowSummary([targetWindow]))"
+                )
+            }
         }
-        
-        cycleSessions.invalidate(for: app.processIdentifier)
-        DebugLog.info(DebugLog.windows, "Entered full screen for one visible window of \(application.logDescription)")
-        return true
+
+        DebugLog.debug(DebugLog.windows, "No full-screen-capable visible window found for \(application.logDescription)")
+        return false
     }
 
-    func exitFullScreenWindow(of application: DockApplicationTarget) throws -> Bool {
+    func exitFullScreenWindow(
+        of application: DockApplicationTarget,
+        preferredAppKitPoint: CGPoint? = nil
+    ) throws -> Bool {
         guard AXIsProcessTrusted() else {
             throw WindowManagerError.accessibilityPermissionMissing
         }
@@ -1521,23 +1469,53 @@ struct WindowManager: WindowManaging {
 
         let app = try runningApplication(matching: application)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
 
-        guard let targetWindow = windows.first else {
+        if let preferredAppKitPoint {
+            let targetWindow = try preferredWindowActionTarget(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
+
+            try bringWindowToFront(targetWindow, for: app)
+            guard isFullScreen(targetWindow) else {
+                DebugLog.debug(DebugLog.windows, "Pointed window is not full screen for \(application.logDescription); nothing to exit")
+                return false
+            }
+
+            try setFullScreen(false, for: targetWindow)
+            cycleSessions.invalidate(for: app.processIdentifier)
+            DebugLog.info(DebugLog.windows, "Exited full screen for pointed window of \(application.logDescription)")
+            return true
+        }
+
+        let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
+        guard windows.isEmpty == false else {
             DebugLog.debug(DebugLog.windows, "No visible window found to exit full screen for \(application.logDescription)")
             return false
         }
 
-        try bringWindowToFront(targetWindow, for: app)
-        guard isFullScreen(targetWindow) else {
-            DebugLog.debug(DebugLog.windows, "Visible window is not full screen for \(application.logDescription); nothing to exit")
-            return false
+        for targetWindow in windows {
+            guard isFullScreen(targetWindow) else {
+                continue
+            }
+
+            do {
+                try bringWindowToFront(targetWindow, for: app)
+                try setFullScreen(false, for: targetWindow)
+                cycleSessions.invalidate(for: app.processIdentifier)
+                DebugLog.info(DebugLog.windows, "Exited full screen for one visible window of \(application.logDescription)")
+                return true
+            } catch {
+                DebugLog.debug(
+                    DebugLog.windows,
+                    "Visible full screen window candidate could not exit full screen for \(application.logDescription): \(windowSummary([targetWindow]))"
+                )
+            }
         }
 
-        try setFullScreen(false, for: targetWindow)
-        cycleSessions.invalidate(for: app.processIdentifier)
-        DebugLog.info(DebugLog.windows, "Exited full screen for one visible window of \(application.logDescription)")
-        return true
+        DebugLog.debug(DebugLog.windows, "No full screen visible window found to exit for \(application.logDescription)")
+        return false
     }
 
     func closeVisibleWindow(of application: DockApplicationTarget) throws -> Bool {
@@ -1695,7 +1673,8 @@ struct WindowManager: WindowManaging {
 
     func cycleVisibleWindows(
         of application: DockApplicationTarget,
-        direction: WindowCycleDirection
+        direction: WindowCycleDirection,
+        preferredAppKitPoint: CGPoint? = nil
     ) throws -> Bool {
         guard AXIsProcessTrusted() else {
             throw WindowManagerError.accessibilityPermissionMissing
@@ -1708,11 +1687,21 @@ struct WindowManager: WindowManaging {
 
         let app = try runningApplication(matching: application)
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let currentWindow: AXUIElement?
+        if let preferredAppKitPoint {
+            currentWindow = try preferredWindowActionTarget(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
+        } else {
+            currentWindow = preferredCycleReferenceWindow(in: appElement)
+        }
 
         try focusAdjacentVisibleWindow(
             in: app,
             appElement: appElement,
-            currentWindow: preferredCycleReferenceWindow(in: appElement),
+            currentWindow: currentWindow,
             direction: direction
         )
         return true
@@ -2288,49 +2277,6 @@ struct WindowManager: WindowManaging {
                 "Failed to request AXFrontmost for app \(app.localizedName ?? "unknown") with error \(error.rawValue)"
             )
         }
-    }
-
-    private func smoothPreviewSession(
-        for window: AXUIElement,
-        initialAppKitFrame: CGRect,
-        visibleFrame: CGRect,
-        action: WindowAction,
-        application: NSRunningApplication,
-        screenGeometry: ScreenGeometry
-    ) -> SmoothWindowPreviewSession {
-        return SmoothWindowPreviewSession(
-            originalAppKitFrame: initialAppKitFrame,
-            loadCurrentAppKitFrame: { [window] in
-                guard let currentAXFrame = self.readFrameBestEffort(
-                    of: window,
-                    context: "during smooth preview"
-                ) else {
-                    return nil
-                }
-                return screenGeometry.appKitFrame(fromAXFrame: currentAXFrame)
-            },
-            applyAppKitFrame: { [window] appKitFrame in
-                // Clamp intermediate frames to the visible screen region so
-                // smooth preview never drives the window outside the display.
-                let clampedAppKitFrame = self.clampFrame(appKitFrame, to: visibleFrame)
-                let axFrame = screenGeometry.axFrame(fromAppKitFrame: clampedAppKitFrame)
-                let outcome = try self.setFrame(axFrame, for: window)
-
-                let appliedAXFrame: CGRect
-                switch outcome {
-                case .exact(let frame), .constrained(let frame):
-                    appliedAXFrame = frame
-                }
-
-                let appliedAppKitFrame = screenGeometry.appKitFrame(fromAXFrame: appliedAXFrame)
-                self.recordSmoothObservedConstraintIfNeeded(
-                    requestedFrame: clampedAppKitFrame,
-                    appliedFrame: appliedAppKitFrame,
-                    action: action,
-                    application: application
-                )
-            }
-        )
     }
 
     private func setBooleanAttribute(_ attribute: CFString, value: Bool, on element: AXUIElement) throws {

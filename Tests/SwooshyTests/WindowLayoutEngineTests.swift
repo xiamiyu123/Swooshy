@@ -285,4 +285,27 @@ struct WindowLayoutEngineTests {
         #expect(preview?.frame == CGRect(x: 0, y: 380, width: 860, height: 520))
         #expect(preview?.style == .area)
     }
+
+    @Test
+    func previewFrameKeepsTopRightQuarterFlushWithScreenEdgesWhenConstraintsShrinkWidth() {
+        let targetFrame = CGRect(x: 704, y: 468, width: 704, height: 383)
+
+        let preview = engine.preview(
+            for: .topRightQuarter,
+            targetFrame: targetFrame,
+            observation: WindowActionPreview.Observation(
+                sizeBounds: WindowActionPreview.SizeBounds(
+                    minimumWidth: nil,
+                    maximumWidth: 560,
+                    minimumHeight: 672,
+                    maximumHeight: nil
+                ),
+                horizontalAnchor: .leadingEdge,
+                verticalAnchor: .trailingEdge
+            )
+        )
+
+        #expect(preview?.frame == CGRect(x: 848, y: 179, width: 560, height: 672))
+        #expect(preview?.style == .area)
+    }
 }
