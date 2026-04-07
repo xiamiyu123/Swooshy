@@ -248,20 +248,10 @@ enum BrowserTabProbe {
     ) -> Bool {
         let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
         let axPoint = geometry.axPoint(fromAppKitPoint: appKitPoint)
-
-        let systemWideElement = AXUIElementCreateSystemWide()
-        var hitElement: AXUIElement?
-        let result = AXUIElementCopyElementAtPosition(
-            systemWideElement,
-            Float(axPoint.x),
-            Float(axPoint.y),
-            &hitElement
-        )
-
-        guard result == .success, let element = hitElement else {
+        guard let element = AXAttributeReader.hitElement(atAXPoint: axPoint) else {
             DebugLog.debug(
                 DebugLog.dock,
-                "BrowserTabProbe hit-test failed at AX point \(NSStringFromPoint(axPoint)) (AppKit \(NSStringFromPoint(appKitPoint))), result=\(result.rawValue)"
+                "BrowserTabProbe hit-test failed at AX point \(NSStringFromPoint(axPoint)) (AppKit \(NSStringFromPoint(appKitPoint)))"
             )
             return false
         }
@@ -275,9 +265,9 @@ enum BrowserTabProbe {
         for _ in 0..<maxDepth {
             guard let node = current else { break }
 
-            let role = stringAttribute(kAXRoleAttribute as CFString, from: node) ?? "<nil>"
-            let subrole = stringAttribute(kAXSubroleAttribute as CFString, from: node) ?? "<nil>"
-            let title = stringAttribute(kAXTitleAttribute as CFString, from: node) ?? "<nil>"
+            let role = AXAttributeReader.string(kAXRoleAttribute as CFString, from: node) ?? "<nil>"
+            let subrole = AXAttributeReader.string(kAXSubroleAttribute as CFString, from: node) ?? "<nil>"
+            let title = AXAttributeReader.string(kAXTitleAttribute as CFString, from: node) ?? "<nil>"
             let matchedTabElement = isTabElement(node, at: axPoint)
             ancestry.append(
                 TabAncestryNode(
@@ -288,35 +278,17 @@ enum BrowserTabProbe {
                 )
             )
 
-            // Walk to parent.
-            var parentRef: CFTypeRef?
-            let parentResult = AXUIElementCopyAttributeValue(
-                node,
-                kAXParentAttribute as CFString,
-                &parentRef
-            )
-
-            guard parentResult == .success, let parent = parentRef else {
+            guard let parent = AXAttributeReader.element(kAXParentAttribute as CFString, from: node) else {
                 return logAndReturnAncestryVerdict(
                     ancestry,
                     hostFamily: hostFamily,
                     axPoint: axPoint,
                     appKitPoint: appKitPoint,
-                    interruptionReason: "stopped parent walk (result=\(parentResult.rawValue))"
+                    interruptionReason: "stopped parent walk"
                 )
             }
 
-            guard CFGetTypeID(parent) == AXUIElementGetTypeID() else {
-                return logAndReturnAncestryVerdict(
-                    ancestry,
-                    hostFamily: hostFamily,
-                    axPoint: axPoint,
-                    appKitPoint: appKitPoint,
-                    interruptionReason: "stopped parent walk due non-AX parent"
-                )
-            }
-
-            current = unsafeDowncast(parent, to: AXUIElement.self)
+            current = parent
         }
 
         return logAndReturnAncestryVerdict(
@@ -407,26 +379,8 @@ enum BrowserTabProbe {
         return node.subrole.hasPrefix("AXLandmark")
     }
 
-    private static func stringAttribute(_ attribute: CFString, from element: AXUIElement) -> String? {
-        var valueRef: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(element, attribute, &valueRef)
-        guard result == .success else {
-            return nil
-        }
-
-        return valueRef as? String
-    }
-
     private static func isTabElement(_ element: AXUIElement, at axPoint: CGPoint) -> Bool {
-        // Read AXRole.
-        var roleRef: CFTypeRef?
-        let roleResult = AXUIElementCopyAttributeValue(
-            element,
-            kAXRoleAttribute as CFString,
-            &roleRef
-        )
-
-        guard roleResult == .success, let role = roleRef as? String else {
+        guard let role = AXAttributeReader.string(kAXRoleAttribute as CFString, from: element) else {
             return false
         }
 
@@ -451,20 +405,22 @@ enum BrowserTabProbe {
 
     private static func tabGroupContainsTab(at axPoint: CGPoint, within tabGroup: AXUIElement) -> Bool {
         var queue: [(AXUIElement, Int)] = [(tabGroup, 0)]
+        var nextIndex = 0
         let maxDepth = 3
 
-        while queue.isEmpty == false {
-            let (node, depth) = queue.removeFirst()
+        while nextIndex < queue.count {
+            let (node, depth) = queue[nextIndex]
+            nextIndex += 1
             guard depth < maxDepth else { continue }
 
-            for child in childElements(of: node) {
-                if let frame = frameAttribute(from: child), frame.contains(axPoint) == false {
+            for child in AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: node) {
+                if let frame = AXAttributeReader.rect("AXFrame" as CFString, from: child), frame.contains(axPoint) == false {
                     continue
                 }
 
-                let role = stringAttribute(kAXRoleAttribute as CFString, from: child) ?? ""
-                let subrole = stringAttribute(kAXSubroleAttribute as CFString, from: child) ?? ""
-                let title = stringAttribute(kAXTitleAttribute as CFString, from: child) ?? ""
+                let role = AXAttributeReader.string(kAXRoleAttribute as CFString, from: child) ?? ""
+                let subrole = AXAttributeReader.string(kAXSubroleAttribute as CFString, from: child) ?? ""
+                let title = AXAttributeReader.string(kAXTitleAttribute as CFString, from: child) ?? ""
 
                 if role == "AXTab" {
                     return true
@@ -490,66 +446,12 @@ enum BrowserTabProbe {
         return false
     }
 
-    private static func childElements(of element: AXUIElement) -> [AXUIElement] {
-        var childrenRef: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(
-            element,
-            kAXChildrenAttribute as CFString,
-            &childrenRef
-        )
-
-        guard result == .success, let children = childrenRef as? [AXUIElement] else {
-            return []
-        }
-
-        return children
-    }
-
-    private static func frameAttribute(from element: AXUIElement) -> CGRect? {
-        var frameRef: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(
-            element,
-            "AXFrame" as CFString,
-            &frameRef
-        )
-
-        guard result == .success, let frameRef else {
-            return nil
-        }
-
-        guard CFGetTypeID(frameRef) == AXValueGetTypeID() else {
-            return nil
-        }
-
-        let axValue = unsafeDowncast(frameRef, to: AXValue.self)
-
-        var frame = CGRect.zero
-        guard AXValueGetValue(axValue, .cgRect, &frame) else {
-            return nil
-        }
-
-        return frame
-    }
-
     private static func supportsPressAction(_ element: AXUIElement) -> Bool {
-        var actionNamesRef: CFArray?
-        let result = AXUIElementCopyActionNames(element, &actionNamesRef)
-        guard result == .success, let actions = actionNamesRef as? [String] else {
-            return false
-        }
-
-        return actions.contains("AXPress")
+        AXAttributeReader.actionNames(of: element).contains("AXPress")
     }
 
     private static func subroleMatches(_ element: AXUIElement) -> Bool {
-        var subroleRef: CFTypeRef?
-        let subroleResult = AXUIElementCopyAttributeValue(
-            element,
-            kAXSubroleAttribute as CFString,
-            &subroleRef
-        )
-
-        guard subroleResult == .success, let subrole = subroleRef as? String else {
+        guard let subrole = AXAttributeReader.string(kAXSubroleAttribute as CFString, from: element) else {
             return false
         }
 

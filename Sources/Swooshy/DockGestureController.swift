@@ -1874,12 +1874,11 @@ private final class TitleBarAccessibilityProbe {
     }
 
     private func hoveredWindowTarget(at appKitPoint: CGPoint) -> HoveredWindowTarget? {
-        guard let hitElement = axHitElement(at: appKitPoint) else {
+        guard let hitElement = AXAttributeReader.hitElement(at: appKitPoint) else {
             return nil
         }
 
-        var hitProcessIdentifier: pid_t = 0
-        guard AXUIElementGetPid(hitElement, &hitProcessIdentifier) == .success else {
+        guard let hitProcessIdentifier = AXAttributeReader.processIdentifier(of: hitElement) else {
             return nil
         }
 
@@ -1914,32 +1913,12 @@ private final class TitleBarAccessibilityProbe {
     }
 
     private func windowElement(containing element: AXUIElement) -> AXUIElement? {
-        if let window = AXAttributeReader.element(kAXWindowAttribute as CFString, from: element) {
-            return window
-        }
-
-        var current: AXUIElement? = element
-        for _ in 0..<12 {
-            guard let node = current else {
-                break
-            }
-
-            if AXAttributeReader.string(kAXRoleAttribute as CFString, from: node) == kAXWindowRole as String {
-                return node
-            }
-
-            current = AXAttributeReader.element(kAXParentAttribute as CFString, from: node)
-        }
-
-        return nil
+        AXAttributeReader.window(containing: element)
     }
 
     private func focusedOrMainWindow(in appElement: AXUIElement) -> AXUIElement? {
-        if let focusedWindow = AXAttributeReader.element(kAXFocusedWindowAttribute as CFString, from: appElement) {
-            return focusedWindow
-        }
-
-        return AXAttributeReader.element(kAXMainWindowAttribute as CFString, from: appElement)
+        AXAttributeReader.element(kAXFocusedWindowAttribute as CFString, from: appElement) ??
+            AXAttributeReader.element(kAXMainWindowAttribute as CFString, from: appElement)
     }
 
     private func appKitFrame(of window: AXUIElement) -> CGRect? {
@@ -2006,36 +1985,11 @@ private final class TitleBarAccessibilityProbe {
 }
 
 private func axHitProcessIdentifier(at appKitPoint: CGPoint) -> pid_t? {
-    guard let hitElement = axHitElement(at: appKitPoint) else {
+    guard let hitElement = AXAttributeReader.hitElement(at: appKitPoint) else {
         return nil
     }
 
-    var hitProcessIdentifier: pid_t = 0
-    let pidResult = AXUIElementGetPid(hitElement, &hitProcessIdentifier)
-    guard pidResult == .success else {
-        return nil
-    }
-
-    return hitProcessIdentifier
-}
-
-private func axHitElement(at appKitPoint: CGPoint) -> AXUIElement? {
-    let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
-    let axPoint = geometry.axPoint(fromAppKitPoint: appKitPoint)
-    let systemWideElement = AXUIElementCreateSystemWide()
-    var hitElement: AXUIElement?
-    let result = AXUIElementCopyElementAtPosition(
-        systemWideElement,
-        Float(axPoint.x),
-        Float(axPoint.y),
-        &hitElement
-    )
-
-    guard result == .success else {
-        return nil
-    }
-
-    return hitElement
+    return AXAttributeReader.processIdentifier(of: hitElement)
 }
 
 @MainActor
@@ -2227,10 +2181,7 @@ private final class DockAccessibilityProbe {
         }
 
         let dockElement = AXUIElementCreateApplication(dockProcess.processIdentifier)
-        guard let dockList = childElement(
-            attribute: kAXChildrenAttribute as CFString,
-            from: dockElement
-        )?.first else {
+        guard let dockList = AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: dockElement).first else {
             return DockHoverSnapshot(candidates: [])
         }
 
@@ -2239,7 +2190,7 @@ private final class DockAccessibilityProbe {
         let applicationRecords = runningApplicationRecords()
         var qualityScoreCache: [pid_t: Int] = [:]
 
-        for item in childElements(attribute: kAXChildrenAttribute as CFString, from: dockList) {
+        for item in AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: dockList) {
             guard let itemName = AXAttributeReader.string(kAXTitleAttribute as CFString, from: item) else {
                 continue
             }
@@ -2440,34 +2391,6 @@ private final class DockAccessibilityProbe {
         lastProbeLogAt = now
         DebugLog.debug(DebugLog.dock, message())
 #endif
-    }
-
-    private func childElements(attribute: CFString, from element: AXUIElement) -> [AXUIElement] {
-        var value: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(element, attribute, &value)
-
-        guard error == .success, let children = value as? [AnyObject] else {
-            return []
-        }
-
-        let elements: [AXUIElement] = children.compactMap { child -> AXUIElement? in
-            guard CFGetTypeID(child) == AXUIElementGetTypeID() else {
-                return nil
-            }
-            return unsafeDowncast(child, to: AXUIElement.self)
-        }
-        if elements.count != children.count {
-            DebugLog.debug(
-                DebugLog.accessibility,
-                "Dropped \(children.count - elements.count) non-AX children for attribute \(attribute as String)"
-            )
-        }
-        return elements
-    }
-
-    private func childElement(attribute: CFString, from element: AXUIElement) -> [AXUIElement]? {
-        let children = childElements(attribute: attribute, from: element)
-        return children.isEmpty ? nil : children
     }
 
     private func logMissIfNeeded(at appKitPoint: CGPoint, snapshot: DockHoverSnapshot) {

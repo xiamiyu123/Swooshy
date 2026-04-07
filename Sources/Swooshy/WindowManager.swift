@@ -1050,36 +1050,18 @@ struct WindowManager: WindowManaging {
         at appKitPoint: CGPoint,
         processIdentifier: pid_t
     ) -> AXUIElement? {
-        guard let hitElement = axHitElement(at: appKitPoint) else {
+        guard let hitElement = AXAttributeReader.hitElement(at: appKitPoint) else {
             return nil
         }
 
-        var hitProcessIdentifier: pid_t = 0
         guard
-            AXUIElementGetPid(hitElement, &hitProcessIdentifier) == .success,
-            hitProcessIdentifier == processIdentifier
+            AXAttributeReader.processIdentifier(of: hitElement) == processIdentifier,
+            let window = AXAttributeReader.window(containing: hitElement)
         else {
             return nil
         }
 
-        if let window = AXAttributeReader.element(kAXWindowAttribute as CFString, from: hitElement) {
-            return window
-        }
-
-        var current: AXUIElement? = hitElement
-        for _ in 0..<12 {
-            guard let node = current else {
-                break
-            }
-
-            if AXAttributeReader.string(kAXRoleAttribute as CFString, from: node) == kAXWindowRole as String {
-                return node
-            }
-
-            current = AXAttributeReader.element(kAXParentAttribute as CFString, from: node)
-        }
-
-        return nil
+        return window
     }
 
     private func performSmoothDockingAction(
@@ -2015,46 +1997,26 @@ struct WindowManager: WindowManaging {
     }
 
     func focusedWindowElement(in appElement: AXUIElement) throws -> AXUIElement {
-        var focusedWindowValue: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(
-            appElement,
+        guard let focusedWindowElement = AXAttributeReader.element(
             kAXFocusedWindowAttribute as CFString,
-            &focusedWindowValue
-        )
-
-        guard error == .success, let focusedWindow = focusedWindowValue else {
-            DebugLog.error(DebugLog.accessibility, "Failed to read focused window; AX error = \(error.rawValue)")
+            from: appElement
+        ) else {
+            DebugLog.error(DebugLog.accessibility, "Failed to read focused window")
             throw WindowManagerError.noFocusedWindow
         }
-
-        guard CFGetTypeID(focusedWindow) == AXUIElementGetTypeID() else {
-            DebugLog.error(DebugLog.accessibility, "Focused window is not AXUIElement")
-            throw WindowManagerError.noFocusedWindow
-        }
-        let focusedWindowElement = unsafeDowncast(focusedWindow, to: AXUIElement.self)
 
         DebugLog.debug(DebugLog.windows, "Resolved focused window: \(windowSummary([focusedWindowElement]))")
         return focusedWindowElement
     }
 
     private func mainWindowElement(in appElement: AXUIElement) throws -> AXUIElement {
-        var mainWindowValue: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(
-            appElement,
+        guard let mainWindowElement = AXAttributeReader.element(
             kAXMainWindowAttribute as CFString,
-            &mainWindowValue
-        )
-
-        guard error == .success, let mainWindow = mainWindowValue else {
-            DebugLog.error(DebugLog.accessibility, "Failed to read main window; AX error = \(error.rawValue)")
+            from: appElement
+        ) else {
+            DebugLog.error(DebugLog.accessibility, "Failed to read main window")
             throw WindowManagerError.noFocusedWindow
         }
-
-        guard CFGetTypeID(mainWindow) == AXUIElementGetTypeID() else {
-            DebugLog.error(DebugLog.accessibility, "Main window is not AXUIElement")
-            throw WindowManagerError.noFocusedWindow
-        }
-        let mainWindowElement = unsafeDowncast(mainWindow, to: AXUIElement.self)
 
         DebugLog.debug(DebugLog.windows, "Resolved main window: \(windowSummary([mainWindowElement]))")
         return mainWindowElement
@@ -2974,23 +2936,4 @@ enum WindowManagerError: LocalizedError, Equatable {
             return L10n.string("error.no_alternate_window")
         }
     }
-}
-
-private func axHitElement(at appKitPoint: CGPoint) -> AXUIElement? {
-    let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
-    let axPoint = geometry.axPoint(fromAppKitPoint: appKitPoint)
-    let systemWideElement = AXUIElementCreateSystemWide()
-    var hitElement: AXUIElement?
-    let result = AXUIElementCopyElementAtPosition(
-        systemWideElement,
-        Float(axPoint.x),
-        Float(axPoint.y),
-        &hitElement
-    )
-
-    guard result == .success else {
-        return nil
-    }
-
-    return hitElement
 }
