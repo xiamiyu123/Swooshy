@@ -6,10 +6,17 @@ import Observation
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let settingsStore: SettingsStore
+    private let onPointerInsideChanged: (Bool) -> Void
     private var settingsObserver: NSObjectProtocol?
+    private var pointerTrackingArea: NSTrackingArea?
+    private var isPointerInsideContentView = false
 
-    init(settingsStore: SettingsStore) {
+    init(
+        settingsStore: SettingsStore,
+        onPointerInsideChanged: @escaping (Bool) -> Void = { _ in }
+    ) {
         self.settingsStore = settingsStore
+        self.onPointerInsideChanged = onPointerInsideChanged
 
         let rootView = SettingsView(settingsStore: settingsStore)
         let hostingController = NSHostingController(rootView: rootView)
@@ -24,6 +31,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
 
         self.window?.delegate = self
+        installPointerTrackingIfNeeded()
+        updatePointerInsideContentViewState()
         updateWindowTitle()
 
         settingsObserver = NotificationCenter.default.addObserver(
@@ -42,6 +51,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func shutdown() {
+        setPointerInsideContentView(false)
+        removePointerTracking()
+
         if let settingsObserver {
             NotificationCenter.default.removeObserver(settingsObserver)
             self.settingsObserver = nil
@@ -57,13 +69,83 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func show() {
         updateWindowTitle()
+        installPointerTrackingIfNeeded()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
+        updatePointerInsideContentViewState()
     }
 
     private func updateWindowTitle() {
         window?.title = settingsStore.localized("settings.window.title")
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        setPointerInsideContentView(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        setPointerInsideContentView(false)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        setPointerInsideContentView(false)
+    }
+
+    private func installPointerTrackingIfNeeded() {
+        guard let contentView = window?.contentView else {
+            return
+        }
+
+        if let pointerTrackingArea {
+            contentView.removeTrackingArea(pointerTrackingArea)
+        }
+
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        contentView.addTrackingArea(trackingArea)
+        pointerTrackingArea = trackingArea
+    }
+
+    private func removePointerTracking() {
+        guard
+            let pointerTrackingArea,
+            let contentView = window?.contentView
+        else {
+            self.pointerTrackingArea = nil
+            return
+        }
+
+        contentView.removeTrackingArea(pointerTrackingArea)
+        self.pointerTrackingArea = nil
+    }
+
+    private func updatePointerInsideContentViewState() {
+        guard
+            let window,
+            let contentView = window.contentView,
+            window.isVisible
+        else {
+            setPointerInsideContentView(false)
+            return
+        }
+
+        let windowPoint = window.mouseLocationOutsideOfEventStream
+        let contentPoint = contentView.convert(windowPoint, from: nil)
+        setPointerInsideContentView(contentView.bounds.contains(contentPoint))
+    }
+
+    private func setPointerInsideContentView(_ isInside: Bool) {
+        guard isPointerInsideContentView != isInside else {
+            return
+        }
+
+        isPointerInsideContentView = isInside
+        onPointerInsideChanged(isInside)
     }
 }
 

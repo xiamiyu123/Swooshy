@@ -36,7 +36,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let alertPresenter = AppAlertPresenter()
         let gestureFeedbackPresenter = GestureFeedbackController(settingsStore: settingsStore)
-        let settingsWindowController = SettingsWindowController(settingsStore: settingsStore)
+        let dockGestureController = DockGestureController(
+            windowManager: windowManager,
+            layoutEngine: layoutEngine,
+            alertPresenter: alertPresenter,
+            gestureFeedbackPresenter: gestureFeedbackPresenter,
+            settingsStore: settingsStore
+        )
+        let settingsWindowController = SettingsWindowController(
+            settingsStore: settingsStore,
+            onPointerInsideChanged: { [weak dockGestureController] isInside in
+                dockGestureController?.setSettingsWindowHoverSuppressed(isInside)
+            }
+        )
         let welcomeWindowController = WelcomeWindowController(
             settingsStore: settingsStore,
             permissionManager: permissionManager,
@@ -63,13 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settingsStore: settingsStore
         )
 
-        dockGestureController = DockGestureController(
-            windowManager: windowManager,
-            layoutEngine: layoutEngine,
-            alertPresenter: alertPresenter,
-            gestureFeedbackPresenter: gestureFeedbackPresenter,
-            settingsStore: settingsStore
-        )
+        self.dockGestureController = dockGestureController
 
         if settingsStore.consumeWelcomeGuidePresentationFlag() {
             welcomeWindowController.show()

@@ -27,6 +27,7 @@ final class DockGestureController {
     private var pendingTouchFrame: TrackpadTouchFrame?
     private var isProcessingTouchFrame = false
     private var monitoringState: MonitoringState?
+    private var monitoringSuppressedBySettingsWindowHover = false
     private var isShuttingDown = false
     private let restoreHUDLeadDelay: UInt64 = 16_000_000
     private let gestureStateTimeout: TimeInterval = 30
@@ -214,27 +215,68 @@ final class DockGestureController {
         isProcessingTouchFrame = false
         cancelPendingReleaseAction()
 
-        setTrackpadMonitoringEnabled(state.dockGesturesEnabled || state.titleBarGesturesEnabled)
+        applyTrackpadMonitoringState()
 
         syncGestureStateWatchdog()
     }
 
-    private func setTrackpadMonitoringEnabled(_ isEnabled: Bool) {
-        if isEnabled {
-            DebugLog.info(DebugLog.dock, "Starting trackpad gesture monitoring")
-            monitor.startIfAvailable()
-        } else {
-            DebugLog.info(DebugLog.dock, "Stopping trackpad gesture monitoring")
-            monitor.stop()
-        }
-    }
-
-    private func restartTrackpadMonitoringIfNeeded() {
-        guard let monitoringState else {
+    func setSettingsWindowHoverSuppressed(_ isSuppressed: Bool) {
+        guard isShuttingDown == false else {
             return
         }
 
-        guard monitoringState.dockGesturesEnabled || monitoringState.titleBarGesturesEnabled else {
+        guard monitoringSuppressedBySettingsWindowHover != isSuppressed else {
+            return
+        }
+
+        monitoringSuppressedBySettingsWindowHover = isSuppressed
+
+        if isSuppressed {
+            pendingTouchFrame = nil
+            isProcessingTouchFrame = false
+            lastTouchCount = 0
+            touchSequenceTracker.reset()
+            dockProbe.clearCache()
+            titleBarProbe.clearCache()
+            resetGestureStateForNewTouchSequence()
+        }
+
+        applyTrackpadMonitoringState()
+    }
+
+    private var monitoringRequestedBySettings: Bool {
+        guard let monitoringState else {
+            return false
+        }
+
+        return monitoringState.dockGesturesEnabled || monitoringState.titleBarGesturesEnabled
+    }
+
+    private var shouldMonitorTrackpad: Bool {
+        monitoringRequestedBySettings && monitoringSuppressedBySettingsWindowHover == false
+    }
+
+    private func applyTrackpadMonitoringState() {
+        if shouldMonitorTrackpad {
+            DebugLog.info(DebugLog.dock, "Starting trackpad gesture monitoring")
+            monitor.startIfAvailable()
+            return
+        }
+
+        if monitoringRequestedBySettings {
+            DebugLog.info(
+                DebugLog.dock,
+                "Pausing trackpad gesture monitoring while pointer is inside settings window"
+            )
+        } else {
+            DebugLog.info(DebugLog.dock, "Stopping trackpad gesture monitoring")
+        }
+
+        monitor.stop()
+    }
+
+    private func restartTrackpadMonitoringIfNeeded() {
+        guard shouldMonitorTrackpad else {
             return
         }
 
