@@ -1098,17 +1098,8 @@ final class WindowManager: WindowManaging {
         preferredAppKitPoint: CGPoint?
     ) throws -> AXUIElement {
         switch target {
-        case .window(let windowIdentity, _, let source):
-            if source.isDockMinimizedItem == false {
-                return try resolvedWindowContext(for: windowIdentity).window
-            }
-
-            let resolvedApplication = try resolvedApplicationContext(for: target)
-            return try preferredWindowActionTarget(
-                in: resolvedApplication.application,
-                appElement: resolvedApplication.appElement,
-                preferredAppKitPoint: preferredAppKitPoint
-            )
+        case .window(let windowIdentity, _, _):
+            return try resolvedWindowContext(for: windowIdentity).window
         case .application:
             let resolvedApplication = try resolvedApplicationContext(for: target)
             return try preferredWindowActionTarget(
@@ -1291,6 +1282,14 @@ final class WindowManager: WindowManaging {
         preferredAppKitPoint: CGPoint?,
         bringToFront: Bool
     ) throws -> SmoothDockingSession {
+        if isMinimized(window) {
+            DebugLog.debug(
+                DebugLog.windows,
+                "Restoring minimized window before smooth docking for \(application.bundleIdentifier ?? application.localizedName ?? "unknown")"
+            )
+            try setMinimized(false, for: window)
+        }
+
         if bringToFront {
             try bringWindowToFront(window, for: application)
         }
