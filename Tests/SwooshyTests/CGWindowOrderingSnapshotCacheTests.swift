@@ -6,12 +6,12 @@ import Testing
 struct CGWindowOrderingSnapshotCacheTests {
     private func windowInfo(
         ownerProcessIdentifier: pid_t,
-        title: String,
+        windowIdentifier: CGWindowID,
         frame: CGRect
     ) -> [String: Any] {
         [
             kCGWindowOwnerPID as String: NSNumber(value: ownerProcessIdentifier),
-            kCGWindowName as String: title,
+            kCGWindowNumber as String: NSNumber(value: windowIdentifier),
             kCGWindowBounds as String: [
                 "X": frame.origin.x,
                 "Y": frame.origin.y,
@@ -34,12 +34,12 @@ struct CGWindowOrderingSnapshotCacheTests {
                 return [
                     windowInfo(
                         ownerProcessIdentifier: 42,
-                        title: "Editor",
+                        windowIdentifier: 701,
                         frame: CGRect(x: 0, y: 0, width: 800, height: 600)
                     ),
                     windowInfo(
                         ownerProcessIdentifier: 77,
-                        title: "Other",
+                        windowIdentifier: 702,
                         frame: CGRect(x: 40, y: 40, width: 400, height: 300)
                     ),
                 ]
@@ -53,7 +53,7 @@ struct CGWindowOrderingSnapshotCacheTests {
         #expect(
             first == [
                 WindowOrderDescriptor(
-                    title: "Editor",
+                    windowID: 701,
                     frame: CGRect(x: 0, y: 0, width: 800, height: 600)
                 ),
             ]

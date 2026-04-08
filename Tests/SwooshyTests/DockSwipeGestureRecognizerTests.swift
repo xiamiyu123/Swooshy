@@ -1,5 +1,6 @@
 import CoreGraphics
 import CMultitouchShim
+import Foundation
 import Testing
 @testable import Swooshy
 
@@ -36,14 +37,15 @@ struct DockSwipeGestureRecognizerTests {
         processIdentifier: pid_t = 42,
         bundleIdentifier: String? = nil,
         aliases: [String] = []
-    ) -> DockApplicationTarget {
-        DockApplicationTarget(
-            dockItemName: dockItemName,
-            resolvedApplicationName: resolvedApplicationName ?? dockItemName,
-            processIdentifier: processIdentifier,
+    ) -> InteractionTarget {
+        let appIdentity = AppIdentity(
+            bundleURL: URL(fileURLWithPath: "/Applications/\((resolvedApplicationName ?? dockItemName)).app"),
             bundleIdentifier: bundleIdentifier,
-            aliases: aliases
-        )
+            processIdentifier: processIdentifier,
+            localizedName: resolvedApplicationName ?? dockItemName
+        )!
+        _ = aliases
+        return .application(appIdentity, source: .dockAppItem(DockItemHandle()))
     }
 
     @Test
@@ -928,6 +930,53 @@ struct DockSwipeGestureRecognizerTests {
         #expect(deliveredFrames.first?.touches.count == 2)
         expect(deliveredFrames.first?.touches[0].position ?? .zero, approximatelyEquals: CGPoint(x: 0.60, y: 0.70))
         expect(deliveredFrames.first?.touches[1].position ?? .zero, approximatelyEquals: CGPoint(x: 0.80, y: 0.90))
+    }
+
+    @MainActor
+    @Test
+    func multitouchMonitorPreservesReleaseTransitionBeforeImmediateRetrigger() {
+        let scheduler = DeferredDrainScheduler()
+        let monitor = MultitouchInputMonitor(scheduleDrain: { operation in
+            scheduler.schedule(operation)
+        })
+        var deliveredFrames: [TrackpadTouchFrame] = []
+        monitor.onFrame = { deliveredFrames.append($0) }
+
+        withUnsafeTemporaryAllocation(of: SwooshyMTFinger.self, capacity: 2) { buffer in
+            buffer.initialize(repeating: SwooshyMTFinger())
+            buffer[0].identifier = 1
+            buffer[1].identifier = 2
+
+            buffer[0].normalized.position = SwooshyMTPoint(x: 0.20, y: 0.30)
+            buffer[1].normalized.position = SwooshyMTPoint(x: 0.40, y: 0.50)
+            monitor.receiveCallbackPayload(
+                fingers: buffer.baseAddress,
+                fingerCount: 2,
+                timestamp: 1.0
+            )
+
+            monitor.receiveCallbackPayload(
+                fingers: nil,
+                fingerCount: 0,
+                timestamp: 1.1
+            )
+
+            buffer[0].identifier = 7
+            buffer[1].identifier = 8
+            buffer[0].normalized.position = SwooshyMTPoint(x: 0.60, y: 0.70)
+            buffer[1].normalized.position = SwooshyMTPoint(x: 0.80, y: 0.90)
+            monitor.receiveCallbackPayload(
+                fingers: buffer.baseAddress,
+                fingerCount: 2,
+                timestamp: 1.2
+            )
+        }
+
+        scheduler.runAll()
+
+        #expect(deliveredFrames.count == 3)
+        #expect(deliveredFrames.map(\.touches.count) == [2, 0, 2])
+        #expect(deliveredFrames.map(\.timestamp) == [1.0, 1.1, 1.2])
     }
 
     @MainActor

@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 @testable import Swooshy
 
@@ -6,14 +7,14 @@ struct DockHoverSnapshotTests {
     private func target(
         dockItemName: String,
         processIdentifier: pid_t
-    ) -> DockApplicationTarget {
-        DockApplicationTarget(
-            dockItemName: dockItemName,
-            resolvedApplicationName: dockItemName,
-            processIdentifier: processIdentifier,
+    ) -> InteractionTarget {
+        let appIdentity = AppIdentity(
+            bundleURL: URL(fileURLWithPath: "/Applications/\(dockItemName).app"),
             bundleIdentifier: "com.example.\(dockItemName.lowercased())",
-            aliases: [dockItemName]
-        )
+            processIdentifier: processIdentifier,
+            localizedName: dockItemName
+        )!
+        return .application(appIdentity, source: .dockAppItem(DockItemHandle()))
     }
 
     @Test
