@@ -96,4 +96,34 @@ struct SmoothDockingTests {
         #expect(abs(currentFrame.maxX - desktopFrame.maxX) <= 1)
         #expect(abs(currentFrame.maxY - desktopFrame.maxY) <= 1)
     }
+
+    @Test
+    func smoothDockingSessionSkipsPreviewWorkWhenWindowAlreadyMatchesTarget() async {
+        let targetFrame = resolver.plan(
+            for: .topRightQuarter,
+            in: desktopFrame,
+            sizeConstraints: SmoothDockingSizeConstraints()
+        ).frame
+        var currentFrame = targetFrame
+        var applyCount = 0
+
+        let session = SmoothDockingSession(
+            originalFrame: currentFrame,
+            desktopFrame: desktopFrame,
+            baseSizeConstraints: SmoothDockingSizeConstraints(),
+            loadCurrentFrame: { currentFrame },
+            applyFrame: { requestedFrame in
+                applyCount += 1
+                currentFrame = requestedFrame
+                return requestedFrame
+            }
+        )
+
+        session.update(action: .topRightQuarter)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        session.finish()
+
+        #expect(applyCount == 0)
+        #expect(currentFrame == targetFrame)
+    }
 }

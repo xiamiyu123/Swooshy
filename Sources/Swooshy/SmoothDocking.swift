@@ -381,7 +381,7 @@ final class SmoothDockingSession {
         baseSizeConstraints: SmoothDockingSizeConstraints,
         loadCurrentFrame: @escaping () -> CGRect?,
         applyFrame: @escaping (CGRect) throws -> CGRect,
-        animationStepDuration: UInt64 = 12_000_000,
+        animationStepDuration: UInt64 = 16_000_000,
         animationFactor: CGFloat = 0.32,
         snapThreshold: CGFloat = 0.5
     ) {
@@ -400,8 +400,15 @@ final class SmoothDockingSession {
     }
 
     func update(action: WindowAction?) {
+        let nextTargetFrame = resolvedTargetFrame(for: action)
+        let targetChanged = currentAction != action || currentTargetFrame != nextTargetFrame
         currentAction = action
-        currentTargetFrame = resolvedTargetFrame(for: action)
+        currentTargetFrame = nextTargetFrame
+
+        guard targetChanged else {
+            return
+        }
+
         startAnimationLoopIfNeeded()
     }
 
@@ -430,13 +437,18 @@ final class SmoothDockingSession {
     }
 
     private func startAnimationLoopIfNeeded() {
-        guard animationTask == nil else {
+        guard animationTask == nil, let targetFrame = currentTargetFrame else {
+            return
+        }
+
+        let currentFrame = loadCurrentFrame() ?? originalFrame
+        guard framesAreClose(currentFrame, targetFrame, tolerance: snapThreshold) == false else {
             return
         }
 
         animationTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            var previousFrame = self.loadCurrentFrame() ?? self.originalFrame
+            var previousFrame = currentFrame
 
             while !Task.isCancelled {
                 guard let targetFrame = self.currentTargetFrame else {
