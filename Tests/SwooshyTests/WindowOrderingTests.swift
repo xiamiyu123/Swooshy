@@ -99,16 +99,21 @@ struct WindowOrderingTests {
 struct WindowCycleSessionStoreTests {
     private let processIdentifier: pid_t = 42
 
+    private struct TestCycleWindow {
+        let id: String
+        let descriptor: WindowOrderDescriptor
+    }
+
     private func descriptor(_ windowID: CGWindowID?, _ frame: CGRect) -> WindowOrderDescriptor {
         WindowOrderDescriptor(windowID: windowID, frame: frame)
     }
 
     @Test
     func forwardCyclingWalksAcrossAllWindowsInsteadOfBouncing() {
-        let store = WindowCycleSessionStore()
-        let a = descriptor(1, CGRect(x: 0, y: 0, width: 500, height: 400))
-        let b = descriptor(2, CGRect(x: 40, y: 40, width: 500, height: 400))
-        let c = descriptor(3, CGRect(x: 80, y: 80, width: 500, height: 400))
+        let store = WindowCycleSessionStore<TestCycleWindow>(areEqual: { $0.id == $1.id })
+        let a = TestCycleWindow(id: "a", descriptor: descriptor(1, CGRect(x: 0, y: 0, width: 500, height: 400)))
+        let b = TestCycleWindow(id: "b", descriptor: descriptor(2, CGRect(x: 40, y: 40, width: 500, height: 400)))
+        let c = TestCycleWindow(id: "c", descriptor: descriptor(3, CGRect(x: 80, y: 80, width: 500, height: 400)))
 
         let firstTarget = store.nextTarget(
             for: processIdentifier,
@@ -132,17 +137,17 @@ struct WindowCycleSessionStoreTests {
             now: Date(timeIntervalSinceReferenceDate: 2)
         )
 
-        #expect(firstTarget == b)
-        #expect(secondTarget == c)
-        #expect(thirdTarget == a)
+        #expect(firstTarget?.id == "b")
+        #expect(secondTarget?.id == "c")
+        #expect(thirdTarget?.id == "a")
     }
 
     @Test
     func backwardCyclingRemainsSymmetric() {
-        let store = WindowCycleSessionStore()
-        let a = descriptor(1, CGRect(x: 0, y: 0, width: 500, height: 400))
-        let b = descriptor(2, CGRect(x: 40, y: 40, width: 500, height: 400))
-        let c = descriptor(3, CGRect(x: 80, y: 80, width: 500, height: 400))
+        let store = WindowCycleSessionStore<TestCycleWindow>(areEqual: { $0.id == $1.id })
+        let a = TestCycleWindow(id: "a", descriptor: descriptor(1, CGRect(x: 0, y: 0, width: 500, height: 400)))
+        let b = TestCycleWindow(id: "b", descriptor: descriptor(2, CGRect(x: 40, y: 40, width: 500, height: 400)))
+        let c = TestCycleWindow(id: "c", descriptor: descriptor(3, CGRect(x: 80, y: 80, width: 500, height: 400)))
 
         let firstTarget = store.nextTarget(
             for: processIdentifier,
@@ -159,16 +164,16 @@ struct WindowCycleSessionStoreTests {
             now: Date(timeIntervalSinceReferenceDate: 1)
         )
 
-        #expect(firstTarget == c)
-        #expect(secondTarget == b)
+        #expect(firstTarget?.id == "c")
+        #expect(secondTarget?.id == "b")
     }
 
     @Test
     func manualWindowChangeResetsCycleSequence() {
-        let store = WindowCycleSessionStore()
-        let a = descriptor(1, CGRect(x: 0, y: 0, width: 500, height: 400))
-        let b = descriptor(2, CGRect(x: 40, y: 40, width: 500, height: 400))
-        let c = descriptor(3, CGRect(x: 80, y: 80, width: 500, height: 400))
+        let store = WindowCycleSessionStore<TestCycleWindow>(areEqual: { $0.id == $1.id })
+        let a = TestCycleWindow(id: "a", descriptor: descriptor(1, CGRect(x: 0, y: 0, width: 500, height: 400)))
+        let b = TestCycleWindow(id: "b", descriptor: descriptor(2, CGRect(x: 40, y: 40, width: 500, height: 400)))
+        let c = TestCycleWindow(id: "c", descriptor: descriptor(3, CGRect(x: 80, y: 80, width: 500, height: 400)))
 
         _ = store.nextTarget(
             for: processIdentifier,
@@ -186,6 +191,41 @@ struct WindowCycleSessionStoreTests {
             now: Date(timeIntervalSinceReferenceDate: 1)
         )
 
-        #expect(resetTarget == b)
+        #expect(resetTarget?.id == "b")
+    }
+
+    @Test
+    func continuesCyclingWhenDifferentWindowsShareTheSameDescriptor() {
+        let store = WindowCycleSessionStore<TestCycleWindow>(areEqual: { $0.id == $1.id })
+        let sharedDescriptor = descriptor(nil, CGRect(x: 0, y: 30, width: 1408, height: 766))
+        let a = TestCycleWindow(id: "a", descriptor: sharedDescriptor)
+        let b = TestCycleWindow(id: "b", descriptor: sharedDescriptor)
+        let c = TestCycleWindow(id: "c", descriptor: sharedDescriptor)
+
+        let firstTarget = store.nextTarget(
+            for: processIdentifier,
+            liveOrder: [a, b, c],
+            currentWindow: a,
+            direction: .forward,
+            now: Date(timeIntervalSinceReferenceDate: 0)
+        )
+        let secondTarget = store.nextTarget(
+            for: processIdentifier,
+            liveOrder: [b, a, c],
+            currentWindow: b,
+            direction: .forward,
+            now: Date(timeIntervalSinceReferenceDate: 1)
+        )
+        let thirdTarget = store.nextTarget(
+            for: processIdentifier,
+            liveOrder: [c, b, a],
+            currentWindow: c,
+            direction: .forward,
+            now: Date(timeIntervalSinceReferenceDate: 2)
+        )
+
+        #expect(firstTarget?.id == "b")
+        #expect(secondTarget?.id == "c")
+        #expect(thirdTarget?.id == "a")
     }
 }

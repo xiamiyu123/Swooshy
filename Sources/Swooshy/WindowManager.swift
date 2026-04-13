@@ -579,7 +579,7 @@ final class WindowManager: WindowManaging {
     private let registry: WindowRegistry
     private let dockTargetResolver: DockTargetResolving
     private let windowOrdering = WindowOrdering()
-    private let cycleSessions = WindowCycleSessionStore()
+    private let cycleSessions = WindowCycleSessionStore<AXUIElement>(areEqual: AXAttributeReader.sameElement)
     private let observedWindowConstraintStore = ObservedWindowConstraintStore()
     private let windowOrderingSnapshotCache = CGWindowOrderingSnapshotCache()
 
@@ -2300,34 +2300,25 @@ final class WindowManager: WindowManaging {
         direction: WindowCycleDirection
     ) throws {
         let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
-        let descriptors = try windows.map { try windowDescriptor(for: $0) }
 
         guard windows.count > 1 else {
             cycleSessions.invalidate(for: app.processIdentifier)
             throw WindowManagerError.noAlternateWindow
         }
 
-        let currentDescriptor = currentWindow.flatMap { window in
-            do {
-                return try windowDescriptor(for: window)
-            } catch {
-                DebugLog.debug(
-                    DebugLog.windows,
-                    "Unable to derive current window descriptor for cycling: \(error.localizedDescription)"
-                )
-                return nil
-            }
-        }
-        guard let targetDescriptor = cycleSessions.nextTarget(
+        guard let targetWindow = cycleSessions.nextTarget(
             for: app.processIdentifier,
-            liveOrder: descriptors,
-            currentWindow: currentDescriptor,
+            liveOrder: windows,
+            currentWindow: currentWindow,
             direction: direction
-        ), let targetIndex = descriptors.firstIndex(of: targetDescriptor) else {
+        ) else {
             throw WindowManagerError.noAlternateWindow
         }
 
-        let targetWindow = windows[targetIndex]
+        DebugLog.debug(
+            DebugLog.windows,
+            "Selected cycle target for \(app.localizedName ?? "unknown") from \(currentWindow.map { windowSummary([$0]) } ?? "<none>") to \(windowSummary([targetWindow])) within [\(windowSummary(windows))]"
+        )
 
         try bringWindowToFront(targetWindow, for: app)
     }

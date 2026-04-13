@@ -126,30 +126,35 @@ struct WindowOrdering {
 }
 
 @MainActor
-final class WindowCycleSessionStore {
+final class WindowCycleSessionStore<Item> {
     private struct Session {
         let processIdentifier: pid_t
-        let orderedWindows: [WindowOrderDescriptor]
-        let lastTarget: WindowOrderDescriptor
+        let orderedWindows: [Item]
+        let lastTarget: Item
         let updatedAt: Date
     }
 
     private let expirationInterval: TimeInterval = 5
+    private let areEqual: (Item, Item) -> Bool
     private var session: Session?
+
+    init(areEqual: @escaping (Item, Item) -> Bool) {
+        self.areEqual = areEqual
+    }
 
     func nextTarget(
         for processIdentifier: pid_t,
-        liveOrder: [WindowOrderDescriptor],
-        currentWindow: WindowOrderDescriptor?,
+        liveOrder: [Item],
+        currentWindow: Item?,
         direction: WindowCycleDirection,
         now: Date = Date()
-    ) -> WindowOrderDescriptor? {
+    ) -> Item? {
         guard liveOrder.count > 1 else {
             invalidate(for: processIdentifier)
             return nil
         }
 
-        let baseOrder: [WindowOrderDescriptor]
+        let baseOrder: [Item]
         if shouldContinueSession(
             for: processIdentifier,
             currentWindow: currentWindow,
@@ -168,10 +173,9 @@ final class WindowCycleSessionStore {
             return nil
         }
 
-        let referenceWindow = currentWindow.flatMap { currentWindow in
-            baseOrder.first(where: { $0 == currentWindow })
-        } ?? baseOrder[baseOrder.startIndex]
-        let currentIndex = baseOrder.firstIndex(of: referenceWindow) ?? 0
+        let currentIndex = currentWindow.flatMap { currentWindow in
+            firstIndex(of: currentWindow, in: baseOrder)
+        } ?? 0
         let targetIndex: Int
 
         switch direction {
@@ -203,7 +207,7 @@ final class WindowCycleSessionStore {
 
     private func shouldContinueSession(
         for processIdentifier: pid_t,
-        currentWindow: WindowOrderDescriptor?,
+        currentWindow: Item?,
         now: Date
     ) -> Bool {
         guard let session else {
@@ -222,15 +226,27 @@ final class WindowCycleSessionStore {
             return false
         }
 
-        return currentWindow == session.lastTarget
+        return areEqual(currentWindow, session.lastTarget)
     }
 
     private func mergedOrder(
-        rememberedOrder: [WindowOrderDescriptor],
-        liveOrder: [WindowOrderDescriptor]
-    ) -> [WindowOrderDescriptor] {
-        let retainedWindows = rememberedOrder.filter { liveOrder.contains($0) }
-        let newWindows = liveOrder.filter { retainedWindows.contains($0) == false }
+        rememberedOrder: [Item],
+        liveOrder: [Item]
+    ) -> [Item] {
+        let retainedWindows = rememberedOrder.filter { rememberedWindow in
+            contains(rememberedWindow, in: liveOrder)
+        }
+        let newWindows = liveOrder.filter { liveWindow in
+            contains(liveWindow, in: retainedWindows) == false
+        }
         return retainedWindows + newWindows
+    }
+
+    private func contains(_ candidate: Item, in windows: [Item]) -> Bool {
+        windows.contains { areEqual($0, candidate) }
+    }
+
+    private func firstIndex(of candidate: Item, in windows: [Item]) -> Int? {
+        windows.firstIndex { areEqual($0, candidate) }
     }
 }
