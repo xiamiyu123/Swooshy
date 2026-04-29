@@ -126,12 +126,27 @@ final class SettingsStore {
         }
     }
 
+    var pinchCloseConfirmationEnabled: Bool {
+        didSet {
+            guard oldValue != pinchCloseConfirmationEnabled else { return }
+            userDefaults.set(pinchCloseConfirmationEnabled, forKey: Keys.pinchCloseConfirmationEnabled)
+            DebugLog.info(
+                DebugLog.settings,
+                "Pinch close confirmation enabled set to \(pinchCloseConfirmationEnabled)"
+            )
+            notifyDidChange(.advancedGestureBehavior)
+        }
+    }
+
     var experimentalBrowserTabCloseEnabled: Bool {
         didSet {
             guard oldValue != experimentalBrowserTabCloseEnabled else { return }
             userDefaults.set(experimentalBrowserTabCloseEnabled, forKey: Keys.experimentalBrowserTabCloseEnabled)
             if experimentalBrowserTabCloseEnabled == false {
                 smartBrowserTabCloseEnabled = false
+                pinchCloseConfirmationEnabled = false
+            } else if userDefaults.object(forKey: Keys.pinchCloseConfirmationEnabled) == nil {
+                pinchCloseConfirmationEnabled = true
             }
             DebugLog.info(
                 DebugLog.settings,
@@ -357,6 +372,11 @@ final class SettingsStore {
             defaultValue: false,
             in: userDefaults
         )
+        self.pinchCloseConfirmationEnabled = Self.boolValue(
+            forKey: Keys.pinchCloseConfirmationEnabled,
+            defaultValue: false,
+            in: userDefaults
+        )
         self.titleBarOverlayProtectionEnabled = Self.boolValue(
             forKey: Keys.titleBarOverlayProtectionEnabled,
             defaultValue: true,
@@ -442,6 +462,7 @@ final class SettingsStore {
             Keys.titleBarCornerDragSnapEnabled,
             Keys.titleBarOverlayProtectionEnabled,
             Keys.smartBrowserTabCloseEnabled,
+            Keys.pinchCloseConfirmationEnabled,
             Keys.executeGestureOnRelease,
             Keys.reverseCancelEnabled,
             Keys.reverseCancelSensitivity,
@@ -704,6 +725,7 @@ final class SettingsStore {
         titleBarOverlayProtectionEnabled = true
         smartPinchExitFullScreenEnabled = true
         smartBrowserTabCloseEnabled = false
+        pinchCloseConfirmationEnabled = false
         experimentalBrowserTabCloseEnabled = false
     }
 
@@ -789,6 +811,7 @@ final class SettingsStore {
         static let titleBarOverlayProtectionEnabled = "settings.titleBarOverlayProtectionEnabled"
         static let smartPinchExitFullScreenEnabled = "settings.smartPinchExitFullScreenEnabled"
         static let smartBrowserTabCloseEnabled = "settings.smartBrowserTabCloseEnabled"
+        static let pinchCloseConfirmationEnabled = "settings.pinchCloseConfirmationEnabled"
         static let experimentalBrowserTabCloseEnabled = "settings.experimentalBrowserTabCloseEnabled"
         // Deprecated preview-mode persistence keys.
         static let executeGestureOnRelease = "settings.executeGestureOnRelease"

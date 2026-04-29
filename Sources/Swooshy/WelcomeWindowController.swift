@@ -272,6 +272,7 @@ struct WelcomeGuideContent {
                     settingsStore.localized("guide.page.experimental.bullet1"),
                     settingsStore.localized("guide.page.experimental.bullet2"),
                     settingsStore.localized("guide.page.experimental.bullet3"),
+                    settingsStore.localized("guide.page.experimental.bullet4"),
                 ],
                 imageName: nil
             ),
@@ -327,6 +328,11 @@ final class WelcomeGuideViewModel: ObservableObject {
     var smartBrowserTabCloseEnabled: Bool {
         get { settingsStore.smartBrowserTabCloseEnabled }
         set { settingsStore.smartBrowserTabCloseEnabled = newValue }
+    }
+
+    var pinchCloseConfirmationEnabled: Bool {
+        get { settingsStore.pinchCloseConfirmationEnabled }
+        set { settingsStore.pinchCloseConfirmationEnabled = newValue }
     }
 
     var windowTitle: String { content.windowTitle }
@@ -544,6 +550,13 @@ private struct WelcomeGuideView: View {
                         title: viewModel.localized("settings.experimental.smart_browser_tab_close.enabled"),
                         isOn: $viewModel.smartBrowserTabCloseEnabled,
                         footer: viewModel.localized("settings.experimental.smart_browser_tab_close.footer"),
+                        isEnabled: viewModel.experimentalBrowserTabCloseEnabled
+                    )
+
+                    experimentalToggleCard(
+                        title: viewModel.localized("settings.experimental.pinch_close_confirmation.enabled"),
+                        isOn: $viewModel.pinchCloseConfirmationEnabled,
+                        footer: viewModel.localized("settings.experimental.pinch_close_confirmation.footer"),
                         isEnabled: viewModel.experimentalBrowserTabCloseEnabled
                     )
                 }

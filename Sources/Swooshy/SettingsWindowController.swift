@@ -844,6 +844,16 @@ private struct AdvancedSettingsPage: View {
 
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.experimental.smart_browser_tab_close.footer"))
+                }
+
+                Toggle(
+                    settingsStore.localized("settings.experimental.pinch_close_confirmation.enabled"),
+                    isOn: $settingsStore.pinchCloseConfirmationEnabled
+                )
+                .disabled(settingsStore.experimentalBrowserTabCloseEnabled == false)
+
+                SettingsHintGroup {
+                    Text(settingsStore.localized("settings.experimental.pinch_close_confirmation.footer"))
                     Text(settingsStore.localized("settings.experimental.opt_in_persistence.footer"))
                 }
             }

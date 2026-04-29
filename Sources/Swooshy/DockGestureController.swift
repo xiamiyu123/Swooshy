@@ -71,6 +71,24 @@ final class DockGestureController {
         )
     }
 
+    private struct PendingPinchConfirmation {
+        enum Source {
+            case dock(action: DockGestureAction, application: InteractionTarget)
+            case titleBar(
+                action: WindowAction,
+                event: DockGestureEvent,
+                anchorPoint: CGPoint,
+                replacesWithTabClose: Bool
+            )
+        }
+        let source: Source
+        let anchorPoint: CGPoint
+        var timeoutTask: Task<Void, Never>?
+    }
+
+    private var pendingPinchConfirmation: PendingPinchConfirmation?
+    private let pinchConfirmationTimeout: UInt64 = 3_000_000_000
+
     private struct MonitoringState: Equatable {
         let dockCornerDragEnabled: Bool
         let titleBarCornerDragEnabled: Bool
@@ -161,6 +179,8 @@ final class DockGestureController {
         activeCornerDragAnchorPoint = nil
         activeCornerDragTouchOrigin = nil
         activeCornerDragTouchReferencePoint = nil
+        pendingPinchConfirmation?.timeoutTask?.cancel()
+        pendingPinchConfirmation = nil
         endSmoothDockingSession(restore: true)
         dockProbe.clearCache()
         titleBarProbe.clearCache()
@@ -625,6 +645,26 @@ final class DockGestureController {
         }
         let action = settingsStore.dockGestureAction(for: event.gesture)
         let application = event.application
+
+        if let pending = pendingPinchConfirmation,
+           case .dock(let pendingAction, let pendingApp) = pending.source,
+           pendingAction == action,
+           pendingApp == application {
+            clearPinchConfirmation()
+            DebugLog.info(DebugLog.dock, "Pinch confirmation accepted for dock action \(action.rawValue)")
+            scheduleDockGestureAction(action, for: application)
+            return
+        }
+
+        if requiresPinchConfirmation(dockAction: action, application: application) {
+            showPinchConfirmation(
+                gesture: event.gesture,
+                anchorPoint: anchorPoint,
+                source: .dock(action: action, application: application)
+            )
+            return
+        }
+
         let persistent = settingsStore.executeGestureOnRelease
         gestureFeedbackPresenter.show(
             gesture: event.gesture,
@@ -752,6 +792,36 @@ final class DockGestureController {
             anchorPoint: anchorPoint,
             isInFullScreen: isInFullScreen
         )
+
+        if let pending = pendingPinchConfirmation,
+           case .titleBar(let pendingAction, _, _, let pendingReplaces) = pending.source,
+           pendingAction == action,
+           pendingReplaces == replacesWithTabClose {
+            clearPinchConfirmation()
+            DebugLog.info(DebugLog.dock, "Pinch confirmation accepted for title-bar action \(String(describing: action))")
+            executeTitleBarAction(
+                action,
+                event: event,
+                anchorPoint: anchorPoint,
+                replacesWithTabClose: replacesWithTabClose
+            )
+            return
+        }
+
+        let effectiveAction: WindowAction = replacesWithTabClose ? .closeWindow : action
+        if requiresPinchConfirmation(action: effectiveAction, application: event.application) {
+            showPinchConfirmation(
+                gesture: event.gesture,
+                anchorPoint: anchorPoint,
+                source: .titleBar(
+                    action: action,
+                    event: event,
+                    anchorPoint: anchorPoint,
+                    replacesWithTabClose: replacesWithTabClose
+                )
+            )
+            return
+        }
 
         var actionTitle = action.title(preferredLanguages: settingsStore.preferredLanguages)
         if replacesWithTabClose {
@@ -1023,6 +1093,7 @@ final class DockGestureController {
         if rebuildRecognizers {
             DebugLog.info(DebugLog.dock, "Resetting gesture state by rebuilding recognizers for watchdog recovery")
         }
+        clearPinchConfirmation()
         pendingReleaseAction = nil
         clearTouchAnchor()
         resetStandardRecognizers(rebuildRecognizers: rebuildRecognizers)
@@ -1207,6 +1278,77 @@ final class DockGestureController {
         }
         DebugLog.info(DebugLog.dock, "Cancelled pending gesture action")
         resetGestureStateForNewTouchSequence()
+    }
+
+    // MARK: - Pinch Close Confirmation
+
+    private func requiresPinchConfirmation(
+        action: WindowAction,
+        application: InteractionTarget
+    ) -> Bool {
+        guard settingsStore.pinchCloseConfirmationEnabled else { return false }
+        guard action == .closeWindow || action == .quitApplication else { return false }
+        guard let appIdentity = application.appIdentity else { return false }
+        return BrowserTabProbe.supportsTabCloseHost(
+            bundleIdentifier: appIdentity.bundleIdentifier,
+            localizedName: appIdentity.localizedName
+        )
+    }
+
+    private func requiresPinchConfirmation(
+        dockAction: DockGestureAction,
+        application: InteractionTarget
+    ) -> Bool {
+        guard settingsStore.pinchCloseConfirmationEnabled else { return false }
+        guard dockAction == .closeWindow || dockAction == .quitApplication else { return false }
+        guard let appIdentity = application.appIdentity else { return false }
+        return BrowserTabProbe.supportsTabCloseHost(
+            bundleIdentifier: appIdentity.bundleIdentifier,
+            localizedName: appIdentity.localizedName
+        )
+    }
+
+    private func showPinchConfirmation(
+        gesture: DockGestureKind,
+        anchorPoint: CGPoint,
+        source: PendingPinchConfirmation.Source
+    ) {
+        clearPinchConfirmation()
+
+        let confirmationText = settingsStore.localized("confirmation.pinch_again")
+        gestureFeedbackPresenter.show(
+            gesture: gesture,
+            gestureTitle: gesture.title(preferredLanguages: settingsStore.preferredLanguages),
+            actionTitle: confirmationText,
+            anchor: anchorPoint,
+            persistent: true,
+            preview: nil
+        )
+
+        let timeout = pinchConfirmationTimeout
+        let timeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: timeout)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.clearPinchConfirmation()
+        }
+
+        pendingPinchConfirmation = PendingPinchConfirmation(
+            source: source,
+            anchorPoint: anchorPoint,
+            timeoutTask: timeoutTask
+        )
+
+        DebugLog.info(DebugLog.dock, "Showing pinch confirmation HUD")
+    }
+
+    private func clearPinchConfirmation() {
+        pendingPinchConfirmation?.timeoutTask?.cancel()
+        pendingPinchConfirmation = nil
+        gestureFeedbackPresenter.dismiss()
     }
 
     // Deprecated: once preview mode is fully removed, actions should no longer
