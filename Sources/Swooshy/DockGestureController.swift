@@ -808,8 +808,7 @@ final class DockGestureController {
             return
         }
 
-        let effectiveAction: WindowAction = replacesWithTabClose ? .closeWindow : action
-        if requiresPinchConfirmation(action: effectiveAction, application: event.application) {
+        if !replacesWithTabClose, requiresPinchConfirmation(action: action, application: event.application) {
             showPinchConfirmation(
                 gesture: event.gesture,
                 anchorPoint: anchorPoint,
