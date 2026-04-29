@@ -48,16 +48,45 @@ enum BrowserTabProbe {
             return false
         }
 
-        let isTab = axElementIsTab(
-            at: appKitPoint,
-            hostFamily: hostSupport.family
-        )
+        if axElementIsTab(at: appKitPoint, hostFamily: hostSupport.family) {
+            DebugLog.debug(
+                DebugLog.dock,
+                "BrowserTabProbe result pid=\(processIdentifier) host=\(hostSupport.description) point=\(NSStringFromPoint(appKitPoint)) => tab"
+            )
+            return true
+        }
+
+        // AX frames can be slightly smaller than visual tab bounds (padding,
+        // rounded corners). Retry with small offsets around the original point.
+        let margin: CGFloat = 4
+        for offset in proximityOffsets where offset != .zero {
+            let candidate = CGPoint(
+                x: appKitPoint.x + offset.x * margin,
+                y: appKitPoint.y + offset.y * margin
+            )
+            if axElementIsTab(at: candidate, hostFamily: hostSupport.family) {
+                DebugLog.debug(
+                    DebugLog.dock,
+                    "BrowserTabProbe result pid=\(processIdentifier) host=\(hostSupport.description) point=\(NSStringFromPoint(appKitPoint)) => tab (proximity hit at offset \(offset.x * margin), \(offset.y * margin))"
+                )
+                return true
+            }
+        }
+
         DebugLog.debug(
             DebugLog.dock,
-            "BrowserTabProbe result pid=\(processIdentifier) host=\(hostSupport.description) point=\(NSStringFromPoint(appKitPoint)) => \(isTab ? "tab" : "not-tab")"
+            "BrowserTabProbe result pid=\(processIdentifier) host=\(hostSupport.description) point=\(NSStringFromPoint(appKitPoint)) => not-tab"
         )
-        return isTab
+        return false
     }
+
+    private static let proximityOffsets: [CGPoint] = [
+        CGPoint(x: 0, y: 0),
+        CGPoint(x: 1, y: 0), CGPoint(x: -1, y: 0),
+        CGPoint(x: 0, y: 1), CGPoint(x: 0, y: -1),
+        CGPoint(x: 1, y: 1), CGPoint(x: -1, y: -1),
+        CGPoint(x: 1, y: -1), CGPoint(x: -1, y: 1),
+    ]
 
     /// Sends a synthetic middle-click (button 3) at the given AppKit coordinate.
     /// This closes the tab under the pointer in every major browser.
