@@ -6,6 +6,9 @@
 "menu.settings" = "设置…";
 "menu.help" = "使用说明";
 "menu.quit" = "退出 Swooshy";
+"menu.hotkey_registration_issue.marker" = "!";
+"menu.hotkey_registration_failed.tooltip" = "这个快捷键没有注册成功，因此按键可能不会生效。菜单动作仍可使用；请在设置中重新录制快捷键。";
+"menu.hotkey_handler_unavailable.tooltip" = "全局快捷键当前不可用。菜单动作仍可使用；请尝试重启 Swooshy，或在设置的快捷键页面查看。";
 
 "action.left_half" = "贴靠到左半屏";
 "action.right_half" = "贴靠到右半屏";
@@ -157,8 +160,11 @@
 "settings.advanced.smart_pinch_exit_full_screen.footer" = "在原生的 macOS 虚拟桌面全屏状态下（标题栏下拉时），不论你为标题栏的「捏合」手势绑定了什么动作，系统都会将其智能识别拦截为「退出全屏桌面」。这能避免在此直觉操作下不小心触发关闭窗口。";
 "settings.debug_logging.enabled" = "启用调试日志";
 "settings.shortcuts.recorder_placeholder" = "请按快捷键";
+"settings.shortcuts.registration_issue.tooltip" = "部分全局快捷键需要处理";
 "settings.shortcuts.registration_failed.accessibility_label" = "快捷键注册失败";
 "settings.shortcuts.registration_failed.tooltip" = "快捷键注册失败，当前快捷键不会生效。它可能已被 macOS、系统功能或其他应用占用。请尝试重新录制。";
+"settings.shortcuts.handler_unavailable.title" = "全局快捷键服务不可用";
+"settings.shortcuts.handler_unavailable.message" = "Swooshy 无法安装全局快捷键监听器，因此当前录制的快捷键不会生效。请尝试重启 Swooshy；如果持续出现，可以查看调试日志或暂时关闭全局快捷键。";
 "settings.shortcuts.reset" = "恢复默认快捷键";
 
 "settings.advanced.open" = "高级设置…";

@@ -51,6 +51,34 @@ struct StatusMenuContentBuilderTests {
     }
 
     @Test
+    func windowActionEntriesCarryHotKeyRegistrationIssues() {
+        let entries = builder.makeEntries(
+            permissionGranted: true,
+            preferredLanguages: ["en-US"],
+            hotKeyIssueForAction: { action in
+                action == .center ? .registrationFailed : nil
+            }
+        )
+
+        #expect(entries.first(where: { $0.kind == .windowAction(.center) })?.hotKeyIssue == .registrationFailed)
+        #expect(entries.first(where: { $0.kind == .windowAction(.leftHalf) })?.hotKeyIssue == nil)
+    }
+
+    @Test
+    func collapsedWindowActionGroupCarriesHotKeyRegistrationIssue() {
+        let entries = builder.makeEntries(
+            permissionGranted: true,
+            collapseWindowActions: true,
+            preferredLanguages: ["en-US"],
+            hotKeyIssueForAction: { action in
+                action == .maximize ? .handlerUnavailable : nil
+            }
+        )
+
+        #expect(entries.first(where: { $0.kind == .windowActionGroup })?.hotKeyIssue == .handlerUnavailable)
+    }
+
+    @Test
     func permissionAndRefreshEntriesAreEnabledWhenPermissionMissing() {
         let entries = builder.makeEntries(
             permissionGranted: false,

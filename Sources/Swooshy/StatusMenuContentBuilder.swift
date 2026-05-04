@@ -16,6 +16,19 @@ struct StatusMenuEntry: Equatable {
     let kind: Kind
     let title: String
     let isEnabled: Bool
+    let hotKeyIssue: HotKeyRegistrationIssueKind?
+
+    init(
+        kind: Kind,
+        title: String,
+        isEnabled: Bool,
+        hotKeyIssue: HotKeyRegistrationIssueKind? = nil
+    ) {
+        self.kind = kind
+        self.title = title
+        self.isEnabled = isEnabled
+        self.hotKeyIssue = hotKeyIssue
+    }
 }
 
 struct StatusMenuContentBuilder {
@@ -23,7 +36,8 @@ struct StatusMenuContentBuilder {
         permissionGranted: Bool,
         collapseWindowActions: Bool = false,
         localeIdentifier: String? = nil,
-        preferredLanguages: [String] = Locale.preferredLanguages
+        preferredLanguages: [String] = Locale.preferredLanguages,
+        hotKeyIssueForAction: (WindowAction) -> HotKeyRegistrationIssueKind? = { _ in nil }
     ) -> [StatusMenuEntry] {
         let permissionMissing = permissionGranted == false
         let localized: (String) -> String = { key in
@@ -36,11 +50,13 @@ struct StatusMenuContentBuilder {
 
         let actionEntries: [StatusMenuEntry]
         if collapseWindowActions {
+            let groupIssue = WindowAction.allCases.lazy.compactMap(hotKeyIssueForAction).first
             actionEntries = [
                 StatusMenuEntry(
                     kind: .windowActionGroup,
                     title: localized("menu.window_actions"),
-                    isEnabled: permissionGranted
+                    isEnabled: permissionGranted,
+                    hotKeyIssue: groupIssue
                 )
             ]
         } else {
@@ -51,7 +67,8 @@ struct StatusMenuContentBuilder {
                         localeIdentifier: localeIdentifier,
                         preferredLanguages: preferredLanguages
                     ),
-                    isEnabled: permissionGranted
+                    isEnabled: permissionGranted,
+                    hotKeyIssue: hotKeyIssueForAction(action)
                 )
             }
         }

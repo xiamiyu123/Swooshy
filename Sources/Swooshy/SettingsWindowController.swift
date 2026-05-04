@@ -172,7 +172,8 @@ private struct SettingsView: View {
         NavigationSplitView {
             SettingsSidebar(
                 selection: $navigationState.selectedPage,
-                settingsStore: settingsStore
+                settingsStore: settingsStore,
+                hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore
             )
         } detail: {
             SettingsDetailPage(
@@ -248,16 +249,45 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 private struct SettingsSidebar: View {
     @Binding var selection: SettingsPage?
     @Bindable var settingsStore: SettingsStore
+    @Bindable var hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore
 
     var body: some View {
         List(selection: $selection) {
             ForEach(SettingsPage.allCases) { page in
-                Label(page.title(localize: settingsStore.localized), systemImage: page.systemImage)
+                SettingsSidebarRow(
+                    page: page,
+                    title: page.title(localize: settingsStore.localized),
+                    showsWarning: page == .shortcuts && hotKeyRegistrationStatusStore.hasIssue,
+                    warningTooltip: settingsStore.localized("settings.shortcuts.registration_issue.tooltip")
+                )
                     .tag(Optional(page))
             }
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 190, ideal: 210)
+    }
+}
+
+private struct SettingsSidebarRow: View {
+    let page: SettingsPage
+    let title: String
+    let showsWarning: Bool
+    let warningTooltip: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label(title, systemImage: page.systemImage)
+
+            Spacer(minLength: 4)
+
+            if showsWarning {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .help(warningTooltip)
+                    .accessibilityLabel(warningTooltip)
+            }
+        }
     }
 }
 
@@ -486,6 +516,7 @@ private struct HotKeysSettingsPage: View {
         SettingsPageContainer {
             HotKeysSection(
                 settingsStore: settingsStore,
+                registrationStatusStore: hotKeyRegistrationStatusStore,
                 rows: rows
             )
         }
@@ -1278,30 +1309,102 @@ private struct TitleBarGestureActionRow: View {
 
 private struct HotKeysSection: View {
     @Bindable var settingsStore: SettingsStore
+    @Bindable var registrationStatusStore: HotKeyRegistrationStatusStore
     let rows: [HotKeyRowModel]
 
     var body: some View {
-        SettingsCardSection(title: settingsStore.localized("settings.section.shortcuts")) {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                ForEach(rows) { row in
-                    HotKeyEditorRow(
-                        row: row,
-                        placeholder: settingsStore.localized("settings.shortcuts.recorder_placeholder"),
-                        registrationFailureTooltip: settingsStore.localized(
-                            "settings.shortcuts.registration_failed.tooltip"
-                        ),
-                        registrationFailureAccessibilityLabel: settingsStore.localized(
-                            "settings.shortcuts.registration_failed.accessibility_label"
-                        ),
-                        onChange: { settingsStore.updateHotKeyBinding($0) }
-                    )
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            SettingsSectionHeaderWithBadge(
+                title: settingsStore.localized("settings.section.shortcuts"),
+                showsWarning: registrationStatusStore.hasIssue,
+                warningTooltip: settingsStore.localized("settings.shortcuts.registration_issue.tooltip")
+            )
 
-                Button(settingsStore.localized("settings.shortcuts.reset")) {
-                    settingsStore.resetHotKeysToDefaults()
+            SettingsCard {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if registrationStatusStore.handlerUnavailable {
+                        HotKeyRegistrationNotice(
+                            title: settingsStore.localized(
+                                "settings.shortcuts.handler_unavailable.title"
+                            ),
+                            message: settingsStore.localized(
+                                "settings.shortcuts.handler_unavailable.message"
+                            )
+                        )
+
+                        Divider()
+                    }
+
+                    ForEach(rows) { row in
+                        HotKeyEditorRow(
+                            row: row,
+                            placeholder: settingsStore.localized("settings.shortcuts.recorder_placeholder"),
+                            registrationFailureTooltip: settingsStore.localized(
+                                "settings.shortcuts.registration_failed.tooltip"
+                            ),
+                            registrationFailureAccessibilityLabel: settingsStore.localized(
+                                "settings.shortcuts.registration_failed.accessibility_label"
+                            ),
+                            onChange: { settingsStore.updateHotKeyBinding($0) }
+                        )
+                    }
+
+                    Button(settingsStore.localized("settings.shortcuts.reset")) {
+                        settingsStore.resetHotKeysToDefaults()
+                    }
                 }
             }
         }
+    }
+}
+
+private struct SettingsSectionHeaderWithBadge: View {
+    let title: String
+    let showsWarning: Bool
+    let warningTooltip: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(title)
+                .font(.headline)
+
+            if showsWarning {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .help(warningTooltip)
+                    .accessibilityLabel(warningTooltip)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
+    }
+}
+
+private struct HotKeyRegistrationNotice: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(nsColor: .systemRed))
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

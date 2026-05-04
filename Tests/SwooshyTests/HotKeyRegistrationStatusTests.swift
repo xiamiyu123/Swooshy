@@ -98,6 +98,20 @@ struct HotKeyRegistrationStatusTests {
         #expect(rows.first { $0.action == .center }?.registrationFailure?.binding == centerBinding)
         #expect(rows.first { $0.action == .leftHalf }?.registrationFailure == nil)
     }
+
+    @Test
+    func handlerUnavailableMarksEveryActionAsAffected() {
+        let registrationStatusStore = HotKeyRegistrationStatusStore()
+
+        #expect(registrationStatusStore.hasIssue == false)
+        #expect(registrationStatusStore.issueKind(for: .leftHalf) == nil)
+
+        registrationStatusStore.markHandlerUnavailable()
+
+        #expect(registrationStatusStore.hasIssue)
+        #expect(registrationStatusStore.issueKind(for: .leftHalf) == .handlerUnavailable)
+        #expect(registrationStatusStore.issueKind(for: .quitApplication) == .handlerUnavailable)
+    }
 }
 
 @MainActor

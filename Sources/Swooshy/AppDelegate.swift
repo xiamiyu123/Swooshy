@@ -75,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             windowActionRunner: windowActionRunner,
             alertPresenter: alertPresenter,
             settingsStore: settingsStore,
+            hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore,
             settingsWindowController: settingsWindowController,
             welcomeWindowController: welcomeWindowController
         )

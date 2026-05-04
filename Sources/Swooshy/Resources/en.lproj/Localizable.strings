@@ -6,6 +6,9 @@
 "menu.settings" = "Settings…";
 "menu.help" = "How This Works";
 "menu.quit" = "Quit Swooshy";
+"menu.hotkey_registration_issue.marker" = "!";
+"menu.hotkey_registration_failed.tooltip" = "This shortcut did not register, so the key equivalent may not work. The menu action still works; re-record the shortcut in Settings.";
+"menu.hotkey_handler_unavailable.tooltip" = "Global hotkeys are unavailable. Menu actions still work; try restarting Swooshy or checking Shortcuts in Settings.";
 
 "action.left_half" = "Snap Left Half";
 "action.right_half" = "Snap Right Half";
@@ -157,8 +160,11 @@
 "settings.advanced.smart_pinch_exit_full_screen.footer" = "When the app is in Native Full Screen (with the Title-bar hovering down), Title-bar 'Pinch In' gestures will be intelligently intercepted as 'Exit Full Screen', regardless of their actual mapping in the Settings. This prevents unintended app closure when you actually just meant to leave the Virtual Desktop space.";
 "settings.debug_logging.enabled" = "Enable debug logging";
 "settings.shortcuts.recorder_placeholder" = "Press shortcut";
+"settings.shortcuts.registration_issue.tooltip" = "Some global shortcuts need attention";
 "settings.shortcuts.registration_failed.accessibility_label" = "Shortcut registration failed";
 "settings.shortcuts.registration_failed.tooltip" = "Shortcut registration failed, so this shortcut will not work. It may already be used by macOS, a system feature, or another app. Try recording a different shortcut.";
+"settings.shortcuts.handler_unavailable.title" = "Global hotkey service unavailable";
+"settings.shortcuts.handler_unavailable.message" = "Swooshy could not install its global hotkey listener, so recorded shortcuts will not work right now. Try restarting Swooshy; if it keeps happening, check debug logs or temporarily disable global hotkeys.";
 "settings.shortcuts.reset" = "Reset shortcut defaults";
 
 "settings.advanced.open" = "Advanced Settings…";

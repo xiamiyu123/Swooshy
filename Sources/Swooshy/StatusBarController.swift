@@ -6,6 +6,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private let windowActionRunner: WindowActionRunning
     private let alertPresenter: AlertPresenting
     private let settingsStore: SettingsStore
+    private let hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore
     private let settingsWindowController: SettingsWindowController
     private let welcomeWindowController: WelcomeWindowController
     private let menuContentBuilder = StatusMenuContentBuilder()
@@ -19,6 +20,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         windowActionRunner: WindowActionRunning,
         alertPresenter: AlertPresenting,
         settingsStore: SettingsStore,
+        hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore = HotKeyRegistrationStatusStore(),
         settingsWindowController: SettingsWindowController,
         welcomeWindowController: WelcomeWindowController
     ) {
@@ -26,6 +28,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         self.windowActionRunner = windowActionRunner
         self.alertPresenter = alertPresenter
         self.settingsStore = settingsStore
+        self.hotKeyRegistrationStatusStore = hotKeyRegistrationStatusStore
         self.settingsWindowController = settingsWindowController
         self.welcomeWindowController = welcomeWindowController
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -103,7 +106,10 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         let entries = menuContentBuilder.makeEntries(
             permissionGranted: permissionGranted,
             collapseWindowActions: settingsStore.collapseStatusItemWindowActions,
-            preferredLanguages: settingsStore.preferredLanguages
+            preferredLanguages: settingsStore.preferredLanguages,
+            hotKeyIssueForAction: { [hotKeyRegistrationStatusStore] action in
+                hotKeyRegistrationStatusStore.issueKind(for: action)
+            }
         )
 
         for entry in entries {
@@ -222,7 +228,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         case .windowAction(let action):
             let binding = settingsStore.hotKeyBinding(for: action)
             let item = NSMenuItem(
-                title: entry.title,
+                title: menuTitle(for: entry),
                 action: #selector(runWindowAction(_:)),
                 keyEquivalent: binding.menuKeyEquivalent
             )
@@ -230,14 +236,16 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             item.representedObject = action
             item.isEnabled = enforcePermissionLock ? false : entry.isEnabled
             item.keyEquivalentModifierMask = binding.menuModifierFlags
+            item.toolTip = menuTooltip(for: entry.hotKeyIssue)
             return item
         case .windowActionGroup:
             let item = NSMenuItem(
-                title: entry.title,
+                title: menuTitle(for: entry),
                 action: nil,
                 keyEquivalent: ""
             )
             item.isEnabled = enforcePermissionLock ? false : entry.isEnabled
+            item.toolTip = menuTooltip(for: entry.hotKeyIssue)
             item.submenu = windowActionsSubmenu(permissionGranted: permissionGranted)
             return item
         case .help:
@@ -280,7 +288,8 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             StatusMenuEntry(
                 kind: .windowAction(action),
                 title: action.title(preferredLanguages: settingsStore.preferredLanguages),
-                isEnabled: permissionGranted
+                isEnabled: permissionGranted,
+                hotKeyIssue: hotKeyRegistrationStatusStore.issueKind(for: action)
             )
         }
 
@@ -289,5 +298,24 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         return submenu
+    }
+
+    private func menuTitle(for entry: StatusMenuEntry) -> String {
+        guard entry.hotKeyIssue != nil else {
+            return entry.title
+        }
+
+        return "\(entry.title) \(settingsStore.localized("menu.hotkey_registration_issue.marker"))"
+    }
+
+    private func menuTooltip(for issue: HotKeyRegistrationIssueKind?) -> String? {
+        switch issue {
+        case .registrationFailed:
+            return settingsStore.localized("menu.hotkey_registration_failed.tooltip")
+        case .handlerUnavailable:
+            return settingsStore.localized("menu.hotkey_handler_unavailable.tooltip")
+        case .none:
+            return nil
+        }
     }
 }
