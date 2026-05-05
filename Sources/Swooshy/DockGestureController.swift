@@ -81,7 +81,9 @@ final class DockGestureController {
                 replacesWithTabClose: Bool
             )
         }
+        let gesture: DockGestureKind
         let source: Source
+        let confirmationAction: CloseGestureConfirmationAction
         let anchorPoint: CGPoint
         var timeoutTask: Task<Void, Never>?
     }
@@ -647,6 +649,7 @@ final class DockGestureController {
         let application = event.application
 
         if let pending = pendingPinchConfirmation,
+           pending.gesture == event.gesture,
            case .dock(let pendingAction, let pendingApp) = pending.source,
            pendingAction == action,
            pendingApp == application {
@@ -656,9 +659,10 @@ final class DockGestureController {
             return
         }
 
-        if requiresPinchConfirmation(dockAction: action, application: application) {
+        if let confirmationAction = pinchConfirmationAction(dockGesture: event.gesture, dockAction: action) {
             showPinchConfirmation(
                 gesture: event.gesture,
+                confirmationAction: confirmationAction,
                 anchorPoint: anchorPoint,
                 source: .dock(action: action, application: application)
             )
@@ -794,6 +798,7 @@ final class DockGestureController {
         )
 
         if let pending = pendingPinchConfirmation,
+           pending.gesture == event.gesture,
            case .titleBar(let pendingAction, let pendingEvent, _, let pendingReplaces) = pending.source,
            titleBarPinchConfirmationMatches(
                pendingAction: pendingAction,
@@ -814,9 +819,15 @@ final class DockGestureController {
             return
         }
 
-        if !replacesWithTabClose, requiresPinchConfirmation(action: action, application: event.application) {
+        if !replacesWithTabClose,
+           let confirmationAction = pinchConfirmationAction(
+               titleBarGesture: event.gesture,
+               action: action,
+               application: event.application
+           ) {
             showPinchConfirmation(
                 gesture: event.gesture,
+                confirmationAction: confirmationAction,
                 anchorPoint: anchorPoint,
                 source: .titleBar(
                     action: action,
@@ -1287,40 +1298,40 @@ final class DockGestureController {
 
     // MARK: - Pinch Close Confirmation
 
-    private func requiresPinchConfirmation(
+    private func pinchConfirmationAction(
+        titleBarGesture gesture: DockGestureKind,
         action: WindowAction,
         application: InteractionTarget
-    ) -> Bool {
-        guard settingsStore.pinchCloseConfirmationEnabled else { return false }
-        guard action == .closeWindow || action == .quitApplication else { return false }
-        guard let appIdentity = application.appIdentity else { return false }
-        return BrowserTabProbe.supportsTabCloseHost(
-            bundleIdentifier: appIdentity.bundleIdentifier,
-            localizedName: appIdentity.localizedName
+    ) -> CloseGestureConfirmationAction? {
+        CloseGestureConfirmationPolicy.confirmationActionForTitleBarGesture(
+            gesture: gesture,
+            action: action,
+            application: application,
+            legacyBrowserWindowCloseConfirmationEnabled: settingsStore.pinchCloseConfirmationEnabled,
+            closeAndQuitConfirmationEnabled: settingsStore.closeAndQuitConfirmationEnabled
         )
     }
 
-    private func requiresPinchConfirmation(
+    private func pinchConfirmationAction(
+        dockGesture gesture: DockGestureKind,
         dockAction: DockGestureAction,
-        application: InteractionTarget
-    ) -> Bool {
-        guard settingsStore.pinchCloseConfirmationEnabled else { return false }
-        guard dockAction == .closeWindow || dockAction == .quitApplication else { return false }
-        guard let appIdentity = application.appIdentity else { return false }
-        return BrowserTabProbe.supportsTabCloseHost(
-            bundleIdentifier: appIdentity.bundleIdentifier,
-            localizedName: appIdentity.localizedName
+    ) -> CloseGestureConfirmationAction? {
+        CloseGestureConfirmationPolicy.confirmationActionForDockGesture(
+            gesture: gesture,
+            action: dockAction,
+            closeAndQuitConfirmationEnabled: settingsStore.closeAndQuitConfirmationEnabled
         )
     }
 
     private func showPinchConfirmation(
         gesture: DockGestureKind,
+        confirmationAction: CloseGestureConfirmationAction,
         anchorPoint: CGPoint,
         source: PendingPinchConfirmation.Source
     ) {
         clearPinchConfirmation()
 
-        let confirmationText = settingsStore.localized("confirmation.pinch_again")
+        let confirmationText = settingsStore.localized(confirmationAction.confirmationPromptLocalizationKey)
         gestureFeedbackPresenter.show(
             gesture: gesture,
             gestureTitle: gesture.title(preferredLanguages: settingsStore.preferredLanguages),
@@ -1342,7 +1353,9 @@ final class DockGestureController {
         }
 
         pendingPinchConfirmation = PendingPinchConfirmation(
+            gesture: gesture,
             source: source,
+            confirmationAction: confirmationAction,
             anchorPoint: anchorPoint,
             timeoutTask: timeoutTask
         )

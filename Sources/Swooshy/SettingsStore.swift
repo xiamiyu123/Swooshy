@@ -138,6 +138,18 @@ final class SettingsStore {
         }
     }
 
+    var closeAndQuitConfirmationEnabled: Bool {
+        didSet {
+            guard oldValue != closeAndQuitConfirmationEnabled else { return }
+            userDefaults.set(closeAndQuitConfirmationEnabled, forKey: Keys.closeAndQuitConfirmationEnabled)
+            DebugLog.info(
+                DebugLog.settings,
+                "Close and quit confirmation enabled set to \(closeAndQuitConfirmationEnabled)"
+            )
+            notifyDidChange(.advancedGestureBehavior)
+        }
+    }
+
     var experimentalBrowserTabCloseEnabled: Bool {
         didSet {
             guard oldValue != experimentalBrowserTabCloseEnabled else { return }
@@ -377,6 +389,11 @@ final class SettingsStore {
             defaultValue: false,
             in: userDefaults
         )
+        self.closeAndQuitConfirmationEnabled = Self.boolValue(
+            forKey: Keys.closeAndQuitConfirmationEnabled,
+            defaultValue: false,
+            in: userDefaults
+        )
         self.titleBarOverlayProtectionEnabled = Self.boolValue(
             forKey: Keys.titleBarOverlayProtectionEnabled,
             defaultValue: true,
@@ -463,6 +480,7 @@ final class SettingsStore {
             Keys.titleBarOverlayProtectionEnabled,
             Keys.smartBrowserTabCloseEnabled,
             Keys.pinchCloseConfirmationEnabled,
+            Keys.closeAndQuitConfirmationEnabled,
             Keys.executeGestureOnRelease,
             Keys.reverseCancelEnabled,
             Keys.reverseCancelSensitivity,
@@ -726,6 +744,7 @@ final class SettingsStore {
         smartPinchExitFullScreenEnabled = true
         smartBrowserTabCloseEnabled = false
         pinchCloseConfirmationEnabled = false
+        closeAndQuitConfirmationEnabled = false
         experimentalBrowserTabCloseEnabled = false
     }
 
@@ -812,6 +831,7 @@ final class SettingsStore {
         static let smartPinchExitFullScreenEnabled = "settings.smartPinchExitFullScreenEnabled"
         static let smartBrowserTabCloseEnabled = "settings.smartBrowserTabCloseEnabled"
         static let pinchCloseConfirmationEnabled = "settings.pinchCloseConfirmationEnabled"
+        static let closeAndQuitConfirmationEnabled = "settings.closeAndQuitConfirmationEnabled"
         static let experimentalBrowserTabCloseEnabled = "settings.experimentalBrowserTabCloseEnabled"
         // Deprecated preview-mode persistence keys.
         static let executeGestureOnRelease = "settings.executeGestureOnRelease"

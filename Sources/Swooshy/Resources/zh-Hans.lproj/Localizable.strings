@@ -158,6 +158,8 @@
 "settings.advanced.title_bar_overlay_protection.footer" = "启用保护能避免 Swooshy 在其它独立菜单浮窗或其它基于叠加层窗口控制界面的 App 上产生不必要的手势误触。Swooshy 会确保在你开始手势前应用已被完全激活，并且没有其它叠加层挡住你的操作区域。但在偶尔某些特定边缘情况下，系统未及时上报正确的鼠标位置时，这也许会阻挡个别正常的手势。如果你想不计前提始终强行触发标题栏手势，可以关闭该选项。";
 "settings.advanced.smart_pinch_exit_full_screen.enabled" = "全屏状态下捏合退出全屏";
 "settings.advanced.smart_pinch_exit_full_screen.footer" = "在原生的 macOS 虚拟桌面全屏状态下（标题栏下拉时），不论你为标题栏的「捏合」手势绑定了什么动作，系统都会将其智能识别拦截为「退出全屏桌面」。这能避免在此直觉操作下不小心触发关闭窗口。";
+"settings.advanced.close_quit_confirmation.enabled" = "关闭窗口或退出应用前需要确认";
+"settings.advanced.close_quit_confirmation.footer" = "开启后，映射为「关闭窗口」或「退出应用」的捏合手势会先显示确认提示。请在数秒内重复同一个捏合手势以确认。";
 "settings.debug_logging.enabled" = "启用调试日志";
 "settings.shortcuts.recorder_placeholder" = "请按快捷键";
 "settings.shortcuts.registration_issue.tooltip" = "部分全局快捷键需要处理";
@@ -192,8 +194,8 @@
 "settings.experimental.browser_tab_close.footer" = "允许将手势映射为「关闭标签页」。\n\n原理：Swooshy 会在对应位置模拟鼠标中键点击。使用该功能前请确保目标应用支持「鼠标中键关闭标签页」，且没有其它鼠标按键映射冲突。";
 "settings.experimental.smart_browser_tab_close.enabled" = "智能关闭标签页";
 "settings.experimental.smart_browser_tab_close.footer" = "在对受支持的浏览器，或受支持的 VSCode 系编辑器执行「关闭窗口」或「退出应用」手势时，如果指针正好悬停在某个标签页上，Swooshy 会仅关闭该标签页，而不是关闭整个窗口或退出应用。如果指针不在任何标签页上，则回退执行正常的关闭或退出操作。理论支持 Safari、Chrome、Edge、Firefox等浏览器，以及 Visual Studio Code、Cursor、Antigravity等基于 VSCode 的代码编辑器。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
-"settings.experimental.pinch_close_confirmation.enabled" = "双次捏合确认关闭";
-"settings.experimental.pinch_close_confirmation.footer" = "启用后，在受支持的浏览器或 VSCode 系编辑器上执行关闭或退出手势时，会先显示确认提示。请在数秒内再次捏合以确认操作，否则操作将被取消。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
+"settings.experimental.pinch_close_confirmation.enabled" = "确认标题栏关闭窗口";
+"settings.experimental.pinch_close_confirmation.footer" = "启用后，在受支持的浏览器或 VSCode 系编辑器中，标题栏捏合手势映射为「关闭窗口」时，会先显示确认提示。此开关不作用于 Dock 手势或「退出应用」。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
 "settings.experimental.opt_in_persistence.footer" = "注意：重置用户配置时，会保留你对实验性功能的启用状态。";
 
 "guide.page.experimental.title" = "实验性功能";
@@ -201,8 +203,9 @@
 "guide.page.experimental.bullet1" = "智能关闭标签页：在受支持的浏览器，或受支持的 VSCode 系编辑器上做关闭或退出手势时，Swooshy 会检测指针是否正悬停在某个标签页上，如果是，则通过模拟鼠标中键点击精准关闭该标签页。";
 "guide.page.experimental.bullet2" = "如果指针不在任何标签页上，手势会回退为正常的关闭窗口或退出应用操作。";
 "guide.page.experimental.bullet3" = "理论支持主流浏览器，也支持 Visual Studio Code、Cursor、反重力等 VSCode 系编辑器。(其中 Safari 仅支持顶栏，不支持侧边栏)。";
-"guide.page.experimental.bullet4" = "双次捏合确认：在受支持的浏览器或编辑器上做关闭或退出手势时，Swooshy 会先弹出确认提示，再次捏合即可确认操作，等待超时则自动取消。";
-"confirmation.pinch_again" = "再次捏合关闭窗口";
+"guide.page.experimental.bullet4" = "标题栏关闭确认：在受支持的浏览器或编辑器中，用标题栏捏合手势关闭窗口时，Swooshy 会先弹出确认提示，再次捏合即可确认操作，等待超时则自动取消。";
+"confirmation.pinch_again.close_window" = "再次捏合关闭窗口";
+"confirmation.pinch_again.quit_application" = "再次捏合退出应用";
 
 "error.permission_missing" = "缺少辅助功能权限。请在系统设置中启用 Swooshy 后重试。";
 "error.no_frontmost_app" = "无法找到当前前台应用。";

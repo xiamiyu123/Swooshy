@@ -874,6 +874,15 @@ private struct AdvancedSettingsPage: View {
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.footer"))
                 }
+
+                Toggle(
+                    settingsStore.localized("settings.advanced.close_quit_confirmation.enabled"),
+                    isOn: $settingsStore.closeAndQuitConfirmationEnabled
+                )
+
+                SettingsHintGroup {
+                    Text(settingsStore.localized("settings.advanced.close_quit_confirmation.footer"))
+                }
             }
 
             SettingsCardSection(title: settingsStore.localized("settings.advanced.section.logging")) {
