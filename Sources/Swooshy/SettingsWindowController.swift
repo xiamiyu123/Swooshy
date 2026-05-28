@@ -247,6 +247,8 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 }
 
 private struct SettingsSidebar: View {
+    private static let width: CGFloat = 210
+
     @Binding var selection: SettingsPage?
     @Bindable var settingsStore: SettingsStore
     @Bindable var hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore
@@ -264,7 +266,7 @@ private struct SettingsSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 190, ideal: 210)
+        .navigationSplitViewColumnWidth(min: Self.width, ideal: Self.width, max: Self.width)
     }
 }
 
