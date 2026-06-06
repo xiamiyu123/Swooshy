@@ -61,4 +61,40 @@ struct DockHoverSnapshotTests {
         #expect(snapshot.containsApproximateDockRegion(CGPoint(x: 1, y: 1)) == false)
         #expect(snapshot.hoveredCandidate(at: CGPoint(x: 1, y: 1)) == nil)
     }
+
+    @Test
+    func cachePolicyPreheatsOnlyNearCandidateExpiry() {
+        let policy = DockSnapshotCachePolicy(
+            candidateTTL: 0.25,
+            regionTTL: 1,
+            preheatLeadTime: 0.08
+        )
+        let refreshedAt = Date(timeIntervalSinceReferenceDate: 100)
+        let expiresAt = refreshedAt.addingTimeInterval(policy.candidateTTL)
+
+        #expect(policy.shouldPreheat(now: refreshedAt, candidateExpiresAt: expiresAt) == false)
+        #expect(
+            policy.shouldPreheat(
+                now: refreshedAt.addingTimeInterval(0.16),
+                candidateExpiresAt: expiresAt
+            ) == false
+        )
+        #expect(
+            policy.shouldPreheat(
+                now: refreshedAt.addingTimeInterval(0.18),
+                candidateExpiresAt: expiresAt
+            )
+        )
+    }
+
+    @Test
+    func cachePolicyCapsPreheatLeadTimeAtCandidateTTL() {
+        let policy = DockSnapshotCachePolicy(
+            candidateTTL: 0.25,
+            regionTTL: 1,
+            preheatLeadTime: 0.5
+        )
+
+        #expect(policy.preheatLeadTime == policy.candidateTTL)
+    }
 }

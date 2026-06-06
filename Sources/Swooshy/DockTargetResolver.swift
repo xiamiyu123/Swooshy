@@ -41,6 +41,26 @@ struct DockHoverSnapshot: Equatable {
     }
 }
 
+struct DockSnapshotCachePolicy: Equatable {
+    let candidateTTL: TimeInterval
+    let regionTTL: TimeInterval
+    let preheatLeadTime: TimeInterval
+
+    init(
+        candidateTTL: TimeInterval = 0.25,
+        regionTTL: TimeInterval = 1.0,
+        preheatLeadTime: TimeInterval = 0.08
+    ) {
+        self.candidateTTL = candidateTTL
+        self.regionTTL = regionTTL
+        self.preheatLeadTime = min(preheatLeadTime, candidateTTL)
+    }
+
+    func shouldPreheat(now: Date, candidateExpiresAt: Date) -> Bool {
+        now >= candidateExpiresAt.addingTimeInterval(-preheatLeadTime)
+    }
+}
+
 @MainActor
 protocol DockMinimizedWindowBindingManaging: AnyObject {
     func minimizedWindowSnapshotsEligibleForDockBinding() -> [WindowRecordSnapshot]
@@ -160,8 +180,7 @@ final class MinimizedDockLedger {
 final class DockTargetResolver: DockTargetResolving {
     private let registry: WindowRegistry
     private let minimizedDockLedger = MinimizedDockLedger()
-    private let candidateCacheTTL: TimeInterval = 0.25
-    private let regionCacheTTL: TimeInterval = 1.0
+    private let cachePolicy = DockSnapshotCachePolicy()
     private let logTTL: TimeInterval = 0.4
 
     private struct CachedSnapshot {
@@ -249,7 +268,7 @@ final class DockTargetResolver: DockTargetResolving {
         cachedHoverHit = CachedHoverHit(
             target: hoveredCandidate.target,
             frame: hoveredCandidate.frame,
-            expiresAt: now.addingTimeInterval(candidateCacheTTL)
+            expiresAt: now.addingTimeInterval(cachePolicy.candidateTTL)
         )
         logProbeIfNeeded(
             key: "hit:\(hoveredCandidate.target.logDescription):\(Int(appKitPoint.x)):\(Int(appKitPoint.y))",
@@ -287,7 +306,7 @@ final class DockTargetResolver: DockTargetResolving {
     private func dockSnapshot(containing appKitPoint: CGPoint, at now: Date) -> DockHoverSnapshot {
         if let cachedSnapshot {
             if now < cachedSnapshot.candidateExpiresAt {
-                if now >= cachedSnapshot.candidateExpiresAt.addingTimeInterval(-0.5) {
+                if cachePolicy.shouldPreheat(now: now, candidateExpiresAt: cachedSnapshot.candidateExpiresAt) {
                     startPreheatIfNeeded()
                 }
                 return cachedSnapshot.snapshot
@@ -297,7 +316,7 @@ final class DockTargetResolver: DockTargetResolving {
                 now < cachedSnapshot.regionExpiresAt,
                 cachedSnapshot.snapshot.containsApproximateDockRegion(appKitPoint) == false
             {
-                if now >= cachedSnapshot.candidateExpiresAt.addingTimeInterval(-0.5) {
+                if cachePolicy.shouldPreheat(now: now, candidateExpiresAt: cachedSnapshot.candidateExpiresAt) {
                     startPreheatIfNeeded()
                 }
                 return cachedSnapshot.snapshot
@@ -309,8 +328,8 @@ final class DockTargetResolver: DockTargetResolving {
         let snapshot = rebuildDockSnapshot()
         cachedSnapshot = CachedSnapshot(
             snapshot: snapshot,
-            candidateExpiresAt: now.addingTimeInterval(candidateCacheTTL),
-            regionExpiresAt: now.addingTimeInterval(regionCacheTTL)
+            candidateExpiresAt: now.addingTimeInterval(cachePolicy.candidateTTL),
+            regionExpiresAt: now.addingTimeInterval(cachePolicy.regionTTL)
         )
         return snapshot
     }
@@ -329,8 +348,8 @@ final class DockTargetResolver: DockTargetResolving {
             let now = Date()
             self.cachedSnapshot = CachedSnapshot(
                 snapshot: snapshot,
-                candidateExpiresAt: now.addingTimeInterval(self.candidateCacheTTL),
-                regionExpiresAt: now.addingTimeInterval(self.regionCacheTTL)
+                candidateExpiresAt: now.addingTimeInterval(self.cachePolicy.candidateTTL),
+                regionExpiresAt: now.addingTimeInterval(self.cachePolicy.regionTTL)
             )
             self.preheatTask = nil
         }

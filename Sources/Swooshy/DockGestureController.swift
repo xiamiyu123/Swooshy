@@ -651,8 +651,14 @@ final class DockGestureController {
         if let pending = pendingPinchConfirmation,
            pending.gesture == event.gesture,
            case .dock(let pendingAction, let pendingApp) = pending.source,
-           pendingAction == action,
-           pendingApp == application {
+           dockPinchConfirmationMatches(
+               pendingGesture: pending.gesture,
+               pendingAction: pendingAction,
+               pendingApplication: pendingApp,
+               gesture: event.gesture,
+               action: action,
+               application: application
+           ) {
             clearPinchConfirmation()
             DebugLog.info(DebugLog.dock, "Pinch confirmation accepted for dock action \(action.rawValue)")
             scheduleDockGestureAction(action, for: application)
@@ -668,6 +674,8 @@ final class DockGestureController {
             )
             return
         }
+
+        clearPinchConfirmation(dismissFeedback: false)
 
         let persistent = settingsStore.executeGestureOnRelease
         gestureFeedbackPresenter.show(
@@ -838,6 +846,8 @@ final class DockGestureController {
             )
             return
         }
+
+        clearPinchConfirmation(dismissFeedback: false)
 
         var actionTitle = action.title(preferredLanguages: settingsStore.preferredLanguages)
         if replacesWithTabClose {
@@ -1329,7 +1339,7 @@ final class DockGestureController {
         anchorPoint: CGPoint,
         source: PendingPinchConfirmation.Source
     ) {
-        clearPinchConfirmation()
+        clearPinchConfirmation(dismissFeedback: false)
 
         let confirmationText = settingsStore.localized(confirmationAction.confirmationPromptLocalizationKey)
         gestureFeedbackPresenter.show(
@@ -1363,10 +1373,16 @@ final class DockGestureController {
         DebugLog.info(DebugLog.dock, "Showing pinch confirmation HUD")
     }
 
-    private func clearPinchConfirmation() {
+    private func clearPinchConfirmation(dismissFeedback: Bool = true) {
+        guard pendingPinchConfirmation != nil else {
+            return
+        }
+
         pendingPinchConfirmation?.timeoutTask?.cancel()
         pendingPinchConfirmation = nil
-        gestureFeedbackPresenter.dismiss()
+        if dismissFeedback {
+            gestureFeedbackPresenter.dismiss()
+        }
     }
 
     // Deprecated: once preview mode is fully removed, actions should no longer
@@ -1876,6 +1892,19 @@ func titleBarPinchConfirmationMatches(
     pendingAction == action &&
         pendingApplication == application &&
         pendingReplacesWithTabClose == replacesWithTabClose
+}
+
+func dockPinchConfirmationMatches(
+    pendingGesture: DockGestureKind,
+    pendingAction: DockGestureAction,
+    pendingApplication: InteractionTarget,
+    gesture: DockGestureKind,
+    action: DockGestureAction,
+    application: InteractionTarget
+) -> Bool {
+    pendingGesture == gesture &&
+        pendingAction == action &&
+        pendingApplication == application
 }
 
 enum TitleBarHoverSource: Equatable {

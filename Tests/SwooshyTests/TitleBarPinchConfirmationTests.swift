@@ -4,6 +4,59 @@ import Testing
 
 struct TitleBarPinchConfirmationTests {
     @Test
+    func dockPinchConfirmationRequiresSameGestureActionAndTarget() {
+        let finder = InteractionTarget.application(
+            makeAppIdentity(name: "Finder"),
+            source: .dockAppItem(DockItemHandle())
+        )
+        let notes = InteractionTarget.application(
+            makeAppIdentity(name: "Notes"),
+            source: .dockAppItem(DockItemHandle())
+        )
+
+        #expect(
+            dockPinchConfirmationMatches(
+                pendingGesture: .pinchIn,
+                pendingAction: .quitApplication,
+                pendingApplication: finder,
+                gesture: .pinchIn,
+                action: .quitApplication,
+                application: finder
+            )
+        )
+        #expect(
+            dockPinchConfirmationMatches(
+                pendingGesture: .pinchIn,
+                pendingAction: .quitApplication,
+                pendingApplication: finder,
+                gesture: .pinchOut,
+                action: .quitApplication,
+                application: finder
+            ) == false
+        )
+        #expect(
+            dockPinchConfirmationMatches(
+                pendingGesture: .pinchIn,
+                pendingAction: .quitApplication,
+                pendingApplication: finder,
+                gesture: .pinchIn,
+                action: .closeWindow,
+                application: finder
+            ) == false
+        )
+        #expect(
+            dockPinchConfirmationMatches(
+                pendingGesture: .pinchIn,
+                pendingAction: .quitApplication,
+                pendingApplication: finder,
+                gesture: .pinchIn,
+                action: .quitApplication,
+                application: notes
+            ) == false
+        )
+    }
+
+    @Test
     func titleBarPinchConfirmationRequiresSameTarget() {
         let app = makeAppIdentity(name: "Browser")
         let firstWindow = InteractionTarget.window(WindowIdentity(), app: app, source: .titleBar)
