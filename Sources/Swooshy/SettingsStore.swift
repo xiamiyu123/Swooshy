@@ -177,6 +177,24 @@ final class SettingsStore {
         }
     }
 
+    var experimentalDisplayMoveActionsEnabled: Bool {
+        didSet {
+            guard oldValue != experimentalDisplayMoveActionsEnabled else { return }
+            userDefaults.set(experimentalDisplayMoveActionsEnabled, forKey: Keys.experimentalDisplayMoveActionsEnabled)
+            DebugLog.info(
+                DebugLog.settings,
+                "Experimental display move actions enabled set to \(experimentalDisplayMoveActionsEnabled)"
+            )
+            notifyDidChange([
+                .hotKeys,
+                .gestureMonitoring,
+                .statusMenu,
+                .gestureHUD,
+                .advancedGestureBehavior,
+            ])
+        }
+    }
+
     // Deprecated: retained for the legacy preview-mode flow that defers gesture
     // commits until finger release. Keep persisting it until that path is
     // removed from DockGestureController and the onboarding/settings UI.
@@ -401,6 +419,11 @@ final class SettingsStore {
         self.smartBrowserTabCloseEnabled = experimentalBrowserTabCloseEnabled ? smartBrowserTabCloseEnabled : false
         self.experimentalBrowserTabCloseEnabled = experimentalBrowserTabCloseEnabled
         self.pinchCloseConfirmationEnabled = experimentalBrowserTabCloseEnabled ? pinchCloseConfirmationEnabled : false
+        self.experimentalDisplayMoveActionsEnabled = Self.boolValue(
+            forKey: Keys.experimentalDisplayMoveActionsEnabled,
+            defaultValue: false,
+            in: userDefaults
+        )
         self.closeAndQuitConfirmationEnabled = Self.boolValue(
             forKey: Keys.closeAndQuitConfirmationEnabled,
             defaultValue: false,
@@ -534,7 +557,7 @@ final class SettingsStore {
             Keys.hasSeenWelcomeGuide,
         ]
 
-        // Intentionally preserve `experimentalBrowserTabCloseEnabled` here.
+        // Intentionally preserve experimental opt-in flags here.
         // `--reset-user-config` is meant to restore everyday preferences while
         // keeping the user's explicit experimental opt-in state across launches.
 
@@ -549,6 +572,30 @@ final class SettingsStore {
 
     func hotKeyBinding(for action: WindowAction) -> HotKeyBinding {
         hotKeyBindings.first(where: { $0.action == action }) ?? fallbackBinding(for: action)
+    }
+
+    var availableWindowActions: [WindowAction] {
+        availableWindowActions(from: WindowAction.allCases)
+    }
+
+    var availableWindowGestureActions: [WindowAction] {
+        availableWindowActions(from: WindowAction.gestureCases)
+    }
+
+    var availableDockGestureActions: [DockGestureAction] {
+        DockGestureAction.allCases.filter(isDockGestureActionAvailable)
+    }
+
+    func isWindowActionAvailable(_ action: WindowAction) -> Bool {
+        experimentalDisplayMoveActionsEnabled || action.isDisplayMoveAction == false
+    }
+
+    func isDockGestureActionAvailable(_ action: DockGestureAction) -> Bool {
+        experimentalDisplayMoveActionsEnabled || action.isDisplayMoveAction == false
+    }
+
+    private func availableWindowActions(from actions: [WindowAction]) -> [WindowAction] {
+        actions.filter(isWindowActionAvailable)
     }
 
     func updateHotKeyKey(_ key: ShortcutKey, for action: WindowAction) {
@@ -598,7 +645,8 @@ final class SettingsStore {
     }
 
     func dockGestureAction(for gesture: DockGestureKind) -> DockGestureAction {
-        dockGestureBinding(for: gesture).action
+        let binding = dockGestureBinding(for: gesture)
+        return dockGestureActionIfAvailable(binding.action, for: gesture)
     }
 
     func dockGestureIsEnabled(for gesture: DockGestureKind) -> Bool {
@@ -619,11 +667,12 @@ final class SettingsStore {
         let nextAction = experimentalBrowserTabCloseEnabled
             ? action
             : Self.dockGestureActionWithoutBrowserTabClose(action, for: gesture)
+        let availableAction = dockGestureActionIfAvailable(nextAction, for: gesture)
         updateDockGestureBinding(
             DockGestureBinding(
                 gesture: gesture,
                 isEnabled: dockGestureBinding(for: gesture).isEnabled,
-                action: nextAction
+                action: availableAction
             )
         )
     }
@@ -654,7 +703,8 @@ final class SettingsStore {
     }
 
     func titleBarGestureAction(for gesture: DockGestureKind) -> WindowAction? {
-        titleBarGestureBinding(for: gesture)?.action
+        guard let binding = titleBarGestureBinding(for: gesture) else { return nil }
+        return titleBarGestureActionIfAvailable(binding.action, for: gesture)
     }
 
     func titleBarGestureIsEnabled(for gesture: DockGestureKind) -> Bool {
@@ -677,11 +727,12 @@ final class SettingsStore {
         let nextAction = experimentalBrowserTabCloseEnabled
             ? action
             : Self.titleBarGestureActionWithoutBrowserTabClose(action, for: gesture)
+        let availableAction = titleBarGestureActionIfAvailable(nextAction, for: gesture)
         updateTitleBarGestureBinding(
             TitleBarGestureBinding(
                 gesture: gesture,
                 isEnabled: current.isEnabled,
-                action: nextAction
+                action: availableAction
             )
         )
     }
@@ -766,6 +817,20 @@ final class SettingsStore {
         action == .closeTab ? TitleBarGestureBindings.fallbackBinding(for: gesture).action : action
     }
 
+    private func dockGestureActionIfAvailable(
+        _ action: DockGestureAction,
+        for gesture: DockGestureKind
+    ) -> DockGestureAction {
+        isDockGestureActionAvailable(action) ? action : DockGestureBindings.fallbackBinding(for: gesture).action
+    }
+
+    private func titleBarGestureActionIfAvailable(
+        _ action: WindowAction,
+        for gesture: DockGestureKind
+    ) -> WindowAction {
+        isWindowActionAvailable(action) ? action : TitleBarGestureBindings.fallbackBinding(for: gesture).action
+    }
+
     private func notifyDidChange(_ categories: SettingsChangeCategory = []) {
         pendingChangeCategories.formUnion(categories)
 
@@ -837,6 +902,7 @@ final class SettingsStore {
         pinchCloseConfirmationEnabled = false
         closeAndQuitConfirmationEnabled = false
         experimentalBrowserTabCloseEnabled = false
+        experimentalDisplayMoveActionsEnabled = false
     }
 
     static let defaultTitleBarTriggerHeight: Double = 32
@@ -924,6 +990,7 @@ final class SettingsStore {
         static let pinchCloseConfirmationEnabled = "settings.pinchCloseConfirmationEnabled"
         static let closeAndQuitConfirmationEnabled = "settings.closeAndQuitConfirmationEnabled"
         static let experimentalBrowserTabCloseEnabled = "settings.experimentalBrowserTabCloseEnabled"
+        static let experimentalDisplayMoveActionsEnabled = "settings.experimentalDisplayMoveActionsEnabled"
         // Deprecated preview-mode persistence keys.
         static let executeGestureOnRelease = "settings.executeGestureOnRelease"
         static let reverseCancelEnabled = "settings.reverseCancelEnabled"

@@ -262,7 +262,9 @@ struct SmoothDockingResolver {
              .cycleSameAppWindowsForward,
              .cycleSameAppWindowsBackward,
              .toggleFullScreen,
-             .exitFullScreen:
+             .exitFullScreen,
+             .moveToNextDisplay,
+             .moveToPreviousDisplay:
             return desktopFrame.integral
         }
     }
@@ -317,7 +319,9 @@ struct SmoothDockingResolver {
              .cycleSameAppWindowsForward,
              .cycleSameAppWindowsBackward,
              .toggleFullScreen,
-             .exitFullScreen:
+             .exitFullScreen,
+             .moveToNextDisplay,
+             .moveToPreviousDisplay:
             return .topLeading
         }
     }
@@ -580,7 +584,9 @@ extension WindowAction {
              .cycleSameAppWindowsForward,
              .cycleSameAppWindowsBackward,
              .toggleFullScreen,
-             .exitFullScreen:
+             .exitFullScreen,
+             .moveToNextDisplay,
+             .moveToPreviousDisplay:
             return false
         }
     }

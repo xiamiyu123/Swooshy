@@ -22,6 +22,8 @@ struct LocalizationTests {
         #expect(L10n.string("action.restore_window", localeIdentifier: "en") == "Restore Minimized Window")
         #expect(L10n.string("action.exit_full_screen", localeIdentifier: "en") == "Exit Full Screen Only")
         #expect(L10n.string("action.cycle_same_app_windows_forward", localeIdentifier: "en") == "Cycle Same-App Windows Forward")
+        #expect(L10n.string("action.move_to_next_display", localeIdentifier: "en") == "Move to Next Display")
+        #expect(L10n.string("action.move_to_previous_display", localeIdentifier: "en") == "Move to Previous Display")
         #expect(L10n.string("settings.status_item_icon.window_grid", localeIdentifier: "en") == "Window grid")
     }
 
@@ -34,6 +36,8 @@ struct LocalizationTests {
         #expect(L10n.string("action.restore_window", localeIdentifier: "zh-Hans") == "恢复最小化窗口")
         #expect(L10n.string("action.exit_full_screen", localeIdentifier: "zh-Hans") == "仅取消最大化")
         #expect(L10n.string("action.cycle_same_app_windows_backward", localeIdentifier: "zh-Hans") == "向后切换当前应用窗口")
+        #expect(L10n.string("action.move_to_next_display", localeIdentifier: "zh-Hans") == "移动到下一台显示器")
+        #expect(L10n.string("action.move_to_previous_display", localeIdentifier: "zh-Hans") == "移动到上一台显示器")
         #expect(L10n.string("settings.status_item_icon.window_grid", localeIdentifier: "zh-Hans") == "窗口网格")
     }
 

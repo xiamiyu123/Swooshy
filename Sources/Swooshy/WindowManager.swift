@@ -684,6 +684,22 @@ final class WindowManager: WindowManaging {
                 direction: .backward
             )
             return
+        case .moveToNextDisplay, .moveToPreviousDisplay:
+            let window = try targetedWindow(
+                in: app,
+                appElement: appElement,
+                preferredAppKitPoint: preferredAppKitPoint,
+                fallback: { try focusedWindowElement(in: appElement) }
+            )
+            try performDisplayMove(
+                direction: action.displayMoveDirection,
+                application: app,
+                window: window,
+                layoutEngine: layoutEngine,
+                preferredAppKitPoint: preferredAppKitPoint,
+                bringToFront: false
+            )
+            return
         case .leftHalf,
              .rightHalf,
              .topLeftQuarter,
@@ -790,6 +806,20 @@ final class WindowManager: WindowManaging {
                 of: target,
                 direction: .backward,
                 preferredAppKitPoint: preferredAppKitPoint
+            )
+            return
+        case .moveToNextDisplay, .moveToPreviousDisplay:
+            let targetWindow = try preferredWindowActionTarget(
+                for: target,
+                preferredAppKitPoint: preferredAppKitPoint
+            )
+            try performDisplayMove(
+                direction: action.displayMoveDirection,
+                application: resolvedApplication.application,
+                window: targetWindow,
+                layoutEngine: layoutEngine,
+                preferredAppKitPoint: preferredAppKitPoint,
+                bringToFront: true
             )
             return
         case .leftHalf,
@@ -1273,6 +1303,71 @@ final class WindowManager: WindowManaging {
         DebugLog.debug(
             DebugLog.windows,
             "Applied smooth docking frame \(NSStringFromRect(appliedFrame)) for \(String(describing: action)) in \(application.bundleIdentifier ?? application.localizedName ?? "unknown")"
+        )
+    }
+
+    private func performDisplayMove(
+        direction: DisplayMoveDirection,
+        application: NSRunningApplication,
+        window: AXUIElement,
+        layoutEngine: WindowLayoutEngine,
+        preferredAppKitPoint: CGPoint?,
+        bringToFront: Bool
+    ) throws {
+        let screens = NSScreen.screens
+        guard screens.isEmpty == false else {
+            throw WindowManagerError.unableToResolveScreen
+        }
+        guard screens.count > 1 else {
+            DebugLog.debug(DebugLog.windows, "Skipping display move because only one display is available")
+            return
+        }
+
+        if isMinimized(window) {
+            try setMinimized(false, for: window)
+        }
+
+        if bringToFront {
+            try bringWindowToFront(window, for: application)
+        }
+
+        logScreenConfiguration(screens, preferredAppKitPoint: preferredAppKitPoint)
+
+        let screenGeometry = ScreenGeometry(screenFrames: screens.map(\.frame))
+        let currentAXFrame = try frame(of: window)
+        let currentFrame = screenGeometry.appKitFrame(fromAXFrame: currentAXFrame)
+        let visibleFrames = screens.map(\.visibleFrame)
+
+        guard let currentVisibleFrame = layoutEngine.resolvedVisibleFrame(
+            preferredPoint: nil,
+            currentWindowFrame: currentFrame,
+            screenFrames: visibleFrames
+        ) else {
+            throw WindowManagerError.unableToResolveScreen
+        }
+
+        let targetFrame = layoutEngine.displayMoveTargetFrame(
+            direction: direction,
+            currentWindowFrame: currentFrame,
+            currentVisibleFrame: currentVisibleFrame,
+            screenFrames: visibleFrames
+        )
+        guard framesAreClose(currentFrame, targetFrame) == false else {
+            DebugLog.debug(DebugLog.windows, "Display move resolved to current frame; no frame write needed")
+            return
+        }
+
+        let targetAXFrame = screenGeometry.axFrame(fromAppKitFrame: targetFrame)
+        let outcome = try setFrame(targetAXFrame, for: window)
+        let appliedAXFrame: CGRect
+        switch outcome {
+        case .exact(let frame), .constrained(let frame):
+            appliedAXFrame = frame
+        }
+
+        DebugLog.debug(
+            DebugLog.windows,
+            "Moved window to \(direction.logDescription) display from \(NSStringFromRect(currentFrame)) to \(NSStringFromRect(screenGeometry.appKitFrame(fromAXFrame: appliedAXFrame))) in \(application.bundleIdentifier ?? application.localizedName ?? "unknown")"
         )
     }
 
@@ -2979,6 +3074,45 @@ final class WindowManager: WindowManaging {
         }
 
         return stringValue
+    }
+}
+
+private extension DisplayMoveDirection {
+    var logDescription: String {
+        switch self {
+        case .next:
+            return "next"
+        case .previous:
+            return "previous"
+        }
+    }
+}
+
+private extension WindowAction {
+    var displayMoveDirection: DisplayMoveDirection {
+        switch self {
+        case .moveToNextDisplay:
+            return .next
+        case .moveToPreviousDisplay:
+            return .previous
+        case .leftHalf,
+             .rightHalf,
+             .maximize,
+             .center,
+             .topLeftQuarter,
+             .topRightQuarter,
+             .bottomLeftQuarter,
+             .bottomRightQuarter,
+             .minimize,
+             .closeWindow,
+             .closeTab,
+             .quitApplication,
+             .cycleSameAppWindowsForward,
+             .cycleSameAppWindowsBackward,
+             .toggleFullScreen,
+             .exitFullScreen:
+            preconditionFailure("Display move direction requested for non-display action")
+        }
     }
 }
 

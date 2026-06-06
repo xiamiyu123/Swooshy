@@ -27,6 +27,8 @@
 "action.exit_full_screen" = "仅取消最大化";
 "action.cycle_same_app_windows_forward" = "向前切换当前应用窗口";
 "action.cycle_same_app_windows_backward" = "向后切换当前应用窗口";
+"action.move_to_next_display" = "移动到下一台显示器";
+"action.move_to_previous_display" = "移动到上一台显示器";
 "gesture.corner_drag.title" = "角落贴靠";
 "gesture.corner_drag.waiting" = "向角落方向斜向拖动以预览";
 
@@ -96,7 +98,8 @@
 "guide.page.shortcuts.bullet3" = "应用内窗口切换：Control + Option + Command + `（配合 Shift 反向）";
 "guide.page.shortcuts.bullet4" = "关闭 / 最小化：Control + Option + Command + W / M";
 "guide.page.shortcuts.bullet5" = "退出当前应用：Control + Option + Command + Q";
-"guide.page.shortcuts.bullet6" = "打开设置后，你可以按自己的习惯重新录制所有快捷键和手势动作。";
+"guide.page.shortcuts.bullet6" = "实验性显示器移动：启用显示器移动动作后，可使用 Control + Option + Command + N（配合 Shift 反向）。";
+"guide.page.shortcuts.bullet7" = "打开设置后，你可以按自己的习惯重新录制所有快捷键和手势动作。";
 "guide.page.interaction.title" = "交互风格：选择触发时机";
 "guide.page.interaction.message" = "Swooshy 支持两种完全不同的手势交互方式。请选择最符合你直觉的一种，你也可以稍后在“高级设置”中更改。";
 "guide.page.interaction.immediate.title" = "立即触发";
@@ -189,6 +192,8 @@
 "settings.advanced.debug_logging.footer" = "启用后，日志会写入 %@。";
 
 "settings.experimental.section" = "实验性功能";
+"settings.experimental.display_move_actions.enabled" = "启用显示器移动动作";
+"settings.experimental.display_move_actions.footer" = "在快捷键设置、Dock 手势设置、标题栏手势设置和状态栏菜单中显示「移动到下一台显示器」与「移动到上一台显示器」。关闭后，这些动作会被隐藏，已保存的绑定也不会触发。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
 "settings.experimental.browser_tab_close.enabled" = "启用关闭标签页手势";
 "settings.experimental.browser_tab_close.footer" = "允许将手势映射为「关闭标签页」。\n\n原理：Swooshy 会在对应位置模拟鼠标中键点击。使用该功能前请确保目标应用支持「鼠标中键关闭标签页」，且没有其它鼠标按键映射冲突。";
 "settings.experimental.smart_browser_tab_close.enabled" = "智能关闭标签页";
@@ -203,6 +208,7 @@
 "guide.page.experimental.bullet2" = "如果指针不在任何标签页上，手势会回退为正常的关闭窗口或退出应用操作。";
 "guide.page.experimental.bullet3" = "理论支持主流浏览器，也支持 Visual Studio Code、Cursor、反重力等 VSCode 系编辑器。(其中 Safari 仅支持顶栏，不支持侧边栏)。";
 "guide.page.experimental.bullet4" = "标题栏关闭确认：在受支持的浏览器或编辑器中，用标题栏捏合手势关闭窗口时，Swooshy 会先弹出确认提示，再次捏合即可确认操作，等待超时则自动取消。";
+"guide.page.experimental.bullet5" = "显示器移动动作：允许在快捷键和手势映射中使用「移动到下一台显示器」与「移动到上一台显示器」。";
 "confirmation.pinch_again.close_window" = "再次捏合关闭窗口";
 "confirmation.pinch_again.quit_application" = "再次捏合退出应用";
 

@@ -35,6 +35,7 @@ struct StatusMenuContentBuilder {
     func makeEntries(
         permissionGranted: Bool,
         collapseWindowActions: Bool = false,
+        windowActions: [WindowAction] = WindowAction.allCases,
         localeIdentifier: String? = nil,
         preferredLanguages: [String] = Locale.preferredLanguages,
         hotKeyIssueForAction: (WindowAction) -> HotKeyRegistrationIssueKind? = { _ in nil }
@@ -50,7 +51,7 @@ struct StatusMenuContentBuilder {
 
         let actionEntries: [StatusMenuEntry]
         if collapseWindowActions {
-            let groupIssue = WindowAction.allCases.lazy.compactMap(hotKeyIssueForAction).first
+            let groupIssue = windowActions.lazy.compactMap(hotKeyIssueForAction).first
             actionEntries = [
                 StatusMenuEntry(
                     kind: .windowActionGroup,
@@ -60,7 +61,7 @@ struct StatusMenuContentBuilder {
                 )
             ]
         } else {
-            actionEntries = WindowAction.allCases.map { action in
+            actionEntries = windowActions.map { action in
                 StatusMenuEntry(
                     kind: .windowAction(action),
                     title: action.title(

@@ -96,6 +96,7 @@ final class DockGestureController {
         let titleBarCornerDragEnabled: Bool
         let dockGesturesEnabled: Bool
         let titleBarGesturesEnabled: Bool
+        let displayMoveActionsEnabled: Bool
     }
 
     private enum CornerDragSource: Equatable {
@@ -220,14 +221,15 @@ final class DockGestureController {
             dockCornerDragEnabled: settingsStore.dockCornerDragSnapEnabled,
             titleBarCornerDragEnabled: settingsStore.titleBarCornerDragSnapEnabled,
             dockGesturesEnabled: settingsStore.dockGesturesEnabled,
-            titleBarGesturesEnabled: settingsStore.titleBarGesturesEnabled
+            titleBarGesturesEnabled: settingsStore.titleBarGesturesEnabled,
+            displayMoveActionsEnabled: settingsStore.experimentalDisplayMoveActionsEnabled
         )
         guard state != monitoringState else { return }
 
         monitoringState = state
         DebugLog.info(
             DebugLog.dock,
-            "Syncing gesture monitoring; dockGesturesEnabled=\(state.dockGesturesEnabled), titleBarGesturesEnabled=\(state.titleBarGesturesEnabled), dockCornerDragEnabled=\(state.dockCornerDragEnabled), titleBarCornerDragEnabled=\(state.titleBarCornerDragEnabled)"
+            "Syncing gesture monitoring; dockGesturesEnabled=\(state.dockGesturesEnabled), titleBarGesturesEnabled=\(state.titleBarGesturesEnabled), dockCornerDragEnabled=\(state.dockCornerDragEnabled), titleBarCornerDragEnabled=\(state.titleBarCornerDragEnabled), displayMoveActionsEnabled=\(state.displayMoveActionsEnabled)"
         )
         touchSequenceTracker.reset()
         dockRecognizer = makeConfiguredRecognizer()
@@ -706,6 +708,10 @@ final class DockGestureController {
             guard let self, self.isShuttingDown == false else { return }
 
             await Task.yield()
+            guard self.settingsStore.isDockGestureActionAvailable(action) else {
+                DebugLog.info(DebugLog.dock, "Ignoring unavailable Dock gesture action \(action.rawValue)")
+                return
+            }
 
             // Give AppKit one frame to present HUD before heavier restore AX work.
             if action == .restoreWindow {
@@ -718,6 +724,11 @@ final class DockGestureController {
     }
 
     private func performDockGestureAction(_ action: DockGestureAction, for application: InteractionTarget) {
+        guard settingsStore.isDockGestureActionAvailable(action) else {
+            DebugLog.info(DebugLog.dock, "Ignoring unavailable Dock gesture action \(action.rawValue)")
+            return
+        }
+
         do {
             switch action {
             case .minimizeWindow:
@@ -750,6 +761,20 @@ final class DockGestureController {
                 _ = try windowManager.toggleFullScreenWindow(of: application)
             case .exitFullScreenWindow:
                 _ = try windowManager.exitFullScreenWindow(of: application)
+            case .moveWindowToNextDisplay:
+                try windowManager.perform(
+                    .moveToNextDisplay,
+                    on: application,
+                    layoutEngine: layoutEngine,
+                    preferredAppKitPoint: nil
+                )
+            case .moveWindowToPreviousDisplay:
+                try windowManager.perform(
+                    .moveToPreviousDisplay,
+                    on: application,
+                    layoutEngine: layoutEngine,
+                    preferredAppKitPoint: nil
+                )
             }
         } catch let error as WindowManagerError {
             handleWindowManagerError(error)
@@ -912,6 +937,11 @@ final class DockGestureController {
         anchorPoint: CGPoint,
         replacesWithTabClose: Bool = false
     ) {
+        guard settingsStore.isWindowActionAvailable(action) else {
+            DebugLog.info(DebugLog.dock, "Ignoring unavailable title-bar gesture action \(String(describing: action))")
+            return
+        }
+
         do {
             if replacesWithTabClose {
                 if BrowserTabProbe.simulateMiddleClick(at: anchorPoint) {
@@ -1396,10 +1426,18 @@ final class DockGestureController {
 
         switch action {
         case .dock(let dockAction, let application):
+            guard settingsStore.isDockGestureActionAvailable(dockAction) else {
+                DebugLog.info(DebugLog.dock, "Ignoring deferred unavailable Dock action \(dockAction.rawValue)")
+                break
+            }
             endSmoothDockingSession(restore: false)
             DebugLog.info(DebugLog.dock, "Executing deferred dock action \(dockAction.rawValue) on finger release")
             scheduleDockGestureAction(dockAction, for: application)
         case .titleBar(let windowAction, let event, let anchorPoint, let replacesWithTabClose):
+            guard settingsStore.isWindowActionAvailable(windowAction) else {
+                DebugLog.info(DebugLog.dock, "Ignoring deferred unavailable title-bar action \(String(describing: windowAction))")
+                break
+            }
             DebugLog.info(DebugLog.dock, "Executing deferred title-bar action \(String(describing: windowAction)) on finger release")
             if commitSmoothDockingSessionIfNeeded(for: windowAction) == false {
                 executeTitleBarAction(

@@ -17,6 +17,8 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
     case cycleSameAppWindowsBackward = 13
     case toggleFullScreen = 14
     case exitFullScreen = 15
+    case moveToNextDisplay = 16
+    case moveToPreviousDisplay = 17
 
     static let allCases: [WindowAction] = [
         .leftHalf,
@@ -27,6 +29,8 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
         .topRightQuarter,
         .bottomLeftQuarter,
         .bottomRightQuarter,
+        .moveToNextDisplay,
+        .moveToPreviousDisplay,
         .minimize,
         .closeWindow,
         .closeTab,
@@ -44,6 +48,31 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
 
     var title: String {
         title()
+    }
+
+    var isDisplayMoveAction: Bool {
+        switch self {
+        case .moveToNextDisplay,
+             .moveToPreviousDisplay:
+            return true
+        case .leftHalf,
+             .rightHalf,
+             .maximize,
+             .center,
+             .topLeftQuarter,
+             .topRightQuarter,
+             .bottomLeftQuarter,
+             .bottomRightQuarter,
+             .minimize,
+             .closeWindow,
+             .closeTab,
+             .quitApplication,
+             .cycleSameAppWindowsForward,
+             .cycleSameAppWindowsBackward,
+             .toggleFullScreen,
+             .exitFullScreen:
+            return false
+        }
     }
 
     var supportsSnapPreview: Bool {
@@ -94,7 +123,9 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
              .cycleSameAppWindowsForward,
              .cycleSameAppWindowsBackward,
              .toggleFullScreen,
-             .exitFullScreen:
+             .exitFullScreen,
+             .moveToNextDisplay,
+             .moveToPreviousDisplay:
             return nil
         }
     }
@@ -200,6 +231,18 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
                 localeIdentifier: localeIdentifier,
                 preferredLanguages: preferredLanguages
             )
+        case .moveToNextDisplay:
+            return L10n.string(
+                "action.move_to_next_display",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .moveToPreviousDisplay:
+            return L10n.string(
+                "action.move_to_previous_display",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
         }
     }
 
@@ -216,7 +259,9 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
         case .topLeftQuarter,
              .topRightQuarter,
              .bottomLeftQuarter,
-             .bottomRightQuarter:
+             .bottomRightQuarter,
+             .moveToNextDisplay,
+             .moveToPreviousDisplay:
             return ""
         case .minimize:
             return "5"

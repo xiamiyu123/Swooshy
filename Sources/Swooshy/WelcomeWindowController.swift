@@ -260,6 +260,7 @@ struct WelcomeGuideContent {
                     settingsStore.localized("guide.page.shortcuts.bullet4"),
                     settingsStore.localized("guide.page.shortcuts.bullet5"),
                     settingsStore.localized("guide.page.shortcuts.bullet6"),
+                    settingsStore.localized("guide.page.shortcuts.bullet7"),
                 ],
                 imageName: nil
             ),
@@ -273,6 +274,7 @@ struct WelcomeGuideContent {
                     settingsStore.localized("guide.page.experimental.bullet2"),
                     settingsStore.localized("guide.page.experimental.bullet3"),
                     settingsStore.localized("guide.page.experimental.bullet4"),
+                    settingsStore.localized("guide.page.experimental.bullet5"),
                 ],
                 imageName: nil
             ),
@@ -323,6 +325,11 @@ final class WelcomeGuideViewModel: ObservableObject {
     var experimentalBrowserTabCloseEnabled: Bool {
         get { settingsStore.experimentalBrowserTabCloseEnabled }
         set { settingsStore.experimentalBrowserTabCloseEnabled = newValue }
+    }
+
+    var experimentalDisplayMoveActionsEnabled: Bool {
+        get { settingsStore.experimentalDisplayMoveActionsEnabled }
+        set { settingsStore.experimentalDisplayMoveActionsEnabled = newValue }
     }
 
     var smartBrowserTabCloseEnabled: Bool {
@@ -540,6 +547,12 @@ private struct WelcomeGuideView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 VStack(alignment: .leading, spacing: 12) {
+                    experimentalToggleCard(
+                        title: viewModel.localized("settings.experimental.display_move_actions.enabled"),
+                        isOn: $viewModel.experimentalDisplayMoveActionsEnabled,
+                        footer: viewModel.localized("settings.experimental.display_move_actions.footer")
+                    )
+
                     experimentalToggleCard(
                         title: viewModel.localized("settings.experimental.browser_tab_close.enabled"),
                         isOn: $viewModel.experimentalBrowserTabCloseEnabled,

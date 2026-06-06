@@ -65,8 +65,42 @@ enum DockGestureAction: String, CaseIterable, Codable, Hashable, Identifiable, S
     case quitApplication
     case toggleFullScreenWindow
     case exitFullScreenWindow
+    case moveWindowToNextDisplay
+    case moveWindowToPreviousDisplay
+
+    static let allCases: [DockGestureAction] = [
+        .minimizeWindow,
+        .restoreWindow,
+        .moveWindowToNextDisplay,
+        .moveWindowToPreviousDisplay,
+        .cycleWindowsForward,
+        .cycleWindowsBackward,
+        .toggleFullScreenWindow,
+        .exitFullScreenWindow,
+        .closeWindow,
+        .closeTab,
+        .quitApplication,
+    ]
 
     var id: String { rawValue }
+
+    var isDisplayMoveAction: Bool {
+        switch self {
+        case .moveWindowToNextDisplay,
+             .moveWindowToPreviousDisplay:
+            return true
+        case .minimizeWindow,
+             .restoreWindow,
+             .cycleWindowsForward,
+             .cycleWindowsBackward,
+             .closeWindow,
+             .closeTab,
+             .quitApplication,
+             .toggleFullScreenWindow,
+             .exitFullScreenWindow:
+            return false
+        }
+    }
 
     func title(
         localeIdentifier: String? = nil,
@@ -124,6 +158,18 @@ enum DockGestureAction: String, CaseIterable, Codable, Hashable, Identifiable, S
         case .exitFullScreenWindow:
             return L10n.string(
                 "action.exit_full_screen",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .moveWindowToNextDisplay:
+            return L10n.string(
+                "action.move_to_next_display",
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages
+            )
+        case .moveWindowToPreviousDisplay:
+            return L10n.string(
+                "action.move_to_previous_display",
                 localeIdentifier: localeIdentifier,
                 preferredLanguages: preferredLanguages
             )

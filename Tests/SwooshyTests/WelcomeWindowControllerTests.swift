@@ -37,6 +37,10 @@ struct WelcomeWindowControllerTests {
         #expect(englishContent.pages[6].bullets.count == 3)
         #expect(englishContent.pages[6].message.contains("title bar or Dock"))
         #expect(englishContent.pages[6].bullets[0].contains("0.2 seconds"))
+        #expect(englishContent.pages[8].bullets.count == 7)
+        #expect(englishContent.pages[8].bullets[5].contains("Experimental display moves"))
+        #expect(englishContent.pages[9].bullets.count == 5)
+        #expect(englishContent.pages[9].bullets[4].contains("Display move actions"))
     }
 
     @Test
@@ -65,12 +69,15 @@ struct WelcomeWindowControllerTests {
         )
 
         #expect(viewModel.experimentalBrowserTabCloseEnabled == false)
+        #expect(viewModel.experimentalDisplayMoveActionsEnabled == false)
         #expect(viewModel.smartBrowserTabCloseEnabled == false)
 
         viewModel.experimentalBrowserTabCloseEnabled = true
+        viewModel.experimentalDisplayMoveActionsEnabled = true
         viewModel.smartBrowserTabCloseEnabled = true
 
         #expect(store.experimentalBrowserTabCloseEnabled == true)
+        #expect(store.experimentalDisplayMoveActionsEnabled == true)
         #expect(store.smartBrowserTabCloseEnabled == true)
 
         viewModel.experimentalBrowserTabCloseEnabled = false

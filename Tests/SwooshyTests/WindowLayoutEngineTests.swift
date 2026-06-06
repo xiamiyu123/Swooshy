@@ -104,6 +104,10 @@ struct WindowLayoutEngineTests {
             .quitApplication,
             .cycleSameAppWindowsForward,
             .cycleSameAppWindowsBackward,
+            .toggleFullScreen,
+            .exitFullScreen,
+            .moveToNextDisplay,
+            .moveToPreviousDisplay,
         ] {
             let frame = engine.targetFrame(
                 for: action,
@@ -113,6 +117,68 @@ struct WindowLayoutEngineTests {
 
             #expect(frame == currentWindowFrame)
         }
+    }
+
+    @Test
+    func displayMoveToNextPreservesRelativeCenterAcrossDisplays() {
+        let leftVisibleFrame = CGRect(x: 0, y: 0, width: 1440, height: 860)
+        let rightVisibleFrame = CGRect(x: 1440, y: 0, width: 1280, height: 800)
+        let currentWindowFrame = CGRect(x: 360, y: 215, width: 720, height: 430)
+
+        let frame = engine.displayMoveTargetFrame(
+            direction: .next,
+            currentWindowFrame: currentWindowFrame,
+            currentVisibleFrame: leftVisibleFrame,
+            screenFrames: [rightVisibleFrame, leftVisibleFrame]
+        )
+
+        #expect(frame == CGRect(x: 1720, y: 185, width: 720, height: 430))
+    }
+
+    @Test
+    func displayMoveToPreviousWrapsThroughTraversalOrder() {
+        let leftVisibleFrame = CGRect(x: 0, y: 0, width: 1440, height: 860)
+        let rightVisibleFrame = CGRect(x: 1440, y: 0, width: 1280, height: 800)
+        let currentWindowFrame = CGRect(x: 1600, y: 100, width: 640, height: 400)
+
+        let frame = engine.displayMoveTargetFrame(
+            direction: .previous,
+            currentWindowFrame: currentWindowFrame,
+            currentVisibleFrame: rightVisibleFrame,
+            screenFrames: [rightVisibleFrame, leftVisibleFrame]
+        )
+
+        #expect(frame == CGRect(x: 220, y: 122, width: 640, height: 401))
+    }
+
+    @Test
+    func displayMoveShrinksAndClampsWindowToSmallerDisplay() {
+        let largeVisibleFrame = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let smallVisibleFrame = CGRect(x: 1200, y: 0, width: 500, height: 300)
+        let oversizedWindowFrame = CGRect(x: 700, y: 650, width: 800, height: 500)
+
+        let frame = engine.displayMoveTargetFrame(
+            direction: .next,
+            currentWindowFrame: oversizedWindowFrame,
+            currentVisibleFrame: largeVisibleFrame,
+            screenFrames: [largeVisibleFrame, smallVisibleFrame]
+        )
+
+        #expect(frame == smallVisibleFrame)
+    }
+
+    @Test
+    func displayMovePreservesCurrentFrameWhenNoTargetDisplayExists() {
+        let currentWindowFrame = CGRect(x: 100, y: 100, width: 800, height: 600)
+
+        let frame = engine.displayMoveTargetFrame(
+            direction: .next,
+            currentWindowFrame: currentWindowFrame,
+            currentVisibleFrame: visibleFrame,
+            screenFrames: [visibleFrame]
+        )
+
+        #expect(frame == currentWindowFrame)
     }
 
     @Test

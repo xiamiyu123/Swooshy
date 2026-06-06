@@ -191,7 +191,7 @@ final class GlobalHotKeyController {
     }
 
     private func registerHotKeys() {
-        for action in WindowAction.allCases {
+        for action in settingsStore.availableWindowActions {
             let binding = settingsStore.hotKeyBinding(for: action)
             var hotKeyRef: EventHotKeyRef?
             let hotKeyID = EventHotKeyID(
@@ -243,6 +243,13 @@ final class GlobalHotKeyController {
     private func handleHotKey(withID identifier: UInt32) {
         guard settingsStore.hotKeysEnabled else { return }
         guard let action = WindowAction(rawValue: Int(identifier - 1)) else { return }
+        guard settingsStore.isWindowActionAvailable(action) else {
+            DebugLog.info(
+                DebugLog.hotkeys,
+                "Ignoring unavailable hotkey action \(action.title(preferredLanguages: settingsStore.preferredLanguages))"
+            )
+            return
+        }
         DebugLog.info(DebugLog.hotkeys, "Triggered hotkey for action \(action.title(preferredLanguages: settingsStore.preferredLanguages))")
 
         do {

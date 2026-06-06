@@ -13,6 +13,8 @@ struct WindowActionTests {
             .topRightQuarter,
             .bottomLeftQuarter,
             .bottomRightQuarter,
+            .moveToNextDisplay,
+            .moveToPreviousDisplay,
             .minimize,
             .closeWindow,
             .closeTab,
@@ -42,6 +44,8 @@ struct WindowActionTests {
         #expect(WindowAction.toggleFullScreen.menuKeyEquivalent == "0")
         #expect(WindowAction.closeTab.menuKeyEquivalent.isEmpty)
         #expect(WindowAction.exitFullScreen.menuKeyEquivalent.isEmpty)
+        #expect(WindowAction.moveToNextDisplay.menuKeyEquivalent.isEmpty)
+        #expect(WindowAction.moveToPreviousDisplay.menuKeyEquivalent.isEmpty)
     }
 
     @Test

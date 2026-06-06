@@ -31,6 +31,7 @@ struct SettingsStoreTests {
         store.collapseStatusItemWindowActions = true
         store.titleBarOverlayProtectionEnabled = true
         store.experimentalBrowserTabCloseEnabled = true
+        store.experimentalDisplayMoveActionsEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.closeAndQuitConfirmationEnabled = true
         store.titleBarTriggerHeight = 42
@@ -52,6 +53,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.collapseStatusItemWindowActions == true)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
         #expect(reloadedStore.experimentalBrowserTabCloseEnabled == true)
+        #expect(reloadedStore.experimentalDisplayMoveActionsEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == true)
         #expect(reloadedStore.closeAndQuitConfirmationEnabled == true)
         #expect(reloadedStore.titleBarTriggerHeight == 42)
@@ -324,6 +326,91 @@ struct SettingsStoreTests {
     }
 
     @Test
+    func persistsDockGestureDisplayMoveActions() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+        store.experimentalDisplayMoveActionsEnabled = true
+        store.updateDockGestureAction(.moveWindowToNextDisplay, for: .swipeUp)
+        store.updateDockGestureAction(.moveWindowToPreviousDisplay, for: .swipeDown)
+        store.updateTitleBarGestureAction(.moveToNextDisplay, for: .swipeRight)
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+
+        #expect(reloadedStore.dockGestureAction(for: .swipeUp) == .moveWindowToNextDisplay)
+        #expect(reloadedStore.dockGestureAction(for: .swipeDown) == .moveWindowToPreviousDisplay)
+        #expect(reloadedStore.titleBarGestureAction(for: .swipeRight) == .moveToNextDisplay)
+    }
+
+    @Test
+    func displayMoveActionsAreHiddenUntilExperimentalModeIsEnabled() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.experimentalDisplayMoveActionsEnabled == false)
+        #expect(store.availableWindowActions.contains(.moveToNextDisplay) == false)
+        #expect(store.availableWindowActions.contains(.moveToPreviousDisplay) == false)
+        #expect(store.availableWindowGestureActions.contains(.moveToNextDisplay) == false)
+        #expect(store.availableWindowGestureActions.contains(.moveToPreviousDisplay) == false)
+        #expect(store.availableDockGestureActions.contains(.moveWindowToNextDisplay) == false)
+        #expect(store.availableDockGestureActions.contains(.moveWindowToPreviousDisplay) == false)
+        #expect(store.availableWindowActions.contains(.leftHalf))
+        #expect(store.availableDockGestureActions.contains(.minimizeWindow))
+
+        store.experimentalDisplayMoveActionsEnabled = true
+
+        #expect(store.availableWindowActions.contains(.moveToNextDisplay))
+        #expect(store.availableWindowActions.contains(.moveToPreviousDisplay))
+        #expect(store.availableWindowGestureActions.contains(.moveToNextDisplay))
+        #expect(store.availableWindowGestureActions.contains(.moveToPreviousDisplay))
+        #expect(store.availableDockGestureActions.contains(.moveWindowToNextDisplay))
+        #expect(store.availableDockGestureActions.contains(.moveWindowToPreviousDisplay))
+    }
+
+    @Test
+    func savedDisplayMoveGestureActionsFallBackWhileExperimentalModeIsDisabled() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+        store.experimentalDisplayMoveActionsEnabled = true
+        store.updateDockGestureAction(.moveWindowToNextDisplay, for: .swipeUp)
+        store.updateTitleBarGestureAction(.moveToPreviousDisplay, for: .swipeDown)
+
+        store.experimentalDisplayMoveActionsEnabled = false
+
+        #expect(store.dockGestureBinding(for: .swipeUp).action == .moveWindowToNextDisplay)
+        #expect(store.dockGestureAction(for: .swipeUp) == .restoreWindow)
+        #expect(store.titleBarGestureBinding(for: .swipeDown)?.action == .moveToPreviousDisplay)
+        #expect(store.titleBarGestureAction(for: .swipeDown) == .minimize)
+
+        store.experimentalDisplayMoveActionsEnabled = true
+
+        #expect(store.dockGestureAction(for: .swipeUp) == .moveWindowToNextDisplay)
+        #expect(store.titleBarGestureAction(for: .swipeDown) == .moveToPreviousDisplay)
+    }
+
+    @Test
+    func assigningDisplayMoveGestureActionsRequiresExperimentalMode() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+        store.updateDockGestureAction(.moveWindowToNextDisplay, for: .swipeUp)
+        store.updateTitleBarGestureAction(.moveToPreviousDisplay, for: .swipeDown)
+
+        #expect(store.dockGestureBinding(for: .swipeUp).action == .restoreWindow)
+        #expect(store.titleBarGestureBinding(for: .swipeDown)?.action == .minimize)
+    }
+
+    @Test
     func legacyGestureBindingsWithoutEnabledFlagsStillDecode() {
         let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -373,12 +460,14 @@ struct SettingsStoreTests {
 
         let store = SettingsStore(userDefaults: defaults)
         store.experimentalBrowserTabCloseEnabled = true
+        store.experimentalDisplayMoveActionsEnabled = true
         store.smartBrowserTabCloseEnabled = true
 
         SettingsStore.resetPersistedConfiguration(in: defaults)
         let reloadedStore = SettingsStore(userDefaults: defaults)
 
         #expect(reloadedStore.experimentalBrowserTabCloseEnabled == true)
+        #expect(reloadedStore.experimentalDisplayMoveActionsEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == false)
     }
 
@@ -390,6 +479,7 @@ struct SettingsStoreTests {
 
         let store = SettingsStore(userDefaults: defaults)
         store.experimentalBrowserTabCloseEnabled = true
+        store.experimentalDisplayMoveActionsEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.titleBarOverlayProtectionEnabled = false
         store.smartPinchExitFullScreenEnabled = false
@@ -404,6 +494,7 @@ struct SettingsStoreTests {
         store.resetAdvancedSettingsToDefaults()
 
         #expect(store.experimentalBrowserTabCloseEnabled == false)
+        #expect(store.experimentalDisplayMoveActionsEnabled == false)
         #expect(store.smartBrowserTabCloseEnabled == false)
         #expect(store.titleBarOverlayProtectionEnabled == true)
         #expect(store.smartPinchExitFullScreenEnabled == true)
@@ -490,6 +581,39 @@ struct SettingsStoreTests {
         #expect(store.pinchCloseConfirmationEnabled == false)
         #expect(recorder.count == 1)
         #expect(recorder.categories == [.advancedGestureBehavior])
+    }
+
+    @Test
+    func togglingDisplayMoveExperimentalModeInvalidatesHiddenEntrypoints() async {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+        let recorder = NotificationRecorder()
+        let token = NotificationCenter.default.addObserver(
+            forName: .settingsDidChange,
+            object: store,
+            queue: .main
+        ) { notification in
+            recorder.record(notification)
+        }
+        defer {
+            NotificationCenter.default.removeObserver(token)
+        }
+
+        store.experimentalDisplayMoveActionsEnabled = true
+
+        for _ in 0 ..< 3 {
+            await Task.yield()
+        }
+
+        #expect(recorder.count == 1)
+        #expect(recorder.categories.contains(.hotKeys))
+        #expect(recorder.categories.contains(.gestureMonitoring))
+        #expect(recorder.categories.contains(.statusMenu))
+        #expect(recorder.categories.contains(.gestureHUD))
+        #expect(recorder.categories.contains(.advancedGestureBehavior))
     }
 
     @Test

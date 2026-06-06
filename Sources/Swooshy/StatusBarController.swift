@@ -106,6 +106,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         let entries = menuContentBuilder.makeEntries(
             permissionGranted: permissionGranted,
             collapseWindowActions: settingsStore.collapseStatusItemWindowActions,
+            windowActions: settingsStore.availableWindowActions,
             preferredLanguages: settingsStore.preferredLanguages,
             hotKeyIssueForAction: { [hotKeyRegistrationStatusStore] action in
                 hotKeyRegistrationStatusStore.issueKind(for: action)
@@ -152,6 +153,13 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private func runWindowAction(_ sender: NSMenuItem) {
         guard handleMissingPermissionFallback(for: "window action") == false else { return }
         guard let action = sender.representedObject as? WindowAction else { return }
+        guard settingsStore.isWindowActionAvailable(action) else {
+            DebugLog.info(
+                DebugLog.app,
+                "Ignoring unavailable menu action \(action.title(preferredLanguages: settingsStore.preferredLanguages))"
+            )
+            return
+        }
         DebugLog.info(DebugLog.app, "Menu triggered action \(action.title(preferredLanguages: settingsStore.preferredLanguages))")
 
         do {
@@ -284,7 +292,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         let submenu = NSMenu()
         submenu.autoenablesItems = false
 
-        let entries = WindowAction.allCases.map { action in
+        let entries = settingsStore.availableWindowActions.map { action in
             StatusMenuEntry(
                 kind: .windowAction(action),
                 title: action.title(preferredLanguages: settingsStore.preferredLanguages),

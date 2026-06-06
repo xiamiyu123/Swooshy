@@ -3,12 +3,49 @@ import Testing
 
 struct DockGestureActionTests {
     @Test
+    func dockGestureActionsRemainInExpectedUserVisibleOrder() {
+        #expect(DockGestureAction.allCases == [
+            .minimizeWindow,
+            .restoreWindow,
+            .moveWindowToNextDisplay,
+            .moveWindowToPreviousDisplay,
+            .cycleWindowsForward,
+            .cycleWindowsBackward,
+            .toggleFullScreenWindow,
+            .exitFullScreenWindow,
+            .closeWindow,
+            .closeTab,
+            .quitApplication,
+        ])
+    }
+
+    @Test
     func dockGestureDefaultsMatchFallbackBindings() {
         #expect(DockGestureBindings.defaults.count == DockGestureKind.allCases.count)
 
         for binding in DockGestureBindings.defaults {
             #expect(DockGestureBindings.fallbackBinding(for: binding.gesture) == binding)
         }
+    }
+
+    @Test
+    func dockGestureActionsIncludeDisplayMoveOptionsWithoutChangingDefaults() {
+        #expect(DockGestureAction.allCases.contains(.moveWindowToNextDisplay))
+        #expect(DockGestureAction.allCases.contains(.moveWindowToPreviousDisplay))
+        #expect(DockGestureBindings.defaults.contains { $0.action == .moveWindowToNextDisplay } == false)
+        #expect(DockGestureBindings.defaults.contains { $0.action == .moveWindowToPreviousDisplay } == false)
+    }
+
+    @Test
+    func dockGestureDisplayMoveActionsReuseWindowActionTitles() {
+        #expect(
+            DockGestureAction.moveWindowToNextDisplay.title(localeIdentifier: "en") ==
+                WindowAction.moveToNextDisplay.title(localeIdentifier: "en")
+        )
+        #expect(
+            DockGestureAction.moveWindowToPreviousDisplay.title(localeIdentifier: "zh-Hans") ==
+                WindowAction.moveToPreviousDisplay.title(localeIdentifier: "zh-Hans")
+        )
     }
 
     @Test

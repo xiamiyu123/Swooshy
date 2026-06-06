@@ -51,6 +51,35 @@ struct StatusMenuContentBuilderTests {
     }
 
     @Test
+    func menuUsesProvidedWindowActions() {
+        let entries = builder.makeEntries(
+            permissionGranted: true,
+            windowActions: [.leftHalf, .center],
+            preferredLanguages: ["en-US"]
+        )
+
+        #expect(entries.contains { $0.kind == .windowAction(.leftHalf) })
+        #expect(entries.contains { $0.kind == .windowAction(.center) })
+        #expect(entries.contains { $0.kind == .windowAction(.moveToNextDisplay) } == false)
+        #expect(entries.contains { $0.kind == .windowAction(.moveToPreviousDisplay) } == false)
+    }
+
+    @Test
+    func collapsedWindowActionIssueUsesProvidedWindowActionsOnly() {
+        let entries = builder.makeEntries(
+            permissionGranted: true,
+            collapseWindowActions: true,
+            windowActions: [.leftHalf],
+            preferredLanguages: ["en-US"],
+            hotKeyIssueForAction: { action in
+                action == .moveToNextDisplay ? .registrationFailed : nil
+            }
+        )
+
+        #expect(entries.first(where: { $0.kind == .windowActionGroup })?.hotKeyIssue == nil)
+    }
+
+    @Test
     func windowActionEntriesCarryHotKeyRegistrationIssues() {
         let entries = builder.makeEntries(
             permissionGranted: true,

@@ -431,6 +431,8 @@ enum HotKeyBindings {
         HotKeyBinding(action: .topRightQuarter, key: .i, modifiers: .commandOptionControl),
         HotKeyBinding(action: .bottomLeftQuarter, key: .j, modifiers: .commandOptionControl),
         HotKeyBinding(action: .bottomRightQuarter, key: .k, modifiers: .commandOptionControl),
+        HotKeyBinding(action: .moveToNextDisplay, key: .n, modifiers: .commandOptionControl),
+        HotKeyBinding(action: .moveToPreviousDisplay, key: .n, modifiers: .commandShiftOptionControl),
         HotKeyBinding(action: .minimize, key: .m, modifiers: .commandOptionControl),
         HotKeyBinding(action: .closeWindow, key: .w, modifiers: .commandOptionControl),
         HotKeyBinding(action: .closeTab, key: .w, modifiers: .commandShiftOptionControl),

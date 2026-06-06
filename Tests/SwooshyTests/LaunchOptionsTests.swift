@@ -106,12 +106,14 @@ struct LaunchOptionsTests {
         let defaults = makeDefaults()
         let settingsStore = SettingsStore(userDefaults: defaults)
         settingsStore.experimentalBrowserTabCloseEnabled = true
+        settingsStore.experimentalDisplayMoveActionsEnabled = true
         settingsStore.smartBrowserTabCloseEnabled = true
 
         LaunchOptions(arguments: [LaunchOptions.resetUserConfigurationArgument]).apply(userDefaults: defaults)
 
         let reloadedSettings = SettingsStore(userDefaults: defaults)
         #expect(reloadedSettings.experimentalBrowserTabCloseEnabled == true)
+        #expect(reloadedSettings.experimentalDisplayMoveActionsEnabled == true)
         #expect(reloadedSettings.smartBrowserTabCloseEnabled == false)
     }
 }

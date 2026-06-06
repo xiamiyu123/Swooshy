@@ -113,6 +113,7 @@ Swooshy 通过**直觉化的双指手势**来管理窗口。所有手势都建�
 
 * **停靠左右屏**：`Control + Option + Command + 左/右方向键`
 * **填充可视区域**：`Control + Option + Command + 上方向键 / C`
+* **实验性显示器移动**：启用**显示器移动动作**后，可使用 `Control + Option + Command + N`，配合 `Shift` 移动到上一个显示器
 * **应用内窗口切换**：`Control + Option + Command + \``，配合 `Shift` 反向
 * **关闭 / 最小化**：`Control + Option + Command + W / M`
 * **退出当前应用**：`Control + Option + Command + Q`

@@ -127,6 +127,8 @@ the menu bar app.
 
 * **Snap left / right**: `Control + Option + Command + Left/Right Arrow`
 * **Fill visible area**: `Control + Option + Command + Up Arrow / C`
+* **Experimental display moves**: enable **Display move actions**, then use
+  `Control + Option + Command + N` with `Shift` to move to the previous display
 * **Cycle windows in the same app**: `Control + Option + Command + \`` with
   `Shift` to reverse the direction
 * **Close / minimize**: `Control + Option + Command + W / M`

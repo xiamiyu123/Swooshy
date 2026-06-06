@@ -97,6 +97,90 @@ struct HotKeyRegistrationStatusTests {
 
         #expect(rows.first { $0.action == .center }?.registrationFailure?.binding == centerBinding)
         #expect(rows.first { $0.action == .leftHalf }?.registrationFailure == nil)
+        #expect(rows.contains { $0.action == .moveToNextDisplay } == false)
+        #expect(rows.contains { $0.action == .moveToPreviousDisplay } == false)
+    }
+
+    @Test
+    func rowFactoryShowsDisplayMoveActionsOnlyWhenExperimentalModeIsEnabled() {
+        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let settingsStore = SettingsStore(userDefaults: defaults)
+        let registrationStatusStore = HotKeyRegistrationStatusStore()
+
+        #expect(
+            HotKeySettingsRowFactory.rows(
+                settingsStore: settingsStore,
+                registrationStatusStore: registrationStatusStore
+            )
+            .contains { $0.action == .moveToNextDisplay } == false
+        )
+
+        settingsStore.experimentalDisplayMoveActionsEnabled = true
+
+        #expect(
+            HotKeySettingsRowFactory.rows(
+                settingsStore: settingsStore,
+                registrationStatusStore: registrationStatusStore
+            )
+            .contains { $0.action == .moveToNextDisplay }
+        )
+    }
+
+    @Test
+    func defaultRegistrationSkipsDisplayMoveHotKeys() {
+        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let settingsStore = SettingsStore(userDefaults: defaults)
+        let registrar = FakeHotKeyRegistrar()
+        let controller = GlobalHotKeyController(
+            windowActionRunner: NoOpWindowActionRunner(),
+            alertPresenter: NoOpAlertPresenter(),
+            settingsStore: settingsStore,
+            hotKeyRegistrar: registrar,
+            eventHandling: FakeHotKeyEventHandling()
+        )
+        defer {
+            controller.shutdown()
+        }
+
+        #expect(registrar.registeredActions.contains(.moveToNextDisplay) == false)
+        #expect(registrar.registeredActions.contains(.moveToPreviousDisplay) == false)
+        #expect(registrar.registeredActions.contains(.leftHalf))
+    }
+
+    @Test
+    func enablingDisplayMoveExperimentalModeRegistersDisplayMoveHotKeys() async {
+        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let settingsStore = SettingsStore(userDefaults: defaults)
+        let registrar = FakeHotKeyRegistrar()
+        let controller = GlobalHotKeyController(
+            windowActionRunner: NoOpWindowActionRunner(),
+            alertPresenter: NoOpAlertPresenter(),
+            settingsStore: settingsStore,
+            hotKeyRegistrar: registrar,
+            eventHandling: FakeHotKeyEventHandling()
+        )
+        defer {
+            controller.shutdown()
+        }
+
+        registrar.registeredActions.removeAll()
+        settingsStore.experimentalDisplayMoveActionsEnabled = true
+
+        for _ in 0 ..< 3 {
+            await Task.yield()
+        }
+
+        #expect(registrar.registeredActions.contains(.moveToNextDisplay))
+        #expect(registrar.registeredActions.contains(.moveToPreviousDisplay))
     }
 
     @Test
@@ -119,8 +203,9 @@ private final class FakeHotKeyRegistrar: HotKeyRegistering {
     static let failureStatus = OSStatus(eventHotKeyExistsErr)
 
     var failingActions: Set<WindowAction>
+    var registeredActions: [WindowAction] = []
 
-    init(failingActions: Set<WindowAction>) {
+    init(failingActions: Set<WindowAction> = []) {
         self.failingActions = failingActions
     }
 
@@ -135,6 +220,8 @@ private final class FakeHotKeyRegistrar: HotKeyRegistering {
         guard let action = WindowAction(rawValue: Int(hotKeyID.id - 1)) else {
             return noErr
         }
+
+        registeredActions.append(action)
 
         if failingActions.contains(action) {
             return Self.failureStatus

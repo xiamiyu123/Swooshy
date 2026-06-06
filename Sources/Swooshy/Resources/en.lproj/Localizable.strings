@@ -27,6 +27,8 @@
 "action.exit_full_screen" = "Exit Full Screen Only";
 "action.cycle_same_app_windows_forward" = "Cycle Same-App Windows Forward";
 "action.cycle_same_app_windows_backward" = "Cycle Same-App Windows Backward";
+"action.move_to_next_display" = "Move to Next Display";
+"action.move_to_previous_display" = "Move to Previous Display";
 "gesture.corner_drag.title" = "Corner Snap";
 "gesture.corner_drag.waiting" = "Drag diagonally toward a corner";
 
@@ -96,7 +98,8 @@
 "guide.page.shortcuts.bullet3" = "Cycle same-app windows: Control + Option + Command + ` (hold Shift to reverse)";
 "guide.page.shortcuts.bullet4" = "Close / minimize: Control + Option + Command + W / M";
 "guide.page.shortcuts.bullet5" = "Quit current app: Control + Option + Command + Q";
-"guide.page.shortcuts.bullet6" = "After opening the settings, you can re-record all shortcuts and gesture actions according to your own habits.";
+"guide.page.shortcuts.bullet6" = "Experimental display moves: after enabling display move actions, use Control + Option + Command + N (hold Shift to reverse).";
+"guide.page.shortcuts.bullet7" = "After opening the settings, you can re-record all shortcuts and gesture actions according to your own habits.";
 "guide.page.interaction.title" = "Interaction Style: When to Trigger";
 "guide.page.interaction.message" = "Swooshy supports two different gesture interaction styles. Choose the one that feels most intuitive to you; you can also change this later in 'Advanced Settings'.";
 "guide.page.interaction.immediate.title" = "Trigger Immediately";
@@ -189,6 +192,8 @@
 "settings.advanced.debug_logging.footer" = "When enabled, logs are written to %@.";
 
 "settings.experimental.section" = "Experimental";
+"settings.experimental.display_move_actions.enabled" = "Enable display move actions";
+"settings.experimental.display_move_actions.footer" = "Shows Move to Next Display and Move to Previous Display in shortcut settings, Dock gesture settings, title-bar gesture settings, and the status menu. When disabled, these actions are hidden and any saved bindings are not triggered.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
 "settings.experimental.browser_tab_close.enabled" = "Enable tab close gesture";
 "settings.experimental.browser_tab_close.footer" = "Allows you to map gestures to 'Close Tab'.\n\nPrinciple: Swooshy simulates a middle-click at the pointer location. Before using this feature, make sure the target app supports middle-click to close tabs and that no third-party button remapping conflicts are present.";
 "settings.experimental.smart_browser_tab_close.enabled" = "Smart tab close";
@@ -203,6 +208,7 @@
 "guide.page.experimental.bullet2" = "If the pointer is not over any tab, the gesture falls back to the normal close-window or quit behavior.";
 "guide.page.experimental.bullet3" = "Supports major browsers, and also supports VS Code-based editors such as Visual Studio Code, Cursor, Antigravity, and more.";
 "guide.page.experimental.bullet4" = "Title-bar close confirmation: when using a title-bar pinch gesture to close a window in a supported browser or editor, Swooshy shows a confirmation prompt first. Pinch again to confirm, or wait for it to cancel automatically.";
+"guide.page.experimental.bullet5" = "Display move actions: expose shortcuts and gesture mappings for moving the focused window to the next or previous display.";
 "confirmation.pinch_again.close_window" = "Pinch again to close window";
 "confirmation.pinch_again.quit_application" = "Pinch again to quit app";
 

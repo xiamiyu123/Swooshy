@@ -65,6 +65,11 @@ struct WindowActionPreview: Equatable, Sendable {
     let style: Style
 }
 
+enum DisplayMoveDirection: Equatable, Sendable {
+    case next
+    case previous
+}
+
 /// Maps high-level window actions to target frames and previews, while honoring
 /// the size constraints observed from apps that refuse ideal half/quarter sizes.
 struct WindowLayoutEngine {
@@ -97,7 +102,9 @@ struct WindowLayoutEngine {
              .cycleSameAppWindowsForward,
              .cycleSameAppWindowsBackward,
              .toggleFullScreen,
-             .exitFullScreen:
+             .exitFullScreen,
+             .moveToNextDisplay,
+             .moveToPreviousDisplay:
             return currentWindowFrame
         }
     }
@@ -199,10 +206,102 @@ struct WindowLayoutEngine {
         )
     }
 
+    func displayMoveTargetFrame(
+        direction: DisplayMoveDirection,
+        currentWindowFrame: CGRect,
+        currentVisibleFrame: CGRect,
+        screenFrames: [CGRect]
+    ) -> CGRect {
+        let orderedScreenFrames = displayTraversalOrder(screenFrames)
+        guard
+            orderedScreenFrames.count > 1,
+            let currentIndex = orderedScreenFrames.firstIndex(of: currentVisibleFrame)
+        else {
+            return currentWindowFrame.integral
+        }
+
+        let targetIndex: Int
+        switch direction {
+        case .next:
+            targetIndex = (currentIndex + 1) % orderedScreenFrames.count
+        case .previous:
+            targetIndex = (currentIndex + orderedScreenFrames.count - 1) % orderedScreenFrames.count
+        }
+
+        let targetVisibleFrame = orderedScreenFrames[targetIndex]
+        let relativeCenter = relativeCenter(
+            of: currentWindowFrame,
+            in: currentVisibleFrame
+        )
+        let targetSize = CGSize(
+            width: min(currentWindowFrame.width, targetVisibleFrame.width),
+            height: min(currentWindowFrame.height, targetVisibleFrame.height)
+        )
+        let targetCenter = CGPoint(
+            x: targetVisibleFrame.minX + targetVisibleFrame.width * relativeCenter.x,
+            y: targetVisibleFrame.minY + targetVisibleFrame.height * relativeCenter.y
+        )
+        let targetFrame = CGRect(
+            x: targetCenter.x - targetSize.width / 2,
+            y: targetCenter.y - targetSize.height / 2,
+            width: targetSize.width,
+            height: targetSize.height
+        )
+
+        return clampFrame(targetFrame, to: targetVisibleFrame)
+    }
+
     private func nearestScreen(to point: CGPoint, in screenFrames: [CGRect]) -> CGRect? {
         screenFrames.min { lhs, rhs in
             lhs.center.distance(to: point) < rhs.center.distance(to: point)
         }
+    }
+
+    private func displayTraversalOrder(_ screenFrames: [CGRect]) -> [CGRect] {
+        screenFrames.sorted { lhs, rhs in
+            if abs(lhs.minX - rhs.minX) > 1 {
+                return lhs.minX < rhs.minX
+            }
+
+            return lhs.minY > rhs.minY
+        }
+    }
+
+    private func relativeCenter(of windowFrame: CGRect, in visibleFrame: CGRect) -> CGPoint {
+        guard visibleFrame.width > 0, visibleFrame.height > 0 else {
+            return CGPoint(x: 0.5, y: 0.5)
+        }
+
+        return CGPoint(
+            x: ((windowFrame.midX - visibleFrame.minX) / visibleFrame.width).clamped(to: 0 ... 1),
+            y: ((windowFrame.midY - visibleFrame.minY) / visibleFrame.height).clamped(to: 0 ... 1)
+        )
+    }
+
+    private func clampFrame(_ frame: CGRect, to visibleFrame: CGRect) -> CGRect {
+        var clamped = frame
+
+        if clamped.width > visibleFrame.width {
+            clamped.size.width = visibleFrame.width
+        }
+        if clamped.height > visibleFrame.height {
+            clamped.size.height = visibleFrame.height
+        }
+
+        if clamped.minX < visibleFrame.minX {
+            clamped.origin.x = visibleFrame.minX
+        }
+        if clamped.maxX > visibleFrame.maxX {
+            clamped.origin.x = visibleFrame.maxX - clamped.width
+        }
+        if clamped.minY < visibleFrame.minY {
+            clamped.origin.y = visibleFrame.minY
+        }
+        if clamped.maxY > visibleFrame.maxY {
+            clamped.origin.y = visibleFrame.maxY - clamped.height
+        }
+
+        return clamped.integral
     }
 
     private func areaPreviewFrame(
@@ -391,7 +490,9 @@ private extension WindowAction {
              .cycleSameAppWindowsForward,
              .cycleSameAppWindowsBackward,
              .toggleFullScreen,
-             .exitFullScreen:
+             .exitFullScreen,
+             .moveToNextDisplay,
+             .moveToPreviousDisplay:
             return false
         }
     }
@@ -411,5 +512,11 @@ private extension CGRect {
 private extension CGPoint {
     func distance(to point: CGPoint) -> CGFloat {
         hypot(point.x - x, point.y - y)
+    }
+}
+
+private extension CGFloat {
+    func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
+        Swift.min(range.upperBound, Swift.max(range.lowerBound, self))
     }
 }

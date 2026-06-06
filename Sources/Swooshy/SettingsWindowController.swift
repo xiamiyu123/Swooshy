@@ -446,7 +446,7 @@ private struct DockGestureMappingsPage: View {
                 title: gesture.title(preferredLanguages: preferredLanguages),
                 isEnabled: settingsStore.dockGestureIsEnabled(for: gesture),
                 selectedAction: settingsStore.dockGestureAction(for: gesture),
-                availableActions: DockGestureAction.allCases.map {
+                availableActions: settingsStore.availableDockGestureActions.map {
                     SettingsPickerOption(
                         value: $0,
                         title: $0.title(preferredLanguages: preferredLanguages),
@@ -482,7 +482,7 @@ private struct TitleBarGestureMappingsPage: View {
                 isEnabled: settingsStore.titleBarGestureIsEnabled(for: gesture),
                 selectedAction: settingsStore.titleBarGestureAction(for: gesture)
                     ?? TitleBarGestureBindings.fallbackBinding(for: gesture).action,
-                availableActions: WindowAction.gestureCases.map {
+                availableActions: settingsStore.availableWindowGestureActions.map {
                     SettingsPickerOption(
                         value: $0,
                         title: $0.title(preferredLanguages: preferredLanguages),
@@ -569,7 +569,7 @@ enum HotKeySettingsRowFactory {
         settingsStore: SettingsStore,
         registrationStatusStore: HotKeyRegistrationStatusStore
     ) -> [HotKeyRowModel] {
-        WindowAction.allCases.map { action in
+        settingsStore.availableWindowActions.map { action in
             HotKeyRowModel(
                 action: action,
                 title: action.title(preferredLanguages: settingsStore.preferredLanguages),
@@ -906,6 +906,15 @@ private struct AdvancedSettingsPage: View {
             }
 
             SettingsCardSection(title: settingsStore.localized("settings.experimental.section")) {
+                Toggle(
+                    settingsStore.localized("settings.experimental.display_move_actions.enabled"),
+                    isOn: $settingsStore.experimentalDisplayMoveActionsEnabled
+                )
+
+                SettingsHintGroup {
+                    Text(settingsStore.localized("settings.experimental.display_move_actions.footer"))
+                }
+
                 Toggle(
                     settingsStore.localized("settings.experimental.browser_tab_close.enabled"),
                     isOn: $settingsStore.experimentalBrowserTabCloseEnabled
