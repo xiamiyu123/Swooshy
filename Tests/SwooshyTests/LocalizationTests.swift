@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Swooshy
 
@@ -34,5 +35,48 @@ struct LocalizationTests {
         #expect(L10n.string("action.exit_full_screen", localeIdentifier: "zh-Hans") == "仅取消最大化")
         #expect(L10n.string("action.cycle_same_app_windows_backward", localeIdentifier: "zh-Hans") == "向后切换当前应用窗口")
         #expect(L10n.string("settings.status_item_icon.window_grid", localeIdentifier: "zh-Hans") == "窗口网格")
+    }
+
+    @Test
+    func localizableStringKeysAreUniquePerLocale() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let relativePaths = [
+            "Sources/Swooshy/Resources/en.lproj/Localizable.strings",
+            "Sources/Swooshy/Resources/zh-Hans.lproj/Localizable.strings",
+        ]
+
+        for relativePath in relativePaths {
+            let fileURL = packageRoot.appending(path: relativePath)
+            let keys = localizationKeys(
+                in: try String(contentsOf: fileURL, encoding: .utf8)
+            )
+            var seenKeys = Set<String>()
+            var duplicateKeys: [String] = []
+
+            for key in keys where seenKeys.insert(key).inserted == false {
+                duplicateKeys.append(key)
+            }
+
+            #expect(duplicateKeys.isEmpty)
+        }
+    }
+
+    private func localizationKeys(in contents: String) -> [String] {
+        contents.split(separator: "\n").compactMap { line in
+            let trimmedLine = String(line).trimmingCharacters(in: .whitespaces)
+            guard trimmedLine.hasPrefix("\"") else {
+                return nil
+            }
+
+            let keyStart = trimmedLine.index(after: trimmedLine.startIndex)
+            guard let keyEnd = trimmedLine[keyStart...].firstIndex(of: "\"") else {
+                return nil
+            }
+
+            return String(trimmedLine[keyStart ..< keyEnd])
+        }
     }
 }

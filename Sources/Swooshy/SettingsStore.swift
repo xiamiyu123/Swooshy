@@ -116,6 +116,10 @@ final class SettingsStore {
 
     var smartBrowserTabCloseEnabled: Bool {
         didSet {
+            if smartBrowserTabCloseEnabled, experimentalBrowserTabCloseEnabled == false {
+                smartBrowserTabCloseEnabled = false
+                return
+            }
             guard oldValue != smartBrowserTabCloseEnabled else { return }
             userDefaults.set(smartBrowserTabCloseEnabled, forKey: Keys.smartBrowserTabCloseEnabled)
             DebugLog.info(
@@ -128,6 +132,10 @@ final class SettingsStore {
 
     var pinchCloseConfirmationEnabled: Bool {
         didSet {
+            if pinchCloseConfirmationEnabled, experimentalBrowserTabCloseEnabled == false {
+                pinchCloseConfirmationEnabled = false
+                return
+            }
             guard oldValue != pinchCloseConfirmationEnabled else { return }
             userDefaults.set(pinchCloseConfirmationEnabled, forKey: Keys.pinchCloseConfirmationEnabled)
             DebugLog.info(
@@ -157,6 +165,7 @@ final class SettingsStore {
             if experimentalBrowserTabCloseEnabled == false {
                 smartBrowserTabCloseEnabled = false
                 pinchCloseConfirmationEnabled = false
+                removeBrowserTabCloseGestureActions()
             } else if userDefaults.object(forKey: Keys.pinchCloseConfirmationEnabled) == nil {
                 pinchCloseConfirmationEnabled = true
             }
@@ -374,21 +383,24 @@ final class SettingsStore {
             defaultValue: true,
             in: userDefaults
         )
-        self.smartBrowserTabCloseEnabled = Self.boolValue(
-            forKey: Keys.smartBrowserTabCloseEnabled,
-            defaultValue: false,
-            in: userDefaults
-        )
-        self.experimentalBrowserTabCloseEnabled = Self.boolValue(
+        let experimentalBrowserTabCloseEnabled = Self.boolValue(
             forKey: Keys.experimentalBrowserTabCloseEnabled,
             defaultValue: false,
             in: userDefaults
         )
-        self.pinchCloseConfirmationEnabled = Self.boolValue(
+        let smartBrowserTabCloseEnabled = Self.boolValue(
+            forKey: Keys.smartBrowserTabCloseEnabled,
+            defaultValue: false,
+            in: userDefaults
+        )
+        let pinchCloseConfirmationEnabled = Self.boolValue(
             forKey: Keys.pinchCloseConfirmationEnabled,
             defaultValue: false,
             in: userDefaults
         )
+        self.smartBrowserTabCloseEnabled = experimentalBrowserTabCloseEnabled ? smartBrowserTabCloseEnabled : false
+        self.experimentalBrowserTabCloseEnabled = experimentalBrowserTabCloseEnabled
+        self.pinchCloseConfirmationEnabled = experimentalBrowserTabCloseEnabled ? pinchCloseConfirmationEnabled : false
         self.closeAndQuitConfirmationEnabled = Self.boolValue(
             forKey: Keys.closeAndQuitConfirmationEnabled,
             defaultValue: false,
@@ -463,10 +475,33 @@ final class SettingsStore {
             in: userDefaults
         )
         self.hotKeyBindings = Self.decodeHotKeyBindings(from: userDefaults) ?? HotKeyBindings.defaults
-        self.dockGestureBindings = Self.decodeDockGestureBindings(from: userDefaults) ?? DockGestureBindings.defaults
-        self.titleBarGestureBindings = Self.decodeTitleBarGestureBindings(from: userDefaults) ?? TitleBarGestureBindings.defaults
+        let decodedDockGestureBindings = Self.decodeDockGestureBindings(from: userDefaults) ?? DockGestureBindings.defaults
+        let decodedTitleBarGestureBindings = Self.decodeTitleBarGestureBindings(from: userDefaults) ?? TitleBarGestureBindings.defaults
+
+        if experimentalBrowserTabCloseEnabled {
+            self.dockGestureBindings = decodedDockGestureBindings
+            self.titleBarGestureBindings = decodedTitleBarGestureBindings
+        } else {
+            self.dockGestureBindings = Self.dockGestureBindingsWithoutBrowserTabClose(decodedDockGestureBindings)
+            self.titleBarGestureBindings = Self.titleBarGestureBindingsWithoutBrowserTabClose(decodedTitleBarGestureBindings)
+        }
 
         L10n.setPreferredLanguagesOverride(self.preferredLanguages)
+
+        if dockGestureBindings != decodedDockGestureBindings {
+            persistDockGestureBindings()
+        }
+        if titleBarGestureBindings != decodedTitleBarGestureBindings {
+            persistTitleBarGestureBindings()
+        }
+        if experimentalBrowserTabCloseEnabled == false {
+            if smartBrowserTabCloseEnabled {
+                userDefaults.set(false, forKey: Keys.smartBrowserTabCloseEnabled)
+            }
+            if pinchCloseConfirmationEnabled {
+                userDefaults.set(false, forKey: Keys.pinchCloseConfirmationEnabled)
+            }
+        }
     }
 
     static func resetPersistedConfiguration(in userDefaults: UserDefaults = .standard) {
@@ -478,6 +513,7 @@ final class SettingsStore {
             Keys.dockCornerDragSnapEnabled,
             Keys.titleBarCornerDragSnapEnabled,
             Keys.titleBarOverlayProtectionEnabled,
+            Keys.smartPinchExitFullScreenEnabled,
             Keys.smartBrowserTabCloseEnabled,
             Keys.pinchCloseConfirmationEnabled,
             Keys.closeAndQuitConfirmationEnabled,
@@ -531,21 +567,20 @@ final class SettingsStore {
 
     func updateHotKeyBinding(_ binding: HotKeyBinding) {
         var newBindings = hotKeyBindings
+        let currentBinding = hotKeyBinding(for: binding.action)
+
+        if let conflictIndex = newBindings.firstIndex(where: {
+            $0.action != binding.action && $0.key == binding.key && $0.modifiers == binding.modifiers
+        }) {
+            let conflictingAction = newBindings[conflictIndex].action
+            newBindings[conflictIndex] = HotKeyBinding(
+                action: conflictingAction,
+                key: currentBinding.key,
+                modifiers: currentBinding.modifiers
+            )
+        }
 
         if let currentIndex = newBindings.firstIndex(where: { $0.action == binding.action }) {
-            let currentBinding = newBindings[currentIndex]
-
-            if let conflictIndex = newBindings.firstIndex(where: {
-                $0.action != binding.action && $0.key == binding.key && $0.modifiers == binding.modifiers
-            }) {
-                let conflictingAction = newBindings[conflictIndex].action
-                newBindings[conflictIndex] = HotKeyBinding(
-                    action: conflictingAction,
-                    key: currentBinding.key,
-                    modifiers: currentBinding.modifiers
-                )
-            }
-
             newBindings[currentIndex] = binding
         } else {
             newBindings.append(binding)
@@ -581,11 +616,14 @@ final class SettingsStore {
     }
 
     func updateDockGestureAction(_ action: DockGestureAction, for gesture: DockGestureKind) {
+        let nextAction = experimentalBrowserTabCloseEnabled
+            ? action
+            : Self.dockGestureActionWithoutBrowserTabClose(action, for: gesture)
         updateDockGestureBinding(
             DockGestureBinding(
                 gesture: gesture,
                 isEnabled: dockGestureBinding(for: gesture).isEnabled,
-                action: action
+                action: nextAction
             )
         )
     }
@@ -636,11 +674,14 @@ final class SettingsStore {
 
     func updateTitleBarGestureAction(_ action: WindowAction, for gesture: DockGestureKind) {
         guard let current = titleBarGestureBinding(for: gesture) else { return }
+        let nextAction = experimentalBrowserTabCloseEnabled
+            ? action
+            : Self.titleBarGestureActionWithoutBrowserTabClose(action, for: gesture)
         updateTitleBarGestureBinding(
             TitleBarGestureBinding(
                 gesture: gesture,
                 isEnabled: current.isEnabled,
-                action: action
+                action: nextAction
             )
         )
     }
@@ -673,6 +714,56 @@ final class SettingsStore {
         titleBarGestureBindings = newBindings.sorted { lhs, rhs in
             lhs.gesture.rawValue < rhs.gesture.rawValue
         }
+    }
+
+    private func removeBrowserTabCloseGestureActions() {
+        let nextDockGestureBindings = Self.dockGestureBindingsWithoutBrowserTabClose(dockGestureBindings)
+        if nextDockGestureBindings != dockGestureBindings {
+            dockGestureBindings = nextDockGestureBindings
+        }
+
+        let nextTitleBarGestureBindings = Self.titleBarGestureBindingsWithoutBrowserTabClose(titleBarGestureBindings)
+        if nextTitleBarGestureBindings != titleBarGestureBindings {
+            titleBarGestureBindings = nextTitleBarGestureBindings
+        }
+    }
+
+    private static func dockGestureBindingsWithoutBrowserTabClose(
+        _ bindings: [DockGestureBinding]
+    ) -> [DockGestureBinding] {
+        bindings.map { binding in
+            DockGestureBinding(
+                gesture: binding.gesture,
+                isEnabled: binding.isEnabled,
+                action: dockGestureActionWithoutBrowserTabClose(binding.action, for: binding.gesture)
+            )
+        }
+    }
+
+    private static func titleBarGestureBindingsWithoutBrowserTabClose(
+        _ bindings: [TitleBarGestureBinding]
+    ) -> [TitleBarGestureBinding] {
+        bindings.map { binding in
+            TitleBarGestureBinding(
+                gesture: binding.gesture,
+                isEnabled: binding.isEnabled,
+                action: titleBarGestureActionWithoutBrowserTabClose(binding.action, for: binding.gesture)
+            )
+        }
+    }
+
+    private static func dockGestureActionWithoutBrowserTabClose(
+        _ action: DockGestureAction,
+        for gesture: DockGestureKind
+    ) -> DockGestureAction {
+        action == .closeTab ? DockGestureBindings.fallbackBinding(for: gesture).action : action
+    }
+
+    private static func titleBarGestureActionWithoutBrowserTabClose(
+        _ action: WindowAction,
+        for gesture: DockGestureKind
+    ) -> WindowAction {
+        action == .closeTab ? TitleBarGestureBindings.fallbackBinding(for: gesture).action : action
     }
 
     private func notifyDidChange(_ categories: SettingsChangeCategory = []) {

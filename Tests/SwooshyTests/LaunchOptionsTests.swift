@@ -68,6 +68,7 @@ struct LaunchOptionsTests {
         let defaults = makeDefaults()
         let settingsStore = SettingsStore(userDefaults: defaults)
         settingsStore.debugLoggingEnabled = true
+        settingsStore.smartPinchExitFullScreenEnabled = false
 
         let constraintStore = ObservedWindowConstraintStore(
             userDefaults: defaults,
@@ -96,6 +97,7 @@ struct LaunchOptionsTests {
         )
 
         #expect(reloadedSettings.debugLoggingEnabled == false)
+        #expect(reloadedSettings.smartPinchExitFullScreenEnabled == true)
         #expect(reloadedConstraints.observation(for: "com.example.app", action: .leftHalf) == nil)
     }
 

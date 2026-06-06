@@ -30,6 +30,7 @@ struct SettingsStoreTests {
         store.titleBarCornerDragSnapEnabled = false
         store.collapseStatusItemWindowActions = true
         store.titleBarOverlayProtectionEnabled = true
+        store.experimentalBrowserTabCloseEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.closeAndQuitConfirmationEnabled = true
         store.titleBarTriggerHeight = 42
@@ -50,6 +51,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.titleBarCornerDragSnapEnabled == false)
         #expect(reloadedStore.collapseStatusItemWindowActions == true)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
+        #expect(reloadedStore.experimentalBrowserTabCloseEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == true)
         #expect(reloadedStore.closeAndQuitConfirmationEnabled == true)
         #expect(reloadedStore.titleBarTriggerHeight == 42)
@@ -114,6 +116,33 @@ struct SettingsStoreTests {
     }
 
     @Test
+    func swapsConflictingShortcutWhenUpdatedActionUsesFallbackBinding() throws {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let legacyBindings = HotKeyBindings.defaults.filter { $0.action != .toggleFullScreen }
+        defaults.set(try JSONEncoder().encode(legacyBindings), forKey: "settings.hotKeyBindings")
+
+        let store = SettingsStore(userDefaults: defaults)
+        let originalCenter = store.hotKeyBinding(for: .center)
+
+        store.updateHotKeyBinding(
+            HotKeyBinding(
+                action: .toggleFullScreen,
+                key: originalCenter.key,
+                modifiers: originalCenter.modifiers
+            )
+        )
+
+        #expect(store.hotKeyBinding(for: .toggleFullScreen).key == originalCenter.key)
+        #expect(store.hotKeyBinding(for: .center).key == .f)
+
+        let accelerators = store.hotKeyBindings.map { "\($0.keyCode)-\($0.carbonModifiers)" }
+        #expect(Set(accelerators).count == accelerators.count)
+    }
+
+    @Test
     func systemLanguageUsesCurrentPreferredLanguages() {
         let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -155,6 +184,7 @@ struct SettingsStoreTests {
         store.titleBarCornerDragSnapEnabled = false
         store.collapseStatusItemWindowActions = true
         store.titleBarOverlayProtectionEnabled = true
+        store.smartPinchExitFullScreenEnabled = false
         store.smartBrowserTabCloseEnabled = true
         store.closeAndQuitConfirmationEnabled = true
         store.titleBarTriggerHeight = 40
@@ -175,6 +205,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.titleBarCornerDragSnapEnabled == true)
         #expect(reloadedStore.collapseStatusItemWindowActions == true)
         #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
+        #expect(reloadedStore.smartPinchExitFullScreenEnabled == true)
         #expect(reloadedStore.smartBrowserTabCloseEnabled == false)
         #expect(reloadedStore.closeAndQuitConfirmationEnabled == false)
         #expect(reloadedStore.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
@@ -434,6 +465,7 @@ struct SettingsStoreTests {
         let store = SettingsStore(userDefaults: defaults)
         store.experimentalBrowserTabCloseEnabled = true
         store.smartBrowserTabCloseEnabled = true
+        store.pinchCloseConfirmationEnabled = true
 
         let recorder = NotificationRecorder()
         let token = NotificationCenter.default.addObserver(
@@ -455,8 +487,94 @@ struct SettingsStoreTests {
 
         #expect(store.experimentalBrowserTabCloseEnabled == false)
         #expect(store.smartBrowserTabCloseEnabled == false)
+        #expect(store.pinchCloseConfirmationEnabled == false)
         #expect(recorder.count == 1)
         #expect(recorder.categories == [.advancedGestureBehavior])
+    }
+
+    @Test
+    func browserTabCloseDependentOptionsRequireExperimentalMode() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+        store.smartBrowserTabCloseEnabled = true
+        store.pinchCloseConfirmationEnabled = true
+
+        #expect(store.smartBrowserTabCloseEnabled == false)
+        #expect(store.pinchCloseConfirmationEnabled == false)
+        #expect(defaults.bool(forKey: "settings.smartBrowserTabCloseEnabled") == false)
+        #expect(defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled") == false)
+    }
+
+    @Test
+    func disablingExperimentalBrowserTabCloseClearsTabCloseGestureActions() {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = SettingsStore(userDefaults: defaults)
+        store.experimentalBrowserTabCloseEnabled = true
+        store.updateDockGestureAction(.closeTab, for: .swipeUp)
+        store.updateDockGestureEnabled(false, for: .swipeUp)
+        store.updateTitleBarGestureAction(.closeTab, for: .pinchOut)
+        store.updateTitleBarGestureEnabled(false, for: .pinchOut)
+
+        store.experimentalBrowserTabCloseEnabled = false
+
+        #expect(store.dockGestureAction(for: .swipeUp) == .restoreWindow)
+        #expect(store.dockGestureIsEnabled(for: .swipeUp) == false)
+        #expect(store.titleBarGestureAction(for: .pinchOut) == .toggleFullScreen)
+        #expect(store.titleBarGestureIsEnabled(for: .pinchOut) == false)
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.dockGestureAction(for: .swipeUp) == .restoreWindow)
+        #expect(reloadedStore.titleBarGestureAction(for: .pinchOut) == .toggleFullScreen)
+    }
+
+    @Test
+    func launchSanitizesPersistedTabCloseGestureActionsWhenExperimentalModeIsDisabled() throws {
+        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let dockBindings = [
+            DockGestureBinding(gesture: .swipeUp, isEnabled: false, action: .closeTab),
+        ]
+        let titleBarBindings = [
+            TitleBarGestureBinding(gesture: .pinchOut, isEnabled: false, action: .closeTab),
+        ]
+        defaults.set(try JSONEncoder().encode(dockBindings), forKey: "settings.dockGestureBindings")
+        defaults.set(try JSONEncoder().encode(titleBarBindings), forKey: "settings.titleBarGestureBindings")
+        defaults.set(false, forKey: "settings.experimentalBrowserTabCloseEnabled")
+        defaults.set(true, forKey: "settings.smartBrowserTabCloseEnabled")
+        defaults.set(true, forKey: "settings.pinchCloseConfirmationEnabled")
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.smartBrowserTabCloseEnabled == false)
+        #expect(store.pinchCloseConfirmationEnabled == false)
+        #expect(store.dockGestureAction(for: .swipeUp) == .restoreWindow)
+        #expect(store.dockGestureIsEnabled(for: .swipeUp) == false)
+        #expect(store.titleBarGestureAction(for: .pinchOut) == .toggleFullScreen)
+        #expect(store.titleBarGestureIsEnabled(for: .pinchOut) == false)
+
+        let persistedDockBindings = try JSONDecoder().decode(
+            [DockGestureBinding].self,
+            from: #require(defaults.data(forKey: "settings.dockGestureBindings"))
+        )
+        let persistedTitleBarBindings = try JSONDecoder().decode(
+            [TitleBarGestureBinding].self,
+            from: #require(defaults.data(forKey: "settings.titleBarGestureBindings"))
+        )
+
+        #expect(persistedDockBindings.first?.action == .restoreWindow)
+        #expect(persistedDockBindings.first?.isEnabled == false)
+        #expect(persistedTitleBarBindings.first?.action == .toggleFullScreen)
+        #expect(persistedTitleBarBindings.first?.isEnabled == false)
+        #expect(defaults.bool(forKey: "settings.smartBrowserTabCloseEnabled") == false)
+        #expect(defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled") == false)
     }
 
     @Test
