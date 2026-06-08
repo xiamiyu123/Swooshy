@@ -198,8 +198,8 @@
 "settings.experimental.browser_tab_close.footer" = "Allows you to map gestures to 'Close Tab'.\n\nPrinciple: Swooshy simulates a middle-click at the pointer location. Before using this feature, make sure the target app supports middle-click to close tabs and that no third-party button remapping conflicts are present.";
 "settings.experimental.smart_browser_tab_close.enabled" = "Smart tab close";
 "settings.experimental.smart_browser_tab_close.footer" = "When performing a 'Close Window' or 'Quit Application' gesture on a supported browser, or on a supported VS Code-based editor, if the pointer is hovering over a specific tab, Swooshy will close only that tab instead of closing the whole window or quitting the app. If the pointer is not over any tab, the gesture falls back to the normal close or quit behavior. Supported apps include browsers such as Safari, Chrome, Edge, and Firefox, as well as VS Code-based code editors such as Visual Studio Code, Cursor, and Antigravity.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
-"settings.experimental.pinch_close_confirmation.enabled" = "Confirm title-bar window close";
-"settings.experimental.pinch_close_confirmation.footer" = "When enabled, a title-bar pinch gesture mapped to Close Window on a supported browser or VS Code-based editor shows a confirmation prompt first. This does not apply to Dock gestures or Quit Application.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
+"settings.experimental.pinch_close_confirmation.enabled" = "Require confirmation for title-bar pinch close";
+"settings.experimental.pinch_close_confirmation.footer" = "When enabled, if a title-bar pinch gesture is mapped to Close Window on a supported browser or VS Code-based editor, Swooshy shows a confirmation prompt first. Repeat the same pinch gesture to actually close the window. This does not apply to Dock gestures or Quit Application.\n\nNote: Experimental features are not guaranteed to work and may be unstable.";
 "settings.experimental.opt_in_persistence.footer" = "Note: Resetting user configuration keeps your experimental feature opt-in state.";
 
 "guide.page.experimental.title" = "Experimental Features";
@@ -207,7 +207,7 @@
 "guide.page.experimental.bullet1" = "Smart tab close: when gesturing to close or quit on a supported browser or on a supported VS Code-based editor, Swooshy detects if the pointer is over a specific tab and closes only that tab via a simulated middle-click.";
 "guide.page.experimental.bullet2" = "If the pointer is not over any tab, the gesture falls back to the normal close-window or quit behavior.";
 "guide.page.experimental.bullet3" = "Supports major browsers, and also supports VS Code-based editors such as Visual Studio Code, Cursor, Antigravity, and more.";
-"guide.page.experimental.bullet4" = "Title-bar close confirmation: when using a title-bar pinch gesture to close a window in a supported browser or editor, Swooshy shows a confirmation prompt first. Pinch again to confirm, or wait for it to cancel automatically.";
+"guide.page.experimental.bullet4" = "Title-bar pinch close confirmation: when using a title-bar pinch gesture to close a window in a supported browser or editor, Swooshy shows a confirmation prompt first. Repeat the same pinch gesture to actually close the window, or wait for it to cancel automatically.";
 "guide.page.experimental.bullet5" = "Display move actions: expose shortcuts and gesture mappings for moving the focused window to the next or previous display.";
 "confirmation.pinch_again.close_window" = "Pinch again to close window";
 "confirmation.pinch_again.quit_application" = "Pinch again to quit app";
@@ -222,3 +222,4 @@
 "error.quit_application_failed" = "Unable to quit the application.";
 "error.enumerate_windows_failed" = "Unable to inspect windows for the frontmost application.";
 "error.no_alternate_window" = "No alternate window was found for the current application.";
+"error.no_other_display" = "No other display is available for this action.";

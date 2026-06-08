@@ -161,122 +161,95 @@ struct WelcomeGuideContent {
     }
 
     private static func makePages(settingsStore: SettingsStore) -> [Page] {
-        [
+        func localized(_ key: String) -> String {
+            settingsStore.localized(key)
+        }
+
+        func guidePage(
+            id: Int,
+            kind: WelcomeGuideViewModel.PageKind,
+            key: String,
+            bulletCount: Int = 0,
+            imageName: String? = nil
+        ) -> Page {
+            let localizationKey = "guide.page.\(key)"
+            return Page(
+                id: id,
+                kind: kind,
+                title: localized("\(localizationKey).title"),
+                message: localized("\(localizationKey).message"),
+                bullets: (0..<bulletCount).map { localized("\(localizationKey).bullet\($0 + 1)") },
+                imageName: imageName
+            )
+        }
+
+        return [
             Page(
                 id: 0,
                 kind: .welcome,
-                title: settingsStore.localized("welcome.title"),
-                message: settingsStore.localized("welcome.message"),
+                title: localized("welcome.title"),
+                message: localized("welcome.message"),
                 bullets: [],
                 imageName: nil
             ),
-            Page(
+            guidePage(
                 id: 1,
                 kind: .tutorial,
-                title: settingsStore.localized("guide.page.dock_switch.title"),
-                message: settingsStore.localized("guide.page.dock_switch.message"),
-                bullets: [
-                    settingsStore.localized("guide.page.dock_switch.bullet1"),
-                    settingsStore.localized("guide.page.dock_switch.bullet2"),
-                ],
+                key: "dock_switch",
+                bulletCount: 2,
                 imageName: "step1"
             ),
-            Page(
+            guidePage(
                 id: 2,
                 kind: .tutorial,
-                title: settingsStore.localized("guide.page.dock_visibility.title"),
-                message: settingsStore.localized("guide.page.dock_visibility.message"),
-                bullets: [
-                    settingsStore.localized("guide.page.dock_visibility.bullet1"),
-                    settingsStore.localized("guide.page.dock_visibility.bullet2"),
-                ],
+                key: "dock_visibility",
+                bulletCount: 2,
                 imageName: "step4"
             ),
-            Page(
+            guidePage(
                 id: 3,
                 kind: .tutorial,
-                title: settingsStore.localized("guide.page.dock_quit.title"),
-                message: settingsStore.localized("guide.page.dock_quit.message"),
-                bullets: [
-                    settingsStore.localized("guide.page.dock_quit.bullet1"),
-                    settingsStore.localized("guide.page.dock_quit.bullet2"),
-                    settingsStore.localized("guide.page.dock_quit.bullet3"),
-                ],
+                key: "dock_quit",
+                bulletCount: 3,
                 imageName: "step5"
             ),
-            Page(
+            guidePage(
                 id: 4,
                 kind: .tutorial,
-                title: settingsStore.localized("guide.page.titlebar_vertical.title"),
-                message: settingsStore.localized("guide.page.titlebar_vertical.message"),
-                bullets: [
-                    settingsStore.localized("guide.page.titlebar_vertical.bullet1"),
-                    settingsStore.localized("guide.page.titlebar_vertical.bullet2"),
-                    settingsStore.localized("guide.page.titlebar_vertical.bullet3"),
-                ],
+                key: "titlebar_vertical",
+                bulletCount: 3,
                 imageName: "step2"
             ),
-            Page(
+            guidePage(
                 id: 5,
                 kind: .tutorial,
-                title: settingsStore.localized("guide.page.titlebar_horizontal.title"),
-                message: settingsStore.localized("guide.page.titlebar_horizontal.message"),
-                bullets: [
-                    settingsStore.localized("guide.page.titlebar_horizontal.bullet1"),
-                    settingsStore.localized("guide.page.titlebar_horizontal.bullet2"),
-                    settingsStore.localized("guide.page.titlebar_horizontal.bullet3"),
-                ],
+                key: "titlebar_horizontal",
+                bulletCount: 3,
                 imageName: "step3"
             ),
-            Page(
+            guidePage(
                 id: 6,
                 kind: .tutorial,
-                title: settingsStore.localized("guide.page.corner_snap.title"),
-                message: settingsStore.localized("guide.page.corner_snap.message"),
-                bullets: [
-                    settingsStore.localized("guide.page.corner_snap.bullet1"),
-                    settingsStore.localized("guide.page.corner_snap.bullet2"),
-                    settingsStore.localized("guide.page.corner_snap.bullet3"),
-                ],
+                key: "corner_snap",
+                bulletCount: 3,
                 imageName: "corner-snap-mode"
             ),
-            Page(
+            guidePage(
                 id: 7,
                 kind: .preference,
-                title: settingsStore.localized("guide.page.interaction.title"),
-                message: settingsStore.localized("guide.page.interaction.message"),
-                bullets: [],
-                imageName: nil
+                key: "interaction"
             ),
-            Page(
+            guidePage(
                 id: 8,
                 kind: .tutorial,
-                title: settingsStore.localized("guide.page.shortcuts.title"),
-                message: settingsStore.localized("guide.page.shortcuts.message"),
-                bullets: [
-                    settingsStore.localized("guide.page.shortcuts.bullet1"),
-                    settingsStore.localized("guide.page.shortcuts.bullet2"),
-                    settingsStore.localized("guide.page.shortcuts.bullet3"),
-                    settingsStore.localized("guide.page.shortcuts.bullet4"),
-                    settingsStore.localized("guide.page.shortcuts.bullet5"),
-                    settingsStore.localized("guide.page.shortcuts.bullet6"),
-                    settingsStore.localized("guide.page.shortcuts.bullet7"),
-                ],
-                imageName: nil
+                key: "shortcuts",
+                bulletCount: 7
             ),
-            Page(
+            guidePage(
                 id: 9,
                 kind: .experimental,
-                title: settingsStore.localized("guide.page.experimental.title"),
-                message: settingsStore.localized("guide.page.experimental.message"),
-                bullets: [
-                    settingsStore.localized("guide.page.experimental.bullet1"),
-                    settingsStore.localized("guide.page.experimental.bullet2"),
-                    settingsStore.localized("guide.page.experimental.bullet3"),
-                    settingsStore.localized("guide.page.experimental.bullet4"),
-                    settingsStore.localized("guide.page.experimental.bullet5"),
-                ],
-                imageName: nil
+                key: "experimental",
+                bulletCount: 5
             ),
         ]
     }
@@ -319,27 +292,47 @@ final class WelcomeGuideViewModel: ObservableObject {
     // the release-deferred gesture path is removed from runtime settings.
     var executeGestureOnRelease: Bool {
         get { settingsStore.executeGestureOnRelease }
-        set { settingsStore.executeGestureOnRelease = newValue }
+        set {
+            guard settingsStore.executeGestureOnRelease != newValue else { return }
+            objectWillChange.send()
+            settingsStore.executeGestureOnRelease = newValue
+        }
     }
 
     var experimentalBrowserTabCloseEnabled: Bool {
         get { settingsStore.experimentalBrowserTabCloseEnabled }
-        set { settingsStore.experimentalBrowserTabCloseEnabled = newValue }
+        set {
+            guard settingsStore.experimentalBrowserTabCloseEnabled != newValue else { return }
+            objectWillChange.send()
+            settingsStore.experimentalBrowserTabCloseEnabled = newValue
+        }
     }
 
     var experimentalDisplayMoveActionsEnabled: Bool {
         get { settingsStore.experimentalDisplayMoveActionsEnabled }
-        set { settingsStore.experimentalDisplayMoveActionsEnabled = newValue }
+        set {
+            guard settingsStore.experimentalDisplayMoveActionsEnabled != newValue else { return }
+            objectWillChange.send()
+            settingsStore.experimentalDisplayMoveActionsEnabled = newValue
+        }
     }
 
     var smartBrowserTabCloseEnabled: Bool {
         get { settingsStore.smartBrowserTabCloseEnabled }
-        set { settingsStore.smartBrowserTabCloseEnabled = newValue }
+        set {
+            guard settingsStore.smartBrowserTabCloseEnabled != newValue else { return }
+            objectWillChange.send()
+            settingsStore.smartBrowserTabCloseEnabled = newValue
+        }
     }
 
     var pinchCloseConfirmationEnabled: Bool {
         get { settingsStore.pinchCloseConfirmationEnabled }
-        set { settingsStore.pinchCloseConfirmationEnabled = newValue }
+        set {
+            guard settingsStore.pinchCloseConfirmationEnabled != newValue else { return }
+            objectWillChange.send()
+            settingsStore.pinchCloseConfirmationEnabled = newValue
+        }
     }
 
     var windowTitle: String { content.windowTitle }
@@ -393,12 +386,12 @@ final class WelcomeGuideViewModel: ObservableObject {
     }
 
     func goToNextPage() {
-        guard isLastPage == false else { return }
+        guard !isLastPage else { return }
         currentPageIndex += 1
     }
 
     func goToPreviousPage() {
-        guard isFirstPage == false else { return }
+        guard !isFirstPage else { return }
         currentPageIndex -= 1
     }
 
@@ -616,7 +609,7 @@ private struct WelcomeGuideView: View {
                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         )
         .opacity(isEnabled ? 1 : 0.65)
-        .disabled(isEnabled == false)
+        .disabled(!isEnabled)
     }
 
     private func tutorialContent(page: WelcomeGuideContent.Page) -> some View {
@@ -715,7 +708,7 @@ private struct WelcomeGuideView: View {
                 .foregroundStyle(.secondary)
 
             if let statusMessage = launchAtLoginController.statusMessage,
-               statusMessage.isEmpty == false {
+               !statusMessage.isEmpty {
                 Text(statusMessage)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -756,7 +749,7 @@ private struct WelcomeGuideView: View {
 
             Spacer()
 
-            if viewModel.isFirstPage == false {
+            if !viewModel.isFirstPage {
                 Button(viewModel.previousActionTitle) {
                     viewModel.goToPreviousPage()
                 }
@@ -774,7 +767,7 @@ private struct WelcomeGuideView: View {
                     viewModel.openSettings()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.canOpenSettings == false)
+                .disabled(!viewModel.canOpenSettings)
             } else {
                 Button(viewModel.nextActionTitle) {
                     viewModel.goToNextPage()

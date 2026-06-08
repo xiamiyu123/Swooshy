@@ -14,7 +14,7 @@ final class HotKeyRegistrationStatusStore {
     private(set) var handlerUnavailable = false
 
     var hasIssue: Bool {
-        handlerUnavailable || failures.isEmpty == false
+        handlerUnavailable || !failures.isEmpty
     }
 
     func failure(for action: WindowAction) -> HotKeyRegistrationFailure? {
@@ -26,11 +26,11 @@ final class HotKeyRegistrationStatusStore {
             return .handlerUnavailable
         }
 
-        if failures[action] != nil {
-            return .registrationFailed
+        guard failures[action] != nil else {
+            return nil
         }
 
-        return nil
+        return .registrationFailed
     }
 
     func recordFailure(_ failure: HotKeyRegistrationFailure) {

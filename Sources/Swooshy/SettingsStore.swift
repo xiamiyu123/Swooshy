@@ -116,7 +116,7 @@ final class SettingsStore {
 
     var smartBrowserTabCloseEnabled: Bool {
         didSet {
-            if smartBrowserTabCloseEnabled, experimentalBrowserTabCloseEnabled == false {
+            if smartBrowserTabCloseEnabled, !experimentalBrowserTabCloseEnabled {
                 smartBrowserTabCloseEnabled = false
                 return
             }
@@ -132,7 +132,7 @@ final class SettingsStore {
 
     var pinchCloseConfirmationEnabled: Bool {
         didSet {
-            if pinchCloseConfirmationEnabled, experimentalBrowserTabCloseEnabled == false {
+            if pinchCloseConfirmationEnabled, !experimentalBrowserTabCloseEnabled {
                 pinchCloseConfirmationEnabled = false
                 return
             }
@@ -162,7 +162,7 @@ final class SettingsStore {
         didSet {
             guard oldValue != experimentalBrowserTabCloseEnabled else { return }
             userDefaults.set(experimentalBrowserTabCloseEnabled, forKey: Keys.experimentalBrowserTabCloseEnabled)
-            if experimentalBrowserTabCloseEnabled == false {
+            if !experimentalBrowserTabCloseEnabled {
                 smartBrowserTabCloseEnabled = false
                 pinchCloseConfirmationEnabled = false
                 removeBrowserTabCloseGestureActions()
@@ -222,70 +222,71 @@ final class SettingsStore {
     // behavior. Remove with executeGestureOnRelease once that path is gone.
     var reverseCancelSensitivity: Double {
         didSet {
-            guard oldValue != reverseCancelSensitivity else { return }
-            userDefaults.set(reverseCancelSensitivity, forKey: Keys.reverseCancelSensitivity)
-            DebugLog.info(DebugLog.settings, "Reverse cancel sensitivity set to \(reverseCancelSensitivity)")
-            notifyDidChange([.gestureMonitoring, .advancedGestureBehavior])
+            if let clampedValue = clampedAdvancedGestureDouble(
+                currentValue: reverseCancelSensitivity,
+                oldValue: oldValue,
+                clamp: Self.clampSensitivity,
+                forKey: Keys.reverseCancelSensitivity,
+                logLabel: "Reverse cancel sensitivity"
+            ) {
+                reverseCancelSensitivity = clampedValue
+            }
         }
     }
 
     var swipeSensitivity: Double {
         didSet {
-            guard oldValue != swipeSensitivity else { return }
-            userDefaults.set(swipeSensitivity, forKey: Keys.swipeSensitivity)
-            DebugLog.info(DebugLog.settings, "Swipe sensitivity set to \(swipeSensitivity)")
-            notifyDidChange([.gestureMonitoring, .advancedGestureBehavior])
+            if let clampedValue = clampedAdvancedGestureDouble(
+                currentValue: swipeSensitivity,
+                oldValue: oldValue,
+                clamp: Self.clampSensitivity,
+                forKey: Keys.swipeSensitivity,
+                logLabel: "Swipe sensitivity"
+            ) {
+                swipeSensitivity = clampedValue
+            }
         }
     }
 
     var pinchSensitivity: Double {
         didSet {
-            guard oldValue != pinchSensitivity else { return }
-            userDefaults.set(pinchSensitivity, forKey: Keys.pinchSensitivity)
-            DebugLog.info(DebugLog.settings, "Pinch sensitivity set to \(pinchSensitivity)")
-            notifyDidChange([.gestureMonitoring, .advancedGestureBehavior])
+            if let clampedValue = clampedAdvancedGestureDouble(
+                currentValue: pinchSensitivity,
+                oldValue: oldValue,
+                clamp: Self.clampSensitivity,
+                forKey: Keys.pinchSensitivity,
+                logLabel: "Pinch sensitivity"
+            ) {
+                pinchSensitivity = clampedValue
+            }
         }
     }
 
     var titleBarTriggerHeight: Double {
         didSet {
-            let clampedValue = Self.clampTitleBarTriggerHeight(titleBarTriggerHeight)
-            guard oldValue != clampedValue else {
-                if titleBarTriggerHeight != clampedValue {
-                    titleBarTriggerHeight = clampedValue
-                }
-                return
-            }
-
-            if titleBarTriggerHeight != clampedValue {
+            if let clampedValue = clampedAdvancedGestureDouble(
+                currentValue: titleBarTriggerHeight,
+                oldValue: oldValue,
+                clamp: Self.clampTitleBarTriggerHeight,
+                forKey: Keys.titleBarTriggerHeight,
+                logLabel: "Title-bar trigger height"
+            ) {
                 titleBarTriggerHeight = clampedValue
-                return
             }
-
-            userDefaults.set(clampedValue, forKey: Keys.titleBarTriggerHeight)
-            DebugLog.info(DebugLog.settings, "Title-bar trigger height set to \(clampedValue)")
-            notifyDidChange([.gestureMonitoring, .advancedGestureBehavior])
         }
     }
 
     var titleBarCornerDragHoldDuration: Double {
         didSet {
-            let clampedValue = Self.clampTitleBarCornerDragHoldDuration(titleBarCornerDragHoldDuration)
-            guard oldValue != clampedValue else {
-                if titleBarCornerDragHoldDuration != clampedValue {
-                    titleBarCornerDragHoldDuration = clampedValue
-                }
-                return
-            }
-
-            if titleBarCornerDragHoldDuration != clampedValue {
+            if let clampedValue = clampedAdvancedGestureDouble(
+                currentValue: titleBarCornerDragHoldDuration,
+                oldValue: oldValue,
+                clamp: Self.clampTitleBarCornerDragHoldDuration,
+                forKey: Keys.titleBarCornerDragHoldDuration,
+                logLabel: "Title-bar corner drag hold duration"
+            ) {
                 titleBarCornerDragHoldDuration = clampedValue
-                return
             }
-
-            userDefaults.set(clampedValue, forKey: Keys.titleBarCornerDragHoldDuration)
-            DebugLog.info(DebugLog.settings, "Title-bar corner drag hold duration set to \(clampedValue)")
-            notifyDidChange([.gestureMonitoring, .advancedGestureBehavior])
         }
     }
 
@@ -447,20 +448,26 @@ final class SettingsStore {
             defaultValue: true,
             in: userDefaults
         )
-        self.reverseCancelSensitivity = Self.doubleValue(
-            forKey: Keys.reverseCancelSensitivity,
-            defaultValue: 0.5,
-            in: userDefaults
+        self.reverseCancelSensitivity = Self.clampSensitivity(
+            Self.doubleValue(
+                forKey: Keys.reverseCancelSensitivity,
+                defaultValue: 0.5,
+                in: userDefaults
+            )
         )
-        self.swipeSensitivity = Self.doubleValue(
-            forKey: Keys.swipeSensitivity,
-            defaultValue: 0.5,
-            in: userDefaults
+        self.swipeSensitivity = Self.clampSensitivity(
+            Self.doubleValue(
+                forKey: Keys.swipeSensitivity,
+                defaultValue: 0.5,
+                in: userDefaults
+            )
         )
-        self.pinchSensitivity = Self.doubleValue(
-            forKey: Keys.pinchSensitivity,
-            defaultValue: 0.5,
-            in: userDefaults
+        self.pinchSensitivity = Self.clampSensitivity(
+            Self.doubleValue(
+                forKey: Keys.pinchSensitivity,
+                defaultValue: 0.5,
+                in: userDefaults
+            )
         )
         self.titleBarTriggerHeight = Self.clampTitleBarTriggerHeight(
             Self.doubleValue(
@@ -517,7 +524,7 @@ final class SettingsStore {
         if titleBarGestureBindings != decodedTitleBarGestureBindings {
             persistTitleBarGestureBindings()
         }
-        if experimentalBrowserTabCloseEnabled == false {
+        if !experimentalBrowserTabCloseEnabled {
             if smartBrowserTabCloseEnabled {
                 userDefaults.set(false, forKey: Keys.smartBrowserTabCloseEnabled)
             }
@@ -575,11 +582,11 @@ final class SettingsStore {
     }
 
     var availableWindowActions: [WindowAction] {
-        availableWindowActions(from: WindowAction.allCases)
+        WindowAction.allCases.filter(isWindowActionAvailable)
     }
 
     var availableWindowGestureActions: [WindowAction] {
-        availableWindowActions(from: WindowAction.gestureCases)
+        WindowAction.gestureCases.filter(isWindowActionAvailable)
     }
 
     var availableDockGestureActions: [DockGestureAction] {
@@ -587,15 +594,11 @@ final class SettingsStore {
     }
 
     func isWindowActionAvailable(_ action: WindowAction) -> Bool {
-        experimentalDisplayMoveActionsEnabled || action.isDisplayMoveAction == false
+        experimentalDisplayMoveActionsEnabled || !action.isDisplayMoveAction
     }
 
     func isDockGestureActionAvailable(_ action: DockGestureAction) -> Bool {
-        experimentalDisplayMoveActionsEnabled || action.isDisplayMoveAction == false
-    }
-
-    private func availableWindowActions(from actions: [WindowAction]) -> [WindowAction] {
-        actions.filter(isWindowActionAvailable)
+        experimentalDisplayMoveActionsEnabled || !action.isDisplayMoveAction
     }
 
     func updateHotKeyKey(_ key: ShortcutKey, for action: WindowAction) {
@@ -664,6 +667,7 @@ final class SettingsStore {
     }
 
     func updateDockGestureAction(_ action: DockGestureAction, for gesture: DockGestureKind) {
+        let current = dockGestureBinding(for: gesture)
         let nextAction = experimentalBrowserTabCloseEnabled
             ? action
             : Self.dockGestureActionWithoutBrowserTabClose(action, for: gesture)
@@ -671,7 +675,7 @@ final class SettingsStore {
         updateDockGestureBinding(
             DockGestureBinding(
                 gesture: gesture,
-                isEnabled: dockGestureBinding(for: gesture).isEnabled,
+                isEnabled: current.isEnabled,
                 action: availableAction
             )
         )
@@ -682,20 +686,13 @@ final class SettingsStore {
     }
 
     private func updateDockGestureBinding(_ binding: DockGestureBinding) {
-        var newBindings = dockGestureBindings
+        guard let newBindings = Self.updatedGestureBindings(
+            dockGestureBindings,
+            replacing: binding,
+            gestureOf: \.gesture
+        ) else { return }
 
-        if let index = newBindings.firstIndex(where: { $0.gesture == binding.gesture }) {
-            if newBindings[index] == binding {
-                return
-            }
-            newBindings[index] = binding
-        } else {
-            newBindings.append(binding)
-        }
-
-        dockGestureBindings = newBindings.sorted { lhs, rhs in
-            lhs.gesture.rawValue < rhs.gesture.rawValue
-        }
+        dockGestureBindings = newBindings
     }
 
     func titleBarGestureBinding(for gesture: DockGestureKind) -> TitleBarGestureBinding? {
@@ -742,7 +739,7 @@ final class SettingsStore {
     }
 
     func consumeWelcomeGuidePresentationFlag() -> Bool {
-        guard hasSeenWelcomeGuide == false else {
+        guard !hasSeenWelcomeGuide else {
             return false
         }
 
@@ -751,19 +748,32 @@ final class SettingsStore {
     }
 
     private func updateTitleBarGestureBinding(_ binding: TitleBarGestureBinding) {
-        var newBindings = titleBarGestureBindings
+        guard let newBindings = Self.updatedGestureBindings(
+            titleBarGestureBindings,
+            replacing: binding,
+            gestureOf: \.gesture
+        ) else { return }
 
-        if let index = newBindings.firstIndex(where: { $0.gesture == binding.gesture }) {
-            if newBindings[index] == binding {
-                return
-            }
+        titleBarGestureBindings = newBindings
+    }
+
+    private static func updatedGestureBindings<Binding: Equatable>(
+        _ bindings: [Binding],
+        replacing binding: Binding,
+        gestureOf: (Binding) -> DockGestureKind
+    ) -> [Binding]? {
+        var newBindings = bindings
+        let bindingGesture = gestureOf(binding)
+
+        if let index = newBindings.firstIndex(where: { gestureOf($0) == bindingGesture }) {
+            guard newBindings[index] != binding else { return nil }
             newBindings[index] = binding
         } else {
             newBindings.append(binding)
         }
 
-        titleBarGestureBindings = newBindings.sorted { lhs, rhs in
-            lhs.gesture.rawValue < rhs.gesture.rawValue
+        return newBindings.sorted { lhs, rhs in
+            gestureOf(lhs).rawValue < gestureOf(rhs).rawValue
         }
     }
 
@@ -786,7 +796,10 @@ final class SettingsStore {
             DockGestureBinding(
                 gesture: binding.gesture,
                 isEnabled: binding.isEnabled,
-                action: dockGestureActionWithoutBrowserTabClose(binding.action, for: binding.gesture)
+                action: dockGestureActionWithoutBrowserTabClose(
+                    binding.action,
+                    for: binding.gesture
+                )
             )
         }
     }
@@ -798,7 +811,10 @@ final class SettingsStore {
             TitleBarGestureBinding(
                 gesture: binding.gesture,
                 isEnabled: binding.isEnabled,
-                action: titleBarGestureActionWithoutBrowserTabClose(binding.action, for: binding.gesture)
+                action: titleBarGestureActionWithoutBrowserTabClose(
+                    binding.action,
+                    for: binding.gesture
+                )
             )
         }
     }
@@ -836,7 +852,7 @@ final class SettingsStore {
 
         // Multiple settings often flip together from one UI interaction; coalesce
         // them into a single notification so observers rebuild once per run loop.
-        guard notificationDispatchPending == false else {
+        guard !notificationDispatchPending else {
             return
         }
 
@@ -920,59 +936,120 @@ final class SettingsStore {
         min(maximumTitleBarCornerDragHoldDuration, max(minimumTitleBarCornerDragHoldDuration, value))
     }
 
-    private func persistHotKeyBindings() {
-        do {
-            let data = try JSONEncoder().encode(hotKeyBindings)
-            userDefaults.set(data, forKey: Keys.hotKeyBindings)
-        } catch {
-            DebugLog.error(DebugLog.settings, "Failed to encode hot key bindings: \(error.localizedDescription)")
+    private static func clampSensitivity(_ value: Double) -> Double {
+        guard value.isFinite else {
+            return 0.5
         }
+
+        return min(1, max(0, value))
+    }
+
+    private func persistAdvancedGestureDouble(
+        _ value: Double,
+        forKey key: String,
+        logMessage: String
+    ) {
+        userDefaults.set(value, forKey: key)
+        DebugLog.info(DebugLog.settings, logMessage)
+        notifyDidChange([.gestureMonitoring, .advancedGestureBehavior])
+    }
+
+    private func clampedAdvancedGestureDouble(
+        currentValue: Double,
+        oldValue: Double,
+        clamp: (Double) -> Double,
+        forKey key: String,
+        logLabel: String
+    ) -> Double? {
+        let clampedValue = clamp(currentValue)
+
+        guard currentValue == clampedValue else {
+            return clampedValue
+        }
+
+        guard oldValue != clampedValue else {
+            return nil
+        }
+
+        persistAdvancedGestureDouble(
+            clampedValue,
+            forKey: key,
+            logMessage: "\(logLabel) set to \(clampedValue)"
+        )
+        return nil
+    }
+
+    private func persistHotKeyBindings() {
+        persistEncoded(hotKeyBindings, key: Keys.hotKeyBindings, description: "hot key bindings")
     }
 
     private func persistDockGestureBindings() {
-        do {
-            let data = try JSONEncoder().encode(dockGestureBindings)
-            userDefaults.set(data, forKey: Keys.dockGestureBindings)
-        } catch {
-            DebugLog.error(DebugLog.settings, "Failed to encode Dock gesture bindings: \(error.localizedDescription)")
-        }
+        persistEncoded(dockGestureBindings, key: Keys.dockGestureBindings, description: "Dock gesture bindings")
     }
 
     private func persistTitleBarGestureBindings() {
+        persistEncoded(
+            titleBarGestureBindings,
+            key: Keys.titleBarGestureBindings,
+            description: "title-bar gesture bindings"
+        )
+    }
+
+    private func persistEncoded<Value: Encodable>(
+        _ value: Value,
+        key: String,
+        description: String
+    ) {
         do {
-            let data = try JSONEncoder().encode(titleBarGestureBindings)
-            userDefaults.set(data, forKey: Keys.titleBarGestureBindings)
+            let data = try JSONEncoder().encode(value)
+            userDefaults.set(data, forKey: key)
         } catch {
-            DebugLog.error(DebugLog.settings, "Failed to encode title-bar gesture bindings: \(error.localizedDescription)")
+            DebugLog.error(DebugLog.settings, "Failed to encode \(description): \(error.localizedDescription)")
         }
     }
 
     private static func decodeHotKeyBindings(from userDefaults: UserDefaults) -> [HotKeyBinding]? {
-        guard let data = userDefaults.data(forKey: Keys.hotKeyBindings) else { return nil }
-        do {
-            return try JSONDecoder().decode([HotKeyBinding].self, from: data)
-        } catch {
-            DebugLog.error(DebugLog.settings, "Failed to decode hot key bindings, falling back to defaults: \(error.localizedDescription)")
-            return nil
-        }
+        decodePersistedBindings(
+            [HotKeyBinding].self,
+            forKey: Keys.hotKeyBindings,
+            in: userDefaults,
+            failureDescription: "hot key bindings"
+        )
     }
 
     private static func decodeDockGestureBindings(from userDefaults: UserDefaults) -> [DockGestureBinding]? {
-        guard let data = userDefaults.data(forKey: Keys.dockGestureBindings) else { return nil }
-        do {
-            return try JSONDecoder().decode([DockGestureBinding].self, from: data)
-        } catch {
-            DebugLog.error(DebugLog.settings, "Failed to decode Dock gesture bindings, falling back to defaults: \(error.localizedDescription)")
-            return nil
-        }
+        decodePersistedBindings(
+            [DockGestureBinding].self,
+            forKey: Keys.dockGestureBindings,
+            in: userDefaults,
+            failureDescription: "Dock gesture bindings"
+        )
     }
 
     private static func decodeTitleBarGestureBindings(from userDefaults: UserDefaults) -> [TitleBarGestureBinding]? {
-        guard let data = userDefaults.data(forKey: Keys.titleBarGestureBindings) else { return nil }
+        decodePersistedBindings(
+            [TitleBarGestureBinding].self,
+            forKey: Keys.titleBarGestureBindings,
+            in: userDefaults,
+            failureDescription: "title-bar gesture bindings"
+        )
+    }
+
+    private static func decodePersistedBindings<Value: Decodable>(
+        _ type: Value.Type,
+        forKey key: String,
+        in userDefaults: UserDefaults,
+        failureDescription: String
+    ) -> Value? {
+        guard let data = userDefaults.data(forKey: key) else { return nil }
         do {
-            return try JSONDecoder().decode([TitleBarGestureBinding].self, from: data)
+            return try JSONDecoder().decode(type, from: data)
         } catch {
-            DebugLog.error(DebugLog.settings, "Failed to decode title-bar gesture bindings, falling back to defaults: \(error.localizedDescription)")
+            DebugLog.error(
+                DebugLog.settings,
+                "Failed to decode \(failureDescription), clearing stored value and falling back to defaults: \(error.localizedDescription)"
+            )
+            userDefaults.removeObject(forKey: key)
             return nil
         }
     }

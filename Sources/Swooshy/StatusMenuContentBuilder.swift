@@ -18,6 +18,12 @@ struct StatusMenuEntry: Equatable {
     let isEnabled: Bool
     let hotKeyIssue: HotKeyRegistrationIssueKind?
 
+    static let separator = StatusMenuEntry(
+        kind: .separator,
+        title: "",
+        isEnabled: false
+    )
+
     init(
         kind: Kind,
         title: String,
@@ -40,7 +46,7 @@ struct StatusMenuContentBuilder {
         preferredLanguages: [String] = Locale.preferredLanguages,
         hotKeyIssueForAction: (WindowAction) -> HotKeyRegistrationIssueKind? = { _ in nil }
     ) -> [StatusMenuEntry] {
-        let permissionMissing = permissionGranted == false
+        let permissionMissing = !permissionGranted
         let localized: (String) -> String = { key in
             L10n.string(
                 key,
@@ -48,81 +54,109 @@ struct StatusMenuContentBuilder {
                 preferredLanguages: preferredLanguages
             )
         }
-
-        let actionEntries: [StatusMenuEntry]
-        if collapseWindowActions {
-            let groupIssue = windowActions.lazy.compactMap(hotKeyIssueForAction).first
-            actionEntries = [
-                StatusMenuEntry(
+        func entry(
+            kind: StatusMenuEntry.Kind,
+            titleKey: String,
+            isEnabled: Bool,
+            hotKeyIssue: HotKeyRegistrationIssueKind? = nil
+        ) -> StatusMenuEntry {
+            StatusMenuEntry(
+                kind: kind,
+                title: localized(titleKey),
+                isEnabled: isEnabled,
+                hotKeyIssue: hotKeyIssue
+            )
+        }
+        let actionEntries = if collapseWindowActions {
+            [
+                entry(
                     kind: .windowActionGroup,
-                    title: localized("menu.window_actions"),
+                    titleKey: "menu.window_actions",
                     isEnabled: permissionGranted,
-                    hotKeyIssue: groupIssue
+                    hotKeyIssue: firstHotKeyIssue(
+                        for: windowActions,
+                        hotKeyIssueForAction: hotKeyIssueForAction
+                    )
                 )
             ]
         } else {
-            actionEntries = windowActions.map { action in
-                StatusMenuEntry(
-                    kind: .windowAction(action),
-                    title: action.title(
-                        localeIdentifier: localeIdentifier,
-                        preferredLanguages: preferredLanguages
-                    ),
-                    isEnabled: permissionGranted,
-                    hotKeyIssue: hotKeyIssueForAction(action)
-                )
-            }
+            makeWindowActionEntries(
+                permissionGranted: permissionGranted,
+                windowActions: windowActions,
+                localeIdentifier: localeIdentifier,
+                preferredLanguages: preferredLanguages,
+                hotKeyIssueForAction: hotKeyIssueForAction
+            )
         }
 
         return [
-            StatusMenuEntry(
+            entry(
                 kind: .title,
-                title: localized("menu.app_name"),
+                titleKey: "menu.app_name",
                 isEnabled: false
             ),
-            StatusMenuEntry(
+            entry(
                 kind: .permission,
-                title: localized(
-                    permissionGranted ? "menu.permission.ready" : "menu.permission.grant"
-                ),
+                titleKey: permissionGranted ? "menu.permission.ready" : "menu.permission.grant",
                 isEnabled: permissionMissing
             ),
-            StatusMenuEntry(
+            entry(
                 kind: .refresh,
-                title: localized("menu.permission.refresh"),
+                titleKey: "menu.permission.refresh",
                 isEnabled: true
             ),
-            StatusMenuEntry(
-                kind: .separator,
-                title: "",
-                isEnabled: false
-            )
+            .separator,
         ] + actionEntries + [
-            StatusMenuEntry(
-                kind: .separator,
-                title: "",
-                isEnabled: false
-            ),
-            StatusMenuEntry(
+            .separator,
+            entry(
                 kind: .settings,
-                title: localized("menu.settings"),
+                titleKey: "menu.settings",
                 isEnabled: true
             ),
-            StatusMenuEntry(
-                kind: .separator,
-                title: "",
-                isEnabled: false
-            ),
-            StatusMenuEntry(
+            .separator,
+            entry(
                 kind: .help,
-                title: localized("menu.help"),
+                titleKey: "menu.help",
                 isEnabled: true
             ),
-            StatusMenuEntry(
+            entry(
                 kind: .quit,
-                title: localized("menu.quit"),
+                titleKey: "menu.quit",
                 isEnabled: true
             ),
         ]
+    }
+
+    func makeWindowActionEntries(
+        permissionGranted: Bool,
+        windowActions: [WindowAction] = WindowAction.allCases,
+        localeIdentifier: String? = nil,
+        preferredLanguages: [String] = Locale.preferredLanguages,
+        hotKeyIssueForAction: (WindowAction) -> HotKeyRegistrationIssueKind? = { _ in nil }
+    ) -> [StatusMenuEntry] {
+        windowActions.map { action in
+            StatusMenuEntry(
+                kind: .windowAction(action),
+                title: action.title(
+                    localeIdentifier: localeIdentifier,
+                    preferredLanguages: preferredLanguages
+                ),
+                isEnabled: permissionGranted,
+                hotKeyIssue: hotKeyIssueForAction(action)
+            )
+        }
+    }
+
+    private func firstHotKeyIssue(
+        for windowActions: [WindowAction],
+        hotKeyIssueForAction: (WindowAction) -> HotKeyRegistrationIssueKind?
+    ) -> HotKeyRegistrationIssueKind? {
+        for action in windowActions {
+            if let issue = hotKeyIssueForAction(action) {
+                return issue
+            }
+        }
+
+        return nil
     }
 }

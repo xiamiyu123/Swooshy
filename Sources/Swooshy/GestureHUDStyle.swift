@@ -1,38 +1,26 @@
 import Foundation
 
-enum GestureHUDStyle: CaseIterable, Codable, Identifiable, Sendable {
+enum GestureHUDStyle: String, CaseIterable, Codable, Identifiable, Sendable {
     case classic
     case elegant
-    case minimal
+    case minimal = "minimal_v2"
 
-    private static let legacyMinimalStorageValue = String(
-        decoding: [115, 119, 105, 115, 104, 76, 105, 107, 101],
-        as: UTF8.self
-    )
+    private static let legacyMinimalStorageValue = "swishLike"
 
     var id: Self { self }
 
     var storageValue: String {
-        switch self {
-        case .classic:
-            return "classic"
-        case .minimal:
-            return "minimal_v2"
-        case .elegant:
-            return "elegant"
-        }
+        rawValue
     }
 
     init(storageValue: String?) {
-        switch storageValue {
+        self = switch storageValue {
         case "classic":
-            self = .classic
-        case "elegant", "minimal":
-            self = .elegant
-        case "minimal_v2", Self.legacyMinimalStorageValue:
-            self = .minimal
+            .classic
+        case Self.minimal.rawValue, Self.legacyMinimalStorageValue:
+            .minimal
         default:
-            self = .elegant
+            .elegant
         }
     }
 
@@ -40,26 +28,20 @@ enum GestureHUDStyle: CaseIterable, Codable, Identifiable, Sendable {
         localeIdentifier: String? = nil,
         preferredLanguages: [String] = Locale.preferredLanguages
     ) -> String {
-        switch self {
+        let localizationKey = switch self {
         case .classic:
-            return L10n.string(
-                "settings.gesture_hud.style.classic",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.gesture_hud.style.classic"
         case .elegant:
-            return L10n.string(
-                "settings.gesture_hud.style.elegant",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.gesture_hud.style.elegant"
         case .minimal:
-            return L10n.string(
-                "settings.gesture_hud.style.minimal",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.gesture_hud.style.minimal"
         }
+
+        return L10n.string(
+            localizationKey,
+            localeIdentifier: localeIdentifier,
+            preferredLanguages: preferredLanguages
+        )
     }
 
     init(from decoder: Decoder) throws {

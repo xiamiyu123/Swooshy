@@ -17,73 +17,74 @@ enum ShortcutModifierSet: String, CaseIterable, Codable, Identifiable, Sendable 
     var eventFlags: NSEvent.ModifierFlags {
         switch self {
         case .commandShiftControl:
-            return [.command, .shift, .control]
+            [.command, .shift, .control]
         case .commandShiftOption:
-            return [.command, .shift, .option]
+            [.command, .shift, .option]
         case .commandShiftOptionControl:
-            return [.command, .shift, .option, .control]
+            [.command, .shift, .option, .control]
         case .commandOnly:
-            return [.command]
+            [.command]
         case .commandShift:
-            return [.command, .shift]
+            [.command, .shift]
         case .commandOption:
-            return [.command, .option]
+            [.command, .option]
         case .commandControl:
-            return [.command, .control]
+            [.command, .control]
         case .commandOptionControl:
-            return [.command, .option, .control]
+            [.command, .option, .control]
         }
     }
 
     var carbonModifiers: UInt32 {
+        let flags = eventFlags
         var result: UInt32 = 0
-        if eventFlags.contains(.command) { result |= UInt32(cmdKey) }
-        if eventFlags.contains(.shift) { result |= UInt32(shiftKey) }
-        if eventFlags.contains(.option) { result |= UInt32(optionKey) }
-        if eventFlags.contains(.control) { result |= UInt32(controlKey) }
+        if flags.contains(.command) { result |= UInt32(cmdKey) }
+        if flags.contains(.shift) { result |= UInt32(shiftKey) }
+        if flags.contains(.option) { result |= UInt32(optionKey) }
+        if flags.contains(.control) { result |= UInt32(controlKey) }
         return result
     }
 
     var displayString: String {
+        let flags = eventFlags
         var result = ""
-        if eventFlags.contains(.control) { result += "⌃" }
-        if eventFlags.contains(.option) { result += "⌥" }
-        if eventFlags.contains(.shift) { result += "⇧" }
-        if eventFlags.contains(.command) { result += "⌘" }
+        if flags.contains(.control) { result += "⌃" }
+        if flags.contains(.option) { result += "⌥" }
+        if flags.contains(.shift) { result += "⇧" }
+        if flags.contains(.command) { result += "⌘" }
         return result
     }
 
     init?(eventFlags: NSEvent.ModifierFlags) {
-        let normalizedFlags = eventFlags.intersection(.deviceIndependentFlagsMask)
+        let normalizedFlags = eventFlags.intersection([
+            .command,
+            .shift,
+            .option,
+            .control,
+        ])
 
-        guard normalizedFlags.contains(.command) else {
+        guard
+            normalizedFlags.contains(.command),
+            let modifierSet = Self.allCases.first(where: { $0.eventFlags == normalizedFlags })
+        else {
             return nil
         }
 
-        switch normalizedFlags.rawValue {
-        case NSEvent.ModifierFlags.command.rawValue:
-            self = .commandOnly
-        case NSEvent.ModifierFlags([.command, .shift]).rawValue:
-            self = .commandShift
-        case NSEvent.ModifierFlags([.command, .option]).rawValue:
-            self = .commandOption
-        case NSEvent.ModifierFlags([.command, .control]).rawValue:
-            self = .commandControl
-        case NSEvent.ModifierFlags([.command, .option, .control]).rawValue:
-            self = .commandOptionControl
-        case NSEvent.ModifierFlags([.command, .shift, .control]).rawValue:
-            self = .commandShiftControl
-        case NSEvent.ModifierFlags([.command, .shift, .option]).rawValue:
-            self = .commandShiftOption
-        case NSEvent.ModifierFlags([.command, .shift, .option, .control]).rawValue:
-            self = .commandShiftOptionControl
-        default:
-            return nil
-        }
+        self = modifierSet
     }
 }
 
 enum ShortcutKey: String, CaseIterable, Codable, Identifiable, Sendable {
+    private enum KeyLabel {
+        case character(String)
+        case function(menu: String, display: String)
+    }
+
+    private struct KeyMetadata {
+        let keyCode: UInt32
+        let label: KeyLabel
+    }
+
     case zero
     case one
     case two
@@ -129,263 +130,139 @@ enum ShortcutKey: String, CaseIterable, Codable, Identifiable, Sendable {
     var id: String { rawValue }
 
     var keyCode: UInt32 {
-        switch self {
-        case .zero:
-            return UInt32(kVK_ANSI_0)
-        case .one:
-            return UInt32(kVK_ANSI_1)
-        case .two:
-            return UInt32(kVK_ANSI_2)
-        case .three:
-            return UInt32(kVK_ANSI_3)
-        case .four:
-            return UInt32(kVK_ANSI_4)
-        case .five:
-            return UInt32(kVK_ANSI_5)
-        case .six:
-            return UInt32(kVK_ANSI_6)
-        case .seven:
-            return UInt32(kVK_ANSI_7)
-        case .eight:
-            return UInt32(kVK_ANSI_8)
-        case .nine:
-            return UInt32(kVK_ANSI_9)
-        case .leftArrow:
-            return UInt32(kVK_LeftArrow)
-        case .rightArrow:
-            return UInt32(kVK_RightArrow)
-        case .upArrow:
-            return UInt32(kVK_UpArrow)
-        case .downArrow:
-            return UInt32(kVK_DownArrow)
-        case .grave:
-            return UInt32(kVK_ANSI_Grave)
-        case .a:
-            return UInt32(kVK_ANSI_A)
-        case .b:
-            return UInt32(kVK_ANSI_B)
-        case .c:
-            return UInt32(kVK_ANSI_C)
-        case .d:
-            return UInt32(kVK_ANSI_D)
-        case .e:
-            return UInt32(kVK_ANSI_E)
-        case .f:
-            return UInt32(kVK_ANSI_F)
-        case .g:
-            return UInt32(kVK_ANSI_G)
-        case .h:
-            return UInt32(kVK_ANSI_H)
-        case .i:
-            return UInt32(kVK_ANSI_I)
-        case .j:
-            return UInt32(kVK_ANSI_J)
-        case .k:
-            return UInt32(kVK_ANSI_K)
-        case .l:
-            return UInt32(kVK_ANSI_L)
-        case .m:
-            return UInt32(kVK_ANSI_M)
-        case .n:
-            return UInt32(kVK_ANSI_N)
-        case .o:
-            return UInt32(kVK_ANSI_O)
-        case .p:
-            return UInt32(kVK_ANSI_P)
-        case .q:
-            return UInt32(kVK_ANSI_Q)
-        case .r:
-            return UInt32(kVK_ANSI_R)
-        case .s:
-            return UInt32(kVK_ANSI_S)
-        case .t:
-            return UInt32(kVK_ANSI_T)
-        case .u:
-            return UInt32(kVK_ANSI_U)
-        case .v:
-            return UInt32(kVK_ANSI_V)
-        case .w:
-            return UInt32(kVK_ANSI_W)
-        case .x:
-            return UInt32(kVK_ANSI_X)
-        case .y:
-            return UInt32(kVK_ANSI_Y)
-        case .z:
-            return UInt32(kVK_ANSI_Z)
-        }
+        metadata.keyCode
     }
 
     var menuKeyEquivalent: String {
-        switch self {
-        case .zero:
-            return "0"
-        case .one:
-            return "1"
-        case .two:
-            return "2"
-        case .three:
-            return "3"
-        case .four:
-            return "4"
-        case .five:
-            return "5"
-        case .six:
-            return "6"
-        case .seven:
-            return "7"
-        case .eight:
-            return "8"
-        case .nine:
-            return "9"
-        case .leftArrow:
-            return Self.menuFunctionKeyEquivalent(for: NSLeftArrowFunctionKey, fallback: "←")
-        case .rightArrow:
-            return Self.menuFunctionKeyEquivalent(for: NSRightArrowFunctionKey, fallback: "→")
-        case .upArrow:
-            return Self.menuFunctionKeyEquivalent(for: NSUpArrowFunctionKey, fallback: "↑")
-        case .downArrow:
-            return Self.menuFunctionKeyEquivalent(for: NSDownArrowFunctionKey, fallback: "↓")
-        case .grave:
-            return "`"
-        case .a:
-            return "a"
-        case .b:
-            return "b"
-        case .c:
-            return "c"
-        case .d:
-            return "d"
-        case .e:
-            return "e"
-        case .f:
-            return "f"
-        case .g:
-            return "g"
-        case .h:
-            return "h"
-        case .i:
-            return "i"
-        case .j:
-            return "j"
-        case .k:
-            return "k"
-        case .l:
-            return "l"
-        case .m:
-            return "m"
-        case .n:
-            return "n"
-        case .o:
-            return "o"
-        case .p:
-            return "p"
-        case .q:
-            return "q"
-        case .r:
-            return "r"
-        case .s:
-            return "s"
-        case .t:
-            return "t"
-        case .u:
-            return "u"
-        case .v:
-            return "v"
-        case .w:
-            return "w"
-        case .x:
-            return "x"
-        case .y:
-            return "y"
-        case .z:
-            return "z"
+        switch label {
+        case .character(let character):
+            return character
+        case .function(let menu, _):
+            return menu
         }
     }
 
     var displayKey: String {
+        switch label {
+        case .character(let character):
+            return character.uppercased()
+        case .function(_, let display):
+            return display
+        }
+    }
+
+    private var label: KeyLabel {
+        metadata.label
+    }
+
+    private var metadata: KeyMetadata {
         switch self {
         case .zero:
-            return "0"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_0), label: .character("0"))
         case .one:
-            return "1"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_1), label: .character("1"))
         case .two:
-            return "2"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_2), label: .character("2"))
         case .three:
-            return "3"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_3), label: .character("3"))
         case .four:
-            return "4"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_4), label: .character("4"))
         case .five:
-            return "5"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_5), label: .character("5"))
         case .six:
-            return "6"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_6), label: .character("6"))
         case .seven:
-            return "7"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_7), label: .character("7"))
         case .eight:
-            return "8"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_8), label: .character("8"))
         case .nine:
-            return "9"
-        case .leftArrow:
-            return "←"
-        case .rightArrow:
-            return "→"
-        case .upArrow:
-            return "↑"
-        case .downArrow:
-            return "↓"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_9), label: .character("9"))
         case .grave:
-            return "`"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_Grave), label: .character("`"))
         case .a:
-            return "A"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_A), label: .character(rawValue))
         case .b:
-            return "B"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_B), label: .character(rawValue))
         case .c:
-            return "C"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_C), label: .character(rawValue))
         case .d:
-            return "D"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_D), label: .character(rawValue))
         case .e:
-            return "E"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_E), label: .character(rawValue))
         case .f:
-            return "F"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_F), label: .character(rawValue))
         case .g:
-            return "G"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_G), label: .character(rawValue))
         case .h:
-            return "H"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_H), label: .character(rawValue))
         case .i:
-            return "I"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_I), label: .character(rawValue))
         case .j:
-            return "J"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_J), label: .character(rawValue))
         case .k:
-            return "K"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_K), label: .character(rawValue))
         case .l:
-            return "L"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_L), label: .character(rawValue))
         case .m:
-            return "M"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_M), label: .character(rawValue))
         case .n:
-            return "N"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_N), label: .character(rawValue))
         case .o:
-            return "O"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_O), label: .character(rawValue))
         case .p:
-            return "P"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_P), label: .character(rawValue))
         case .q:
-            return "Q"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_Q), label: .character(rawValue))
         case .r:
-            return "R"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_R), label: .character(rawValue))
         case .s:
-            return "S"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_S), label: .character(rawValue))
         case .t:
-            return "T"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_T), label: .character(rawValue))
         case .u:
-            return "U"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_U), label: .character(rawValue))
         case .v:
-            return "V"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_V), label: .character(rawValue))
         case .w:
-            return "W"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_W), label: .character(rawValue))
         case .x:
-            return "X"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_X), label: .character(rawValue))
         case .y:
-            return "Y"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_Y), label: .character(rawValue))
         case .z:
-            return "Z"
+            KeyMetadata(keyCode: UInt32(kVK_ANSI_Z), label: .character(rawValue))
+        case .leftArrow:
+            KeyMetadata(
+                keyCode: UInt32(kVK_LeftArrow),
+                label: .function(
+                    menu: Self.menuFunctionKeyEquivalent(for: NSLeftArrowFunctionKey, fallback: "←"),
+                    display: "←"
+                )
+            )
+        case .rightArrow:
+            KeyMetadata(
+                keyCode: UInt32(kVK_RightArrow),
+                label: .function(
+                    menu: Self.menuFunctionKeyEquivalent(for: NSRightArrowFunctionKey, fallback: "→"),
+                    display: "→"
+                )
+            )
+        case .upArrow:
+            KeyMetadata(
+                keyCode: UInt32(kVK_UpArrow),
+                label: .function(
+                    menu: Self.menuFunctionKeyEquivalent(for: NSUpArrowFunctionKey, fallback: "↑"),
+                    display: "↑"
+                )
+            )
+        case .downArrow:
+            KeyMetadata(
+                keyCode: UInt32(kVK_DownArrow),
+                label: .function(
+                    menu: Self.menuFunctionKeyEquivalent(for: NSDownArrowFunctionKey, fallback: "↓"),
+                    display: "↓"
+                )
+            )
         }
     }
 

@@ -2,15 +2,19 @@ import AppKit
 
 enum StatusItemTemplateImage {
     private static let canvasSize = NSSize(width: 18, height: 18)
+    private static let resourceCandidates: [(fileExtension: String, subdirectory: String?)] = [
+        ("png", "StatusItem"),
+        ("png", nil),
+        ("pdf", "StatusItem"),
+        ("pdf", nil),
+    ]
 
     static func loadTemplateImage(
         named name: String,
         accessibilityDescription: String
     ) -> NSImage? {
-        let resourceURL = preferredResourceURL(named: name)
-
         guard
-            let resourceURL,
+            let resourceURL = preferredResourceURL(named: name),
             let image = NSImage(contentsOf: resourceURL)
         else {
             return nil
@@ -23,27 +27,12 @@ enum StatusItemTemplateImage {
     }
 
     private static func preferredResourceURL(named name: String) -> URL? {
-        let candidates: [(String, String?)] = [
-            ("png", "StatusItem"),
-            ("png", nil),
-            ("pdf", "StatusItem"),
-            ("pdf", nil),
-        ]
-
-        for (fileExtension, subdirectory) in candidates {
-            let url: URL?
-
-            if let subdirectory {
-                url = Bundle.appResources.url(
-                    forResource: name,
-                    withExtension: fileExtension,
-                    subdirectory: subdirectory
-                )
-            } else {
-                url = Bundle.appResources.url(forResource: name, withExtension: fileExtension)
-            }
-
-            if let url {
+        for candidate in resourceCandidates {
+            if let url = Bundle.appResources.url(
+                forResource: name,
+                withExtension: candidate.fileExtension,
+                subdirectory: candidate.subdirectory
+            ) {
                 return url
             }
         }

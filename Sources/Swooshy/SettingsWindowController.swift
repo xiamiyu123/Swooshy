@@ -210,34 +210,34 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
     var localizationKey: String {
         switch self {
         case .general:
-            return "settings.section.general"
+            "settings.section.general"
         case .gestures:
-            return "settings.section.gestures"
+            "settings.section.gestures"
         case .dockGestures:
-            return "settings.section.dock_gestures"
+            "settings.section.dock_gestures"
         case .titleBarGestures:
-            return "settings.section.title_bar_gestures"
+            "settings.section.title_bar_gestures"
         case .shortcuts:
-            return "settings.section.shortcuts"
+            "settings.section.shortcuts"
         case .advanced:
-            return "settings.section.advanced"
+            "settings.section.advanced"
         }
     }
 
     var systemImage: String {
         switch self {
         case .general:
-            return "gearshape"
+            "gearshape"
         case .gestures:
-            return "hand.draw"
+            "hand.draw"
         case .dockGestures:
-            return "rectangle.bottomthird.inset.filled"
+            "rectangle.bottomthird.inset.filled"
         case .titleBarGestures:
-            return "rectangle.topthird.inset.filled"
+            "rectangle.topthird.inset.filled"
         case .shortcuts:
-            return "command"
+            "command"
         case .advanced:
-            return "gearshape.2"
+            "gearshape.2"
         }
     }
 
@@ -351,18 +351,22 @@ private struct GeneralSettingsPage: View {
 
     private var languageOptions: [SettingsPickerOption<AppLanguage>] {
         AppLanguage.allCases.map { language in
-            SettingsPickerOption(value: language, title: languageTitle(for: language))
+            SettingsPickerOption(
+                value: language,
+                title: language.title(preferredLanguages: preferredLanguages)
+            )
         }
     }
 
     private var statusItemIconOptions: [SettingsPickerOption<StatusItemIcon>] {
         StatusItemIcon.allCases.map { icon in
-            SettingsPickerOption(
+            let title = icon.title(preferredLanguages: preferredLanguages)
+            return SettingsPickerOption(
                 value: icon,
-                title: icon.title(preferredLanguages: preferredLanguages),
+                title: title,
                 systemImage: icon.symbolName,
                 image: icon.symbolName == nil
-                    ? icon.makeImage(accessibilityDescription: icon.title(preferredLanguages: preferredLanguages))
+                    ? icon.makeImage(accessibilityDescription: title)
                     : nil
             )
         }
@@ -379,16 +383,6 @@ private struct GeneralSettingsPage: View {
         }
     }
 
-    private func languageTitle(for language: AppLanguage) -> String {
-        switch language {
-        case .system:
-            return settingsStore.localized("settings.language.system")
-        case .english:
-            return settingsStore.localized("settings.language.english")
-        case .simplifiedChinese:
-            return settingsStore.localized("settings.language.simplified_chinese")
-        }
-    }
 }
 
 private struct GestureSettingsPage: View {
@@ -405,20 +399,14 @@ private struct GestureSettingsPage: View {
     }
 
     private var gesturePreviewItems: [GestureHUDPreviewItem] {
-        [
+        [DockGestureKind.pinchIn, .swipeUp].map { gesture in
             GestureHUDPreviewItem(
                 style: settingsStore.gestureHUDStyle,
-                gesture: .pinchIn,
-                gestureTitle: DockGestureKind.pinchIn.title(preferredLanguages: preferredLanguages),
-                actionTitle: settingsStore.dockGestureAction(for: .pinchIn).title(preferredLanguages: preferredLanguages)
-            ),
-            GestureHUDPreviewItem(
-                style: settingsStore.gestureHUDStyle,
-                gesture: .swipeUp,
-                gestureTitle: DockGestureKind.swipeUp.title(preferredLanguages: preferredLanguages),
-                actionTitle: settingsStore.dockGestureAction(for: .swipeUp).title(preferredLanguages: preferredLanguages)
-            ),
-        ]
+                gesture: gesture,
+                gestureTitle: gesture.title(preferredLanguages: preferredLanguages),
+                actionTitle: settingsStore.dockGestureAction(for: gesture).title(preferredLanguages: preferredLanguages)
+            )
+        }
     }
 
     var body: some View {
@@ -440,19 +428,21 @@ private struct DockGestureMappingsPage: View {
     }
 
     private var rows: [GestureActionRowModel<DockGestureKind, DockGestureAction>] {
-        DockGestureKind.allCases.map { gesture in
+        let availableActions = settingsStore.availableDockGestureActions.map { action in
+            SettingsPickerOption(
+                value: action,
+                title: action.title(preferredLanguages: preferredLanguages),
+                isDisabled: action == .closeTab && !settingsStore.experimentalBrowserTabCloseEnabled
+            )
+        }
+
+        return DockGestureKind.allCases.map { gesture in
             GestureActionRowModel(
                 gesture: gesture,
                 title: gesture.title(preferredLanguages: preferredLanguages),
                 isEnabled: settingsStore.dockGestureIsEnabled(for: gesture),
                 selectedAction: settingsStore.dockGestureAction(for: gesture),
-                availableActions: settingsStore.availableDockGestureActions.map {
-                    SettingsPickerOption(
-                        value: $0,
-                        title: $0.title(preferredLanguages: preferredLanguages),
-                        isDisabled: $0 == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false
-                    )
-                }
+                availableActions: availableActions
             )
         }
     }
@@ -475,20 +465,22 @@ private struct TitleBarGestureMappingsPage: View {
     }
 
     private var rows: [GestureActionRowModel<DockGestureKind, WindowAction>] {
-        TitleBarGestureBindings.supportedGestures.map { gesture in
+        let availableActions = settingsStore.availableWindowGestureActions.map { action in
+            SettingsPickerOption(
+                value: action,
+                title: action.title(preferredLanguages: preferredLanguages),
+                isDisabled: action == .closeTab && !settingsStore.experimentalBrowserTabCloseEnabled
+            )
+        }
+
+        return TitleBarGestureBindings.supportedGestures.map { gesture in
             GestureActionRowModel(
                 gesture: gesture,
                 title: gesture.title(preferredLanguages: preferredLanguages),
                 isEnabled: settingsStore.titleBarGestureIsEnabled(for: gesture),
                 selectedAction: settingsStore.titleBarGestureAction(for: gesture)
                     ?? TitleBarGestureBindings.fallbackBinding(for: gesture).action,
-                availableActions: settingsStore.availableWindowGestureActions.map {
-                    SettingsPickerOption(
-                        value: $0,
-                        title: $0.title(preferredLanguages: preferredLanguages),
-                        isDisabled: $0 == .closeTab && settingsStore.experimentalBrowserTabCloseEnabled == false
-                    )
-                }
+                availableActions: availableActions
             )
         }
     }
@@ -569,10 +561,11 @@ enum HotKeySettingsRowFactory {
         settingsStore: SettingsStore,
         registrationStatusStore: HotKeyRegistrationStatusStore
     ) -> [HotKeyRowModel] {
-        settingsStore.availableWindowActions.map { action in
+        let preferredLanguages = settingsStore.preferredLanguages
+        return settingsStore.availableWindowActions.map { action in
             HotKeyRowModel(
                 action: action,
-                title: action.title(preferredLanguages: settingsStore.preferredLanguages),
+                title: action.title(preferredLanguages: preferredLanguages),
                 binding: settingsStore.hotKeyBinding(for: action),
                 registrationFailure: registrationStatusStore.failure(for: action)
             )
@@ -615,7 +608,7 @@ private struct GeneralSettingsSection: View {
                 Text(settingsStore.localized("settings.launch_at_login.footer"))
 
                 if let statusMessage = launchAtLoginController.statusMessage,
-                   statusMessage.isEmpty == false {
+                   !statusMessage.isEmpty {
                     Text(statusMessage)
                 }
             }
@@ -821,7 +814,7 @@ private struct AdvancedSettingsPage: View {
                     range: SettingsStore.minimumTitleBarTriggerHeight ... SettingsStore.maximumTitleBarTriggerHeight,
                     step: 1
                 )
-                .disabled(settingsStore.titleBarGesturesEnabled == false)
+                .disabled(!settingsStore.titleBarGesturesEnabled)
 
                 DurationSlider(
                     label: settingsStore.localized("settings.advanced.corner_drag_hold_duration.label"),
@@ -830,8 +823,8 @@ private struct AdvancedSettingsPage: View {
                     step: 0.1
                 )
                 .disabled(
-                    (settingsStore.dockGesturesEnabled == false || settingsStore.dockCornerDragSnapEnabled == false) &&
-                        (settingsStore.titleBarGesturesEnabled == false || settingsStore.titleBarCornerDragSnapEnabled == false)
+                    (!settingsStore.dockGesturesEnabled || !settingsStore.dockCornerDragSnapEnabled) &&
+                        (!settingsStore.titleBarGesturesEnabled || !settingsStore.titleBarCornerDragSnapEnabled)
                 )
             }
 
@@ -849,7 +842,7 @@ private struct AdvancedSettingsPage: View {
                     lowLabel: settingsStore.localized("settings.advanced.sensitivity.low"),
                     highLabel: settingsStore.localized("settings.advanced.sensitivity.high")
                 )
-                .disabled(settingsStore.reverseCancelEnabled == false)
+                .disabled(!settingsStore.reverseCancelEnabled)
 
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.advanced.reverse_cancel.footer"))
@@ -861,7 +854,7 @@ private struct AdvancedSettingsPage: View {
                     settingsStore.localized("settings.advanced.title_bar_overlay_protection.enabled"),
                     isOn: $settingsStore.titleBarOverlayProtectionEnabled
                 )
-                .disabled(settingsStore.titleBarGesturesEnabled == false)
+                .disabled(!settingsStore.titleBarGesturesEnabled)
 
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.advanced.title_bar_overlay_protection.footer"))
@@ -871,7 +864,7 @@ private struct AdvancedSettingsPage: View {
                     settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.enabled"),
                     isOn: $settingsStore.smartPinchExitFullScreenEnabled
                 )
-                .disabled(settingsStore.titleBarGesturesEnabled == false)
+                .disabled(!settingsStore.titleBarGesturesEnabled)
 
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.footer"))
@@ -928,7 +921,7 @@ private struct AdvancedSettingsPage: View {
                     settingsStore.localized("settings.experimental.smart_browser_tab_close.enabled"),
                     isOn: $settingsStore.smartBrowserTabCloseEnabled
                 )
-                .disabled(settingsStore.experimentalBrowserTabCloseEnabled == false)
+                .disabled(!settingsStore.experimentalBrowserTabCloseEnabled)
 
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.experimental.smart_browser_tab_close.footer"))
@@ -938,7 +931,7 @@ private struct AdvancedSettingsPage: View {
                     settingsStore.localized("settings.experimental.pinch_close_confirmation.enabled"),
                     isOn: $settingsStore.pinchCloseConfirmationEnabled
                 )
-                .disabled(settingsStore.experimentalBrowserTabCloseEnabled == false)
+                .disabled(!settingsStore.experimentalBrowserTabCloseEnabled)
 
                 SettingsHintGroup {
                     Text(settingsStore.localized("settings.experimental.pinch_close_confirmation.footer"))
@@ -1069,11 +1062,11 @@ private struct DockGestureMappingsSection: View {
                 settingsStore.localized("settings.dock_gestures.corner_drag.enabled"),
                 isOn: $settingsStore.dockCornerDragSnapEnabled
             )
-            .disabled(settingsStore.dockGesturesEnabled == false)
+            .disabled(!settingsStore.dockGesturesEnabled)
 
             SettingsMappingCard {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    DockGestureActionRow(
+                    GestureActionRow(
                         row: row,
                         isSectionEnabled: settingsStore.dockGesturesEnabled,
                         toggleBinding: Binding(
@@ -1095,7 +1088,7 @@ private struct DockGestureMappingsSection: View {
             Button(settingsStore.localized("settings.dock_gestures.reset")) {
                 settingsStore.resetDockGestureActionsToDefaults()
             }
-            .disabled(settingsStore.dockGesturesEnabled == false)
+            .disabled(!settingsStore.dockGesturesEnabled)
             .padding(.top, 2)
 
             Text(settingsStore.localized("settings.dock_gestures.footer"))
@@ -1118,11 +1111,11 @@ private struct TitleBarGestureMappingsSection: View {
                 settingsStore.localized("settings.title_bar_gestures.corner_drag.enabled"),
                 isOn: $settingsStore.titleBarCornerDragSnapEnabled
             )
-            .disabled(settingsStore.titleBarGesturesEnabled == false)
+            .disabled(!settingsStore.titleBarGesturesEnabled)
 
             SettingsMappingCard {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    TitleBarGestureActionRow(
+                    GestureActionRow(
                         row: row,
                         isSectionEnabled: settingsStore.titleBarGesturesEnabled,
                         toggleBinding: Binding(
@@ -1147,7 +1140,7 @@ private struct TitleBarGestureMappingsSection: View {
             Button(settingsStore.localized("settings.title_bar_gestures.reset")) {
                 settingsStore.resetTitleBarGestureActionsToDefaults()
             }
-            .disabled(settingsStore.titleBarGesturesEnabled == false)
+            .disabled(!settingsStore.titleBarGesturesEnabled)
             .padding(.top, 2)
 
             Text(settingsStore.localized("settings.title_bar_gestures.footer"))
@@ -1269,11 +1262,11 @@ private final class GestureHUDPreviewSnapshotCache {
     }
 }
 
-private struct DockGestureActionRow: View {
-    let row: GestureActionRowModel<DockGestureKind, DockGestureAction>
+private struct GestureActionRow<Action: Hashable>: View {
+    let row: GestureActionRowModel<DockGestureKind, Action>
     let isSectionEnabled: Bool
     let toggleBinding: Binding<Bool>
-    let actionBinding: Binding<DockGestureAction>
+    let actionBinding: Binding<Action>
 
     var body: some View {
         HStack(spacing: 20) {
@@ -1291,38 +1284,9 @@ private struct DockGestureActionRow: View {
             .pickerStyle(.menu)
             .labelsHidden()
             .frame(width: 220)
-            .disabled(isSectionEnabled == false || row.isEnabled == false)
+            .disabled(!isSectionEnabled || !row.isEnabled)
         }
-        .disabled(isSectionEnabled == false)
-        .padding(.vertical, 14)
-    }
-}
-
-private struct TitleBarGestureActionRow: View {
-    let row: GestureActionRowModel<DockGestureKind, WindowAction>
-    let isSectionEnabled: Bool
-    let toggleBinding: Binding<Bool>
-    let actionBinding: Binding<WindowAction>
-
-    var body: some View {
-        HStack(spacing: 20) {
-            Toggle(row.title, isOn: toggleBinding)
-                .toggleStyle(.switch)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Picker("", selection: actionBinding) {
-                ForEach(row.availableActions) { option in
-                    Text(option.title)
-                        .tag(option.value)
-                        .disabled(option.isDisabled)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(width: 220)
-            .disabled(isSectionEnabled == false || row.isEnabled == false)
-        }
-        .disabled(isSectionEnabled == false)
+        .disabled(!isSectionEnabled)
         .padding(.vertical, 14)
     }
 }

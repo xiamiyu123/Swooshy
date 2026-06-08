@@ -19,36 +19,43 @@ enum DebugLog {
     private static let fileSink = DebugLogFileSink()
 
     static func debug(_ channel: Channel, _ message: @autoclosure () -> String) {
-        guard isEnabled else { return }
-        let rendered = message()
-        channel.logger.debug("\(rendered, privacy: .public)")
-        writeToFile(level: "DEBUG", channel: channel, message: rendered)
+        log(level: "DEBUG", channel: channel, message: message) {
+            channel.logger.debug("\($0, privacy: .public)")
+        }
     }
 
     static func info(_ channel: Channel, _ message: @autoclosure () -> String) {
-        guard isEnabled else { return }
-        let rendered = message()
-        channel.logger.info("\(rendered, privacy: .public)")
-        writeToFile(level: "INFO", channel: channel, message: rendered)
+        log(level: "INFO", channel: channel, message: message) {
+            channel.logger.info("\($0, privacy: .public)")
+        }
     }
 
     static func error(_ channel: Channel, _ message: @autoclosure () -> String) {
-        guard isEnabled else { return }
-        let rendered = message()
-        channel.logger.error("\(rendered, privacy: .public)")
-        writeToFile(level: "ERROR", channel: channel, message: rendered)
+        log(level: "ERROR", channel: channel, message: message) {
+            channel.logger.error("\($0, privacy: .public)")
+        }
     }
 
     static var logFilePathDescription: String {
         fileSink.currentLogFileURL.path
     }
 
-    private static var isEnabled: Bool {
-        if ProcessInfo.processInfo.environment["SWOOSHY_DEBUG_LOGS"] == "1" {
-            return true
-        }
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment["SWOOSHY_DEBUG_LOGS"] == "1" ||
+            UserDefaults.standard.bool(forKey: "settings.debugLoggingEnabled")
+    }
 
-        return UserDefaults.standard.bool(forKey: "settings.debugLoggingEnabled")
+    private static func log(
+        level: String,
+        channel: Channel,
+        message: () -> String,
+        emit: (String) -> Void
+    ) {
+        guard isEnabled else { return }
+
+        let rendered = message()
+        emit(rendered)
+        writeToFile(level: level, channel: channel, message: rendered)
     }
 
     private static func writeToFile(level: String, channel: Channel, message: String) {
@@ -153,16 +160,14 @@ actor DebugLogFileSink {
         var retainedArchiveURLs: [(url: URL, date: Date)] = []
 
         for archiveURL in archiveURLs {
-            if let modificationDate = modificationDate(for: archiveURL) {
-                if modificationDate < expiredCutoff {
-                    try fileManager.removeItem(at: archiveURL)
-                    continue
-                }
+            let modificationDate = modificationDate(for: archiveURL) ?? .distantPast
 
-                retainedArchiveURLs.append((archiveURL, modificationDate))
-            } else {
-                retainedArchiveURLs.append((archiveURL, .distantPast))
+            guard modificationDate >= expiredCutoff else {
+                try fileManager.removeItem(at: archiveURL)
+                continue
             }
+
+            retainedArchiveURLs.append((archiveURL, modificationDate))
         }
 
         if retainedArchiveURLs.count <= maximumArchivedLogCount {
@@ -190,7 +195,7 @@ actor DebugLogFileSink {
 
         try ensureLogDirectoryExists()
 
-        if fileManager.fileExists(atPath: currentLogFileURL.path) == false {
+        if !fileManager.fileExists(atPath: currentLogFileURL.path) {
             let created = fileManager.createFile(atPath: currentLogFileURL.path, contents: nil)
             guard created else {
                 throw NSError(
@@ -216,12 +221,8 @@ actor DebugLogFileSink {
     }
 
     private func currentLogFileSize() -> Int64? {
-        guard let attributes = try? fileManager.attributesOfItem(atPath: currentLogFileURL.path),
-              let fileSize = attributes[.size] as? NSNumber else {
-            return nil
-        }
-
-        return fileSize.int64Value
+        let values = try? currentLogFileURL.resourceValues(forKeys: [.fileSizeKey])
+        return values?.fileSize.map(Int64.init)
     }
 
     private func archivedLogURLs() -> [URL] {
@@ -232,9 +233,11 @@ actor DebugLogFileSink {
             return []
         }
 
-        return contents.filter { url in
-            url.lastPathComponent.hasPrefix("debug-") && url.pathExtension == "log"
-        }
+        return contents.filter(isArchivedLogURL)
+    }
+
+    private func isArchivedLogURL(_ url: URL) -> Bool {
+        url.lastPathComponent.hasPrefix("debug-") && url.pathExtension == "log"
     }
 
     private func modificationDate(for url: URL) -> Date? {

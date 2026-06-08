@@ -10,20 +10,24 @@ struct LaunchOptions: Equatable {
     let previewHotKeyRegistrationFailure: Bool
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
-        self.resetUserConfiguration = arguments.contains(Self.resetUserConfigurationArgument)
-        self.clearCache = arguments.contains(Self.clearCacheArgument)
-        self.previewHotKeyRegistrationFailure = arguments.contains(
+        let argumentSet = Set(arguments)
+
+        self.resetUserConfiguration = argumentSet.contains(Self.resetUserConfigurationArgument)
+        self.clearCache = argumentSet.contains(Self.clearCacheArgument)
+        self.previewHotKeyRegistrationFailure = argumentSet.contains(
             Self.previewHotKeyRegistrationFailureArgument
         )
     }
 
     @MainActor
     func apply(userDefaults: UserDefaults = .standard) {
+        let clearObservedConstraints = clearCache || resetUserConfiguration
+
         if resetUserConfiguration {
             SettingsStore.resetPersistedConfiguration(in: userDefaults)
         }
 
-        if clearCache || resetUserConfiguration {
+        if clearObservedConstraints {
             ObservedWindowConstraintStore.resetPersistedConstraints(in: userDefaults)
         }
     }

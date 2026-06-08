@@ -196,7 +196,7 @@ final class GlobalHotKeyController {
             var hotKeyRef: EventHotKeyRef?
             let hotKeyID = EventHotKeyID(
                 signature: hotKeySignature,
-                id: UInt32(binding.action.rawValue + 1)
+                id: UInt32(action.rawValue + 1)
             )
 
             let status = hotKeyRegistrar.registerHotKey(
@@ -207,24 +207,25 @@ final class GlobalHotKeyController {
                 options: 0,
                 hotKeyRef: &hotKeyRef
             )
+            let actionTitle = action.title(preferredLanguages: settingsStore.preferredLanguages)
 
             if status == noErr {
                 hotKeyRefs.append(hotKeyRef)
                 DebugLog.debug(
                     DebugLog.hotkeys,
-                    "Registered hotkey for \(binding.action.title(preferredLanguages: settingsStore.preferredLanguages)) as \(binding.modifiers.displayString)\(binding.menuDisplayKey)"
+                    "Registered hotkey for \(actionTitle) as \(binding.modifiers.displayString)\(binding.menuDisplayKey)"
                 )
             } else {
                 registrationStatusStore.recordFailure(
                     HotKeyRegistrationFailure(
-                        action: binding.action,
+                        action: action,
                         binding: binding,
                         status: status
                     )
                 )
                 DebugLog.error(
                     DebugLog.hotkeys,
-                    "Failed to register hotkey for \(binding.action.title(preferredLanguages: settingsStore.preferredLanguages)) with status \(status)"
+                    "Failed to register hotkey for \(actionTitle) with status \(status)"
                 )
             }
         }
@@ -243,14 +244,15 @@ final class GlobalHotKeyController {
     private func handleHotKey(withID identifier: UInt32) {
         guard settingsStore.hotKeysEnabled else { return }
         guard let action = WindowAction(rawValue: Int(identifier - 1)) else { return }
+        let actionTitle = action.title(preferredLanguages: settingsStore.preferredLanguages)
         guard settingsStore.isWindowActionAvailable(action) else {
             DebugLog.info(
                 DebugLog.hotkeys,
-                "Ignoring unavailable hotkey action \(action.title(preferredLanguages: settingsStore.preferredLanguages))"
+                "Ignoring unavailable hotkey action \(actionTitle)"
             )
             return
         }
-        DebugLog.info(DebugLog.hotkeys, "Triggered hotkey for action \(action.title(preferredLanguages: settingsStore.preferredLanguages))")
+        DebugLog.info(DebugLog.hotkeys, "Triggered hotkey for action \(actionTitle)")
 
         do {
             try windowActionRunner.run(action)

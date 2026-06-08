@@ -39,7 +39,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     func shutdown() {
-        guard isShuttingDown == false else { return }
+        guard !isShuttingDown else { return }
         isShuttingDown = true
 
         if let settingsObserver {
@@ -108,9 +108,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             collapseWindowActions: settingsStore.collapseStatusItemWindowActions,
             windowActions: settingsStore.availableWindowActions,
             preferredLanguages: settingsStore.preferredLanguages,
-            hotKeyIssueForAction: { [hotKeyRegistrationStatusStore] action in
-                hotKeyRegistrationStatusStore.issueKind(for: action)
-            }
+            hotKeyIssueForAction: hotKeyIssue(for:)
         )
 
         for entry in entries {
@@ -126,11 +124,11 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         ) { [weak self] notification in
             let categories = notification.settingsChangeCategories
             MainActor.assumeIsolated {
-                if categories.intersection([.localization, .statusItemAppearance]).isEmpty == false {
+                if !categories.intersection([.localization, .statusItemAppearance]).isEmpty {
                     self?.updateStatusItemAppearance()
                 }
 
-                if categories.intersection([.localization, .statusMenu]).isEmpty == false {
+                if !categories.intersection([.localization, .statusMenu]).isEmpty {
                     self?.rebuildMenu()
                 }
             }
@@ -151,16 +149,17 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
     @objc
     private func runWindowAction(_ sender: NSMenuItem) {
-        guard handleMissingPermissionFallback(for: "window action") == false else { return }
+        guard !handleMissingPermissionFallback(for: "window action") else { return }
         guard let action = sender.representedObject as? WindowAction else { return }
+        let actionTitle = action.title(preferredLanguages: settingsStore.preferredLanguages)
         guard settingsStore.isWindowActionAvailable(action) else {
             DebugLog.info(
                 DebugLog.app,
-                "Ignoring unavailable menu action \(action.title(preferredLanguages: settingsStore.preferredLanguages))"
+                "Ignoring unavailable menu action \(actionTitle)"
             )
             return
         }
-        DebugLog.info(DebugLog.app, "Menu triggered action \(action.title(preferredLanguages: settingsStore.preferredLanguages))")
+        DebugLog.info(DebugLog.app, "Menu triggered action \(actionTitle)")
 
         do {
             try windowActionRunner.run(action)
@@ -190,8 +189,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     private func handleMissingPermissionFallback(for actionName: String) -> Bool {
-        let permissionGranted = permissionManager.isTrusted(promptIfNeeded: false)
-        guard permissionGranted == false else {
+        guard !permissionManager.isTrusted(promptIfNeeded: false) else {
             return false
         }
 
@@ -205,7 +203,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     private func menuItem(for entry: StatusMenuEntry, permissionGranted: Bool) -> NSMenuItem {
-        let enforcePermissionLock = permissionGranted == false
+        let enforcePermissionLock = !permissionGranted
 
         switch entry.kind {
         case .separator:
@@ -292,20 +290,22 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         let submenu = NSMenu()
         submenu.autoenablesItems = false
 
-        let entries = settingsStore.availableWindowActions.map { action in
-            StatusMenuEntry(
-                kind: .windowAction(action),
-                title: action.title(preferredLanguages: settingsStore.preferredLanguages),
-                isEnabled: permissionGranted,
-                hotKeyIssue: hotKeyRegistrationStatusStore.issueKind(for: action)
-            )
-        }
+        let entries = menuContentBuilder.makeWindowActionEntries(
+            permissionGranted: permissionGranted,
+            windowActions: settingsStore.availableWindowActions,
+            preferredLanguages: settingsStore.preferredLanguages,
+            hotKeyIssueForAction: hotKeyIssue(for:)
+        )
 
         for entry in entries {
             submenu.addItem(menuItem(for: entry, permissionGranted: permissionGranted))
         }
 
         return submenu
+    }
+
+    private func hotKeyIssue(for action: WindowAction) -> HotKeyRegistrationIssueKind? {
+        hotKeyRegistrationStatusStore.issueKind(for: action)
     }
 
     private func menuTitle(for entry: StatusMenuEntry) -> String {

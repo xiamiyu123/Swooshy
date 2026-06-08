@@ -1,8 +1,6 @@
 import Foundation
 
 enum L10n {
-    private static let resourceBundleName = "Swooshy_Swooshy.bundle"
-
     nonisolated(unsafe) private static var preferredLanguagesOverride: [String]?
 
     static func setPreferredLanguagesOverride(_ languages: [String]?) {
@@ -35,19 +33,8 @@ enum L10n {
             preferredLanguages: preferredLanguages
         )
 
-        let candidates = preferences + ["en", resourcesBundle.localizations.first].compactMap { $0 }
-        
-        for candidate in candidates {
-            if let match = resourcesBundle.localizations.first(where: {
-                $0.compare(candidate, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-            }),
-            let path = resourcesBundle.path(forResource: match, ofType: "lproj"),
-            let bundle = Bundle(path: path) {
-                return bundle
-            }
-        }
-
-        return resourcesBundle
+        let candidates = preferences + fallbackLocalizationCandidates
+        return localizedBundle(for: candidates) ?? resourcesBundle
     }
 
     static func localization(
@@ -66,11 +53,9 @@ enum L10n {
             return preferredLocalization
         }
 
-        for candidate in preferences {
-            if let match = resourcesBundle.localizations.first(where: {
-                $0.compare(candidate, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-            }) {
-                return match
+        for preference in preferences {
+            if let localization = matchingLocalization(for: preference) {
+                return localization
             }
         }
 
@@ -81,26 +66,58 @@ enum L10n {
         explicitLocaleIdentifier: String?,
         preferredLanguages: [String]?
     ) -> [String] {
-        let basePreferences = explicitLocaleIdentifier.map { [$0] } ?? preferredLanguages ?? preferredLanguagesOverride ?? Locale.preferredLanguages
+        let basePreferences =
+            explicitLocaleIdentifier.map { [$0] }
+            ?? preferredLanguages
+            ?? preferredLanguagesOverride
+            ?? Locale.preferredLanguages
 
-        return basePreferences.flatMap { identifier in
-            let normalizedIdentifier = identifier.replacingOccurrences(of: "_", with: "-")
-            let locale = Locale(identifier: normalizedIdentifier)
-            let languageCode = locale.language.languageCode?.identifier
-            let scriptCode = locale.language.script?.identifier
+        return basePreferences.flatMap(localePreferenceCandidates)
+    }
 
-            let candidates: [String?] = [
-                normalizedIdentifier,
-                normalizedIdentifier.lowercased(),
-                [languageCode, scriptCode].compactMap { $0 }.joined(separator: "-"),
-                languageCode,
-            ]
+    private static var fallbackLocalizationCandidates: [String] {
+        ["en", resourcesBundle.localizations.first].compactMap { $0 }
+    }
 
-            return candidates.compactMap { (candidate: String?) -> String? in
-                guard let candidate, !candidate.isEmpty else { return nil }
-                return candidate
+    private static func localePreferenceCandidates(for identifier: String) -> [String] {
+        let normalizedIdentifier = identifier.replacingOccurrences(of: "_", with: "-")
+        let locale = Locale(identifier: normalizedIdentifier)
+        let languageCode = locale.language.languageCode?.identifier
+        let scriptCode = locale.language.script?.identifier
+
+        let candidates: [String?] = [
+            normalizedIdentifier,
+            normalizedIdentifier.lowercased(),
+            [languageCode, scriptCode].compactMap { $0 }.joined(separator: "-"),
+            languageCode,
+        ]
+
+        return candidates
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func matchingLocalization(for candidate: String) -> String? {
+        resourcesBundle.localizations.first {
+            $0.compare(candidate, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+    }
+
+    private static func localizedBundle(for candidates: [String]) -> Bundle? {
+        for candidate in candidates {
+            guard
+                let localization = matchingLocalization(for: candidate),
+                let url = resourcesBundle.url(forResource: localization, withExtension: "lproj")
+            else {
+                continue
+            }
+
+            if let bundle = Bundle(url: url) {
+                return bundle
             }
         }
+
+        return nil
     }
 
     private static let resourcesBundle: Bundle = .appResources

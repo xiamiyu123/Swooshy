@@ -198,8 +198,8 @@
 "settings.experimental.browser_tab_close.footer" = "允许将手势映射为「关闭标签页」。\n\n原理：Swooshy 会在对应位置模拟鼠标中键点击。使用该功能前请确保目标应用支持「鼠标中键关闭标签页」，且没有其它鼠标按键映射冲突。";
 "settings.experimental.smart_browser_tab_close.enabled" = "智能关闭标签页";
 "settings.experimental.smart_browser_tab_close.footer" = "在对受支持的浏览器，或受支持的 VSCode 系编辑器执行「关闭窗口」或「退出应用」手势时，如果指针正好悬停在某个标签页上，Swooshy 会仅关闭该标签页，而不是关闭整个窗口或退出应用。如果指针不在任何标签页上，则回退执行正常的关闭或退出操作。理论支持 Safari、Chrome、Edge、Firefox等浏览器，以及 Visual Studio Code、Cursor、Antigravity等基于 VSCode 的代码编辑器。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
-"settings.experimental.pinch_close_confirmation.enabled" = "确认标题栏关闭窗口";
-"settings.experimental.pinch_close_confirmation.footer" = "启用后，在受支持的浏览器或 VSCode 系编辑器中，标题栏捏合手势映射为「关闭窗口」时，会先显示确认提示。此开关不作用于 Dock 手势或「退出应用」。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
+"settings.experimental.pinch_close_confirmation.enabled" = "标题栏捏合关闭窗口需二次确认";
+"settings.experimental.pinch_close_confirmation.footer" = "启用后，在受支持的浏览器或 VSCode 系编辑器中，如果标题栏捏合手势映射为「关闭窗口」，Swooshy 会先显示确认提示；再次执行同一个捏合手势才会真正关闭窗口。此开关不作用于 Dock 手势或「退出应用」。\n\n注意：实验性功能不保证可用性，且可能存在不稳定性。";
 "settings.experimental.opt_in_persistence.footer" = "注意：重置用户配置时，会保留你对实验性功能的启用状态。";
 
 "guide.page.experimental.title" = "实验性功能";
@@ -207,7 +207,7 @@
 "guide.page.experimental.bullet1" = "智能关闭标签页：在受支持的浏览器，或受支持的 VSCode 系编辑器上做关闭或退出手势时，Swooshy 会检测指针是否正悬停在某个标签页上，如果是，则通过模拟鼠标中键点击精准关闭该标签页。";
 "guide.page.experimental.bullet2" = "如果指针不在任何标签页上，手势会回退为正常的关闭窗口或退出应用操作。";
 "guide.page.experimental.bullet3" = "理论支持主流浏览器，也支持 Visual Studio Code、Cursor、反重力等 VSCode 系编辑器。(其中 Safari 仅支持顶栏，不支持侧边栏)。";
-"guide.page.experimental.bullet4" = "标题栏关闭确认：在受支持的浏览器或编辑器中，用标题栏捏合手势关闭窗口时，Swooshy 会先弹出确认提示，再次捏合即可确认操作，等待超时则自动取消。";
+"guide.page.experimental.bullet4" = "标题栏捏合关闭窗口需二次确认：在受支持的浏览器或编辑器中，用标题栏捏合手势关闭窗口时，Swooshy 会先弹出确认提示；再次执行同一个捏合手势才会真正关闭窗口，等待超时则自动取消。";
 "guide.page.experimental.bullet5" = "显示器移动动作：允许在快捷键和手势映射中使用「移动到下一台显示器」与「移动到上一台显示器」。";
 "confirmation.pinch_again.close_window" = "再次捏合关闭窗口";
 "confirmation.pinch_again.quit_application" = "再次捏合退出应用";
@@ -222,3 +222,4 @@
 "error.quit_application_failed" = "无法退出该应用。";
 "error.enumerate_windows_failed" = "无法读取当前前台应用的窗口列表。";
 "error.no_alternate_window" = "当前应用没有可切换的其他窗口。";
+"error.no_other_display" = "当前没有其他显示器可用于此操作。";
