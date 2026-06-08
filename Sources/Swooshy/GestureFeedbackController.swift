@@ -394,7 +394,7 @@ final class GestureFeedbackController: GestureFeedbackPresenting {
         previewPanel.animator().alphaValue = preview != nil && persistent ? 1 : 0
         panel.animator().alphaValue = 1
 
-        guard persistent == false else {
+        guard !persistent else {
             // In persistent mode the HUD stays visible until dismiss() is called.
             return
         }
@@ -548,7 +548,7 @@ private final class GestureSnapPreviewView: NSView {
 
         guard let preview else { return }
         let previewRect = bounds.insetBy(dx: strokeWidth / 2, dy: strokeWidth / 2)
-        guard previewRect.isEmpty == false else { return }
+        guard !previewRect.isEmpty else { return }
 
         switch preview.style {
         case .area:
@@ -620,7 +620,7 @@ private final class GestureGlyphView: NSView {
             from: rect.insetBy(dx: strokePadding + 0.5, dy: strokePadding + 0.5),
             minimumSize: 8
         )
-        guard glyphRect.isEmpty == false else { return }
+        guard !glyphRect.isEmpty else { return }
 
         if secondaryColor.alphaComponent > 0.01, glowLineWidth > lineWidth {
             let glowPath = gestureArrowPath(in: glyphRect, lineWidth: glowLineWidth)
@@ -635,7 +635,7 @@ private final class GestureGlyphView: NSView {
 
     private func drawTrackpadGlyph(in rect: NSRect) {
         let trackpadRect = sanitizedRect(from: rect.insetBy(dx: 3, dy: 5), minimumSize: 18)
-        guard trackpadRect.isEmpty == false else { return }
+        guard !trackpadRect.isEmpty else { return }
 
         let platePath = NSBezierPath(roundedRect: trackpadRect, xRadius: 8, yRadius: 8)
         secondaryColor.setFill()
@@ -646,7 +646,7 @@ private final class GestureGlyphView: NSView {
         platePath.stroke()
 
         let arrowRect = sanitizedRect(from: trackpadRect.insetBy(dx: 4, dy: 4), minimumSize: 10)
-        guard arrowRect.isEmpty == false else { return }
+        guard !arrowRect.isEmpty else { return }
 
         let arrow = gestureArrowPath(in: arrowRect, lineWidth: 2.3)
         primaryColor.setStroke()
@@ -663,34 +663,38 @@ private final class GestureGlyphView: NSView {
             case .swipeLeft:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.84, y: 0.5),
-                    to: point(in: rect, x: 0.18, y: 0.5),
-                    wingA: point(in: rect, x: 0.42, y: 0.26),
-                    wingB: point(in: rect, x: 0.42, y: 0.74)
+                    in: rect,
+                    from: (0.84, 0.5),
+                    to: (0.18, 0.5),
+                    wingA: (0.42, 0.26),
+                    wingB: (0.42, 0.74)
                 )
             case .swipeRight:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.16, y: 0.5),
-                    to: point(in: rect, x: 0.82, y: 0.5),
-                    wingA: point(in: rect, x: 0.58, y: 0.26),
-                    wingB: point(in: rect, x: 0.58, y: 0.74)
+                    in: rect,
+                    from: (0.16, 0.5),
+                    to: (0.82, 0.5),
+                    wingA: (0.58, 0.26),
+                    wingB: (0.58, 0.74)
                 )
             case .swipeUp:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.5, y: 0.84),
-                    to: point(in: rect, x: 0.5, y: 0.18),
-                    wingA: point(in: rect, x: 0.26, y: 0.42),
-                    wingB: point(in: rect, x: 0.74, y: 0.42)
+                    in: rect,
+                    from: (0.5, 0.84),
+                    to: (0.5, 0.18),
+                    wingA: (0.26, 0.42),
+                    wingB: (0.74, 0.42)
                 )
             case .swipeDown:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.5, y: 0.16),
-                    to: point(in: rect, x: 0.5, y: 0.82),
-                    wingA: point(in: rect, x: 0.26, y: 0.58),
-                    wingB: point(in: rect, x: 0.74, y: 0.58)
+                    in: rect,
+                    from: (0.5, 0.16),
+                    to: (0.5, 0.82),
+                    wingA: (0.26, 0.58),
+                    wingB: (0.74, 0.58)
                 )
             case .pinchIn:
                 addLine(to: path, from: point(in: rect, x: 0.12, y: 0.18), to: point(in: rect, x: 0.38, y: 0.4))
@@ -700,17 +704,19 @@ private final class GestureGlyphView: NSView {
             case .pinchOut:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.42, y: 0.5),
-                    to: point(in: rect, x: 0.16, y: 0.5),
-                    wingA: point(in: rect, x: 0.34, y: 0.36),
-                    wingB: point(in: rect, x: 0.34, y: 0.64)
+                    in: rect,
+                    from: (0.42, 0.5),
+                    to: (0.16, 0.5),
+                    wingA: (0.34, 0.36),
+                    wingB: (0.34, 0.64)
                 )
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.58, y: 0.5),
-                    to: point(in: rect, x: 0.84, y: 0.5),
-                    wingA: point(in: rect, x: 0.66, y: 0.36),
-                    wingB: point(in: rect, x: 0.66, y: 0.64)
+                    in: rect,
+                    from: (0.58, 0.5),
+                    to: (0.84, 0.5),
+                    wingA: (0.66, 0.36),
+                    wingB: (0.66, 0.64)
                 )
             }
         case .diagonal(let direction):
@@ -718,64 +724,72 @@ private final class GestureGlyphView: NSView {
             case .topLeft:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.82, y: 0.82),
-                    to: point(in: rect, x: 0.2, y: 0.2),
-                    wingA: point(in: rect, x: 0.5, y: 0.2),
-                    wingB: point(in: rect, x: 0.2, y: 0.5)
+                    in: rect,
+                    from: (0.82, 0.82),
+                    to: (0.2, 0.2),
+                    wingA: (0.5, 0.2),
+                    wingB: (0.2, 0.5)
                 )
             case .topRight:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.18, y: 0.82),
-                    to: point(in: rect, x: 0.8, y: 0.2),
-                    wingA: point(in: rect, x: 0.5, y: 0.2),
-                    wingB: point(in: rect, x: 0.8, y: 0.5)
+                    in: rect,
+                    from: (0.18, 0.82),
+                    to: (0.8, 0.2),
+                    wingA: (0.5, 0.2),
+                    wingB: (0.8, 0.5)
                 )
             case .bottomLeft:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.82, y: 0.18),
-                    to: point(in: rect, x: 0.2, y: 0.8),
-                    wingA: point(in: rect, x: 0.2, y: 0.5),
-                    wingB: point(in: rect, x: 0.5, y: 0.8)
+                    in: rect,
+                    from: (0.82, 0.18),
+                    to: (0.2, 0.8),
+                    wingA: (0.2, 0.5),
+                    wingB: (0.5, 0.8)
                 )
             case .bottomRight:
                 addArrow(
                     to: path,
-                    from: point(in: rect, x: 0.18, y: 0.18),
-                    to: point(in: rect, x: 0.8, y: 0.8),
-                    wingA: point(in: rect, x: 0.5, y: 0.8),
-                    wingB: point(in: rect, x: 0.8, y: 0.5)
+                    in: rect,
+                    from: (0.18, 0.18),
+                    to: (0.8, 0.8),
+                    wingA: (0.5, 0.8),
+                    wingB: (0.8, 0.5)
                 )
             }
         case .cornerMode:
             addArrow(
                 to: path,
-                from: point(in: rect, x: 0.46, y: 0.46),
-                to: point(in: rect, x: 0.16, y: 0.16),
-                wingA: point(in: rect, x: 0.32, y: 0.16),
-                wingB: point(in: rect, x: 0.16, y: 0.32)
+                in: rect,
+                from: (0.46, 0.46),
+                to: (0.16, 0.16),
+                wingA: (0.32, 0.16),
+                wingB: (0.16, 0.32)
             )
             addArrow(
                 to: path,
-                from: point(in: rect, x: 0.54, y: 0.46),
-                to: point(in: rect, x: 0.84, y: 0.16),
-                wingA: point(in: rect, x: 0.68, y: 0.16),
-                wingB: point(in: rect, x: 0.84, y: 0.32)
+                in: rect,
+                from: (0.54, 0.46),
+                to: (0.84, 0.16),
+                wingA: (0.68, 0.16),
+                wingB: (0.84, 0.32)
             )
             addArrow(
                 to: path,
-                from: point(in: rect, x: 0.46, y: 0.54),
-                to: point(in: rect, x: 0.16, y: 0.84),
-                wingA: point(in: rect, x: 0.16, y: 0.68),
-                wingB: point(in: rect, x: 0.32, y: 0.84)
+                in: rect,
+                from: (0.46, 0.54),
+                to: (0.16, 0.84),
+                wingA: (0.16, 0.68),
+                wingB: (0.32, 0.84)
             )
             addArrow(
                 to: path,
-                from: point(in: rect, x: 0.54, y: 0.54),
-                to: point(in: rect, x: 0.84, y: 0.84),
-                wingA: point(in: rect, x: 0.68, y: 0.84),
-                wingB: point(in: rect, x: 0.84, y: 0.68)
+                in: rect,
+                from: (0.54, 0.54),
+                to: (0.84, 0.84),
+                wingA: (0.68, 0.84),
+                wingB: (0.84, 0.68)
             )
         }
 
@@ -785,7 +799,7 @@ private final class GestureGlyphView: NSView {
         bezierPath.lineWidth = lineWidth
 
         let pathBounds = bezierPath.bounds
-        guard pathBounds.isEmpty == false else { return bezierPath }
+        guard !pathBounds.isEmpty else { return bezierPath }
 
         let transform = AffineTransform(
             translationByX: rect.midX - pathBounds.midX,
@@ -837,6 +851,23 @@ private final class GestureGlyphView: NSView {
         addLine(to: path, from: tail, to: tip)
         addLine(to: path, from: tip, to: wingA)
         addLine(to: path, from: tip, to: wingB)
+    }
+
+    private func addArrow(
+        to path: CGMutablePath,
+        in rect: NSRect,
+        from tail: (x: CGFloat, y: CGFloat),
+        to tip: (x: CGFloat, y: CGFloat),
+        wingA: (x: CGFloat, y: CGFloat),
+        wingB: (x: CGFloat, y: CGFloat)
+    ) {
+        addArrow(
+            to: path,
+            from: point(in: rect, x: tail.x, y: tail.y),
+            to: point(in: rect, x: tip.x, y: tip.y),
+            wingA: point(in: rect, x: wingA.x, y: wingA.y),
+            wingB: point(in: rect, x: wingB.x, y: wingB.y)
+        )
     }
 
     private func point(in rect: NSRect, x: CGFloat, y: CGFloat) -> CGPoint {

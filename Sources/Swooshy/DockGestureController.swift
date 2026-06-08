@@ -106,9 +106,9 @@ final class DockGestureController {
         var logLabel: String {
             switch self {
             case .dock:
-                return "dock"
+                "dock"
             case .titleBar:
-                return "title-bar"
+                "title-bar"
             }
         }
     }
@@ -148,7 +148,7 @@ final class DockGestureController {
 
         monitor.onFrame = { [weak self] frame in
             MainActor.assumeIsolated {
-                guard let self, self.isShuttingDown == false else { return }
+                guard let self, !self.isShuttingDown else { return }
                 self.schedule(frame: frame)
             }
         }
@@ -158,7 +158,7 @@ final class DockGestureController {
     }
 
     func shutdown() {
-        guard isShuttingDown == false else { return }
+        guard !isShuttingDown else { return }
         isShuttingDown = true
         invalidateGestureStateWatchdog()
 
@@ -201,7 +201,7 @@ final class DockGestureController {
         ) { [weak self] notification in
             let categories = notification.settingsChangeCategories
             MainActor.assumeIsolated {
-                guard categories.intersection([.gestureMonitoring, .advancedGestureBehavior]).isEmpty == false else {
+                guard !categories.intersection([.gestureMonitoring, .advancedGestureBehavior]).isEmpty else {
                     return
                 }
 
@@ -213,7 +213,7 @@ final class DockGestureController {
     }
 
     private func syncMonitoring() {
-        guard isShuttingDown == false else {
+        guard !isShuttingDown else {
             return
         }
 
@@ -256,7 +256,7 @@ final class DockGestureController {
     }
 
     func setSettingsWindowHoverSuppressed(_ isSuppressed: Bool) {
-        guard isShuttingDown == false else {
+        guard !isShuttingDown else {
             return
         }
 
@@ -266,7 +266,7 @@ final class DockGestureController {
 
         settingsWindowHoverSuppressionRequested = isSuppressed
 
-        if isSuppressed && activeInteractionPreventsSettingsHoverPause == false {
+        if isSuppressed && !activeInteractionPreventsSettingsHoverPause {
             pendingTouchFrame = nil
             isProcessingTouchFrame = false
             lastTouchCount = 0
@@ -292,16 +292,16 @@ final class DockGestureController {
     }
 
     private var shouldSuppressTrackpadMonitoringForSettingsHover: Bool {
-        settingsWindowHoverSuppressionRequested && activeInteractionPreventsSettingsHoverPause == false
+        settingsWindowHoverSuppressionRequested && !activeInteractionPreventsSettingsHoverPause
     }
 
     private var shouldMonitorTrackpad: Bool {
-        monitoringRequestedBySettings && shouldSuppressTrackpadMonitoringForSettingsHover == false
+        monitoringRequestedBySettings && !shouldSuppressTrackpadMonitoringForSettingsHover
     }
 
     private func applyTrackpadMonitoringState() {
         if shouldMonitorTrackpad {
-            guard monitor.isMonitoringActive == false else {
+            guard !monitor.isMonitoringActive else {
                 return
             }
 
@@ -339,16 +339,16 @@ final class DockGestureController {
 
     nonisolated private func enqueue(frame: TrackpadTouchFrame) {
         Task { @MainActor [weak self] in
-            guard let self, self.isShuttingDown == false else { return }
+            guard let self, !self.isShuttingDown else { return }
             self.schedule(frame: frame)
         }
     }
 
     private func schedule(frame: TrackpadTouchFrame) {
-        guard isShuttingDown == false else { return }
+        guard !isShuttingDown else { return }
 
         pendingTouchFrame = frame
-        guard isProcessingTouchFrame == false else { return }
+        guard !isProcessingTouchFrame else { return }
 
         isProcessingTouchFrame = true
         drainPendingFrames()
@@ -366,7 +366,7 @@ final class DockGestureController {
     }
 
     private func handle(frame: TrackpadTouchFrame) {
-        guard isShuttingDown == false else { return }
+        guard !isShuttingDown else { return }
         defer {
             syncGestureStateWatchdog()
         }
@@ -588,11 +588,11 @@ final class DockGestureController {
     ) -> Bool {
         switch event {
         case .began(let application, let startAveragePoint, let currentAveragePoint):
-            guard standardGestureWouldTrigger(
+            guard !standardGestureWouldTrigger(
                 beforeCornerDragFrom: source,
                 frame: frame,
                 hoveredApplication: hoveredApplication ?? application
-            ) == false else {
+            ) else {
                 resetCornerDragRecognizer(for: source)
                 DebugLog.debug(
                     DebugLog.dock,
@@ -632,13 +632,10 @@ final class DockGestureController {
             let recognizerIsActive = source == .dock
                 ? dockCornerDragRecognizer.isActive
                 : titleBarCornerDragRecognizer.isActive
-            if recognizerIsActive {
-                if hoveredApplication == nil, activeCornerDragApplication == nil {
-                    return false
-                }
-                return true
+            guard recognizerIsActive else {
+                return false
             }
-            return false
+            return hoveredApplication != nil || activeCornerDragApplication != nil
         }
     }
 
@@ -705,7 +702,7 @@ final class DockGestureController {
 
     private func scheduleDockGestureAction(_ action: DockGestureAction, for application: InteractionTarget) {
         Task { @MainActor [weak self] in
-            guard let self, self.isShuttingDown == false else { return }
+            guard let self, !self.isShuttingDown else { return }
 
             await Task.yield()
             guard self.settingsStore.isDockGestureActionAvailable(action) else {
@@ -716,7 +713,7 @@ final class DockGestureController {
             // Give AppKit one frame to present HUD before heavier restore AX work.
             if action == .restoreWindow {
                 try? await Task.sleep(nanoseconds: self.restoreHUDLeadDelay)
-                guard self.isShuttingDown == false else { return }
+                guard !self.isShuttingDown else { return }
             }
 
             self.performDockGestureAction(action, for: application)
@@ -729,7 +726,7 @@ final class DockGestureController {
             return
         }
 
-        do {
+        runWindowAction(failureMessage: "Dock gesture action failed") {
             switch action {
             case .minimizeWindow:
                 _ = try windowManager.minimizeVisibleWindow(of: application)
@@ -776,11 +773,6 @@ final class DockGestureController {
                     preferredAppKitPoint: nil
                 )
             }
-        } catch let error as WindowManagerError {
-            handleWindowManagerError(error)
-        } catch {
-            NSSound.beep()
-            DebugLog.error(DebugLog.dock, "Dock gesture action failed: \(error.localizedDescription)")
         }
     }
 
@@ -942,7 +934,7 @@ final class DockGestureController {
             return
         }
 
-        do {
+        runWindowAction(failureMessage: "Title-bar gesture action failed") {
             if replacesWithTabClose {
                 if BrowserTabProbe.simulateMiddleClick(at: anchorPoint) {
                     DebugLog.info(
@@ -975,11 +967,6 @@ final class DockGestureController {
                 layoutEngine: layoutEngine,
                 preferredAppKitPoint: anchorPoint
             )
-        } catch let error as WindowManagerError {
-            handleWindowManagerError(error)
-        } catch {
-            NSSound.beep()
-            DebugLog.error(DebugLog.dock, "Title-bar gesture action failed: \(error.localizedDescription)")
         }
     }
 
@@ -1098,8 +1085,8 @@ final class DockGestureController {
     private var hasActiveGestureState: Bool {
         pendingReleaseAction != nil ||
             pendingReleaseGestureKind != nil ||
-            dockRecognizer.requiresHoveredApplication == false ||
-            titleBarRecognizer.requiresHoveredApplication == false ||
+            !dockRecognizer.requiresHoveredApplication ||
+            !titleBarRecognizer.requiresHoveredApplication ||
             activeCornerDragApplication != nil ||
             dockCornerDragRecognizer.isActive ||
             titleBarCornerDragRecognizer.isActive
@@ -1183,11 +1170,11 @@ final class DockGestureController {
         return GestureStateSnapshot(
             pendingActionKind: pendingActionKind,
             pendingGestureKind: pendingReleaseGestureKind,
-            dockRecognizerCaptured: dockRecognizer.requiresHoveredApplication == false,
-            titleBarRecognizerCaptured: titleBarRecognizer.requiresHoveredApplication == false,
+            dockRecognizerCaptured: !dockRecognizer.requiresHoveredApplication,
+            titleBarRecognizerCaptured: !titleBarRecognizer.requiresHoveredApplication,
             dockCornerDragActive: dockCornerDragRecognizer.isActive,
             titleBarCornerDragActive: titleBarCornerDragRecognizer.isActive,
-            activeCornerDragProcessIdentifier: activeCornerDragApplication?.processIdentifier ?? nil
+            activeCornerDragProcessIdentifier: activeCornerDragApplication?.processIdentifier
         )
     }
 
@@ -1222,7 +1209,7 @@ final class DockGestureController {
     }
 
     private func handleGestureStateWatchdogFired(expectedState: GestureStateSnapshot) {
-        guard isShuttingDown == false else { return }
+        guard !isShuttingDown else { return }
         guard gestureStateWatchdogState == expectedState else { return }
 
         #if DEBUG
@@ -1272,7 +1259,7 @@ final class DockGestureController {
             return false
         }
 
-        guard action == .closeWindow || action == .quitApplication else {
+        guard action.supportsBrowserTabCloseReplacement else {
             DebugLog.debug(DebugLog.dock, "Smart browser tab close skipped for non-close action \(String(describing: action))")
             return false
         }
@@ -1296,7 +1283,7 @@ final class DockGestureController {
             "Smart browser tab probe for \(event.application.logDescription) at \(NSStringFromPoint(anchorPoint)) => \(isBrowserTab)"
         )
 
-        if isInFullScreen && isBrowserTab == false {
+        if isInFullScreen && !isBrowserTab {
             DebugLog.debug(DebugLog.dock, "Smart browser tab close skipped in full screen outside browser tab")
         }
 
@@ -1439,7 +1426,7 @@ final class DockGestureController {
                 break
             }
             DebugLog.info(DebugLog.dock, "Executing deferred title-bar action \(String(describing: windowAction)) on finger release")
-            if commitSmoothDockingSessionIfNeeded(for: windowAction) == false {
+            if !commitSmoothDockingSessionIfNeeded(for: windowAction) {
                 executeTitleBarAction(
                     windowAction,
                     event: event,
@@ -1447,14 +1434,13 @@ final class DockGestureController {
                     replacesWithTabClose: replacesWithTabClose
                 )
             }
-        case .cornerDrag(let windowAction, let application, let anchorPoint, let source):
+        case .cornerDrag(let windowAction, let application, let anchorPoint, _):
             DebugLog.info(DebugLog.dock, "Executing deferred corner drag action \(String(describing: windowAction)) on finger release")
-            if commitSmoothDockingSessionIfNeeded(for: windowAction) == false {
+            if !commitSmoothDockingSessionIfNeeded(for: windowAction) {
                 executeCornerDragAction(
                     windowAction,
                     application: application,
-                    anchorPoint: anchorPoint,
-                    source: source
+                    anchorPoint: anchorPoint
                 )
             }
         }
@@ -1465,31 +1451,15 @@ final class DockGestureController {
     private func executeCornerDragAction(
         _ action: WindowAction,
         application: InteractionTarget,
-        anchorPoint: CGPoint,
-        source: CornerDragSource
+        anchorPoint: CGPoint
     ) {
-        do {
-            switch source {
-            case .dock:
-                try windowManager.perform(
-                    action,
-                    on: application,
-                    layoutEngine: layoutEngine,
-                    preferredAppKitPoint: anchorPoint
-                )
-            case .titleBar:
-                try windowManager.perform(
-                    action,
-                    on: application,
-                    layoutEngine: layoutEngine,
-                    preferredAppKitPoint: anchorPoint
-                )
-            }
-        } catch let error as WindowManagerError {
-            handleWindowManagerError(error)
-        } catch {
-            NSSound.beep()
-            DebugLog.error(DebugLog.dock, "Corner drag action failed: \(error.localizedDescription)")
+        runWindowAction(failureMessage: "Corner drag action failed") {
+            try windowManager.perform(
+                action,
+                on: application,
+                layoutEngine: layoutEngine,
+                preferredAppKitPoint: anchorPoint
+            )
         }
     }
 
@@ -1628,17 +1598,13 @@ final class DockGestureController {
             return false
         }
 
-        do {
+        if runWindowAction(failureMessage: "Smooth docking commit failed", {
             _ = try smoothDockingSession.commit()
             smoothDockingSession.finish()
             self.smoothDockingSession = nil
             applyTrackpadMonitoringState()
+        }) {
             return true
-        } catch let error as WindowManagerError {
-            handleWindowManagerError(error)
-        } catch {
-            NSSound.beep()
-            DebugLog.error(DebugLog.dock, "Smooth docking commit failed: \(error.localizedDescription)")
         }
 
         smoothDockingSession.finish()
@@ -1739,10 +1705,28 @@ final class DockGestureController {
     }
 #endif
 
+    @discardableResult
+    private func runWindowAction(
+        failureMessage: String,
+        _ action: () throws -> Void
+    ) -> Bool {
+        do {
+            try action()
+            return true
+        } catch let error as WindowManagerError {
+            handleWindowManagerError(error)
+        } catch {
+            NSSound.beep()
+            DebugLog.error(DebugLog.dock, "\(failureMessage): \(error.localizedDescription)")
+        }
+
+        return false
+    }
+
     private func handleWindowManagerError(_ error: WindowManagerError) {
         switch error {
         case .accessibilityPermissionMissing:
-            guard hasShownPermissionHint == false else { return }
+            guard !hasShownPermissionHint else { return }
 
             hasShownPermissionHint = true
             alertPresenter.show(
@@ -1815,11 +1799,7 @@ func gestureSessionTouchInterruption(
         return nil
     }
 
-    if hasPendingReleaseAction || hasActiveCornerDrag {
-        return .invalidAdditionalTouch
-    }
-
-    return nil
+    return hasPendingReleaseAction || hasActiveCornerDrag ? .invalidAdditionalTouch : nil
 }
 
 func gestureHoverLookupRequired(
@@ -1829,11 +1809,7 @@ func gestureHoverLookupRequired(
     cornerDragRecognizerRequiresHoveredApplication: Bool,
     hasActiveCornerDragApplication: Bool
 ) -> Bool {
-    guard gesturesEnabled else {
-        return false
-    }
-
-    guard hasActiveCornerDragApplication == false else {
+    guard gesturesEnabled, !hasActiveCornerDragApplication else {
         return false
     }
 
@@ -1874,48 +1850,52 @@ func cornerDragTransitionAction(
         return currentAction
     }
 
-    let horizontalDominates = abs(translation.x) >= abs(translation.y)
-
-    if horizontalDominates {
-        if translation.x > 0 {
-            switch currentAction {
-            case .topLeftQuarter:
-                return .topRightQuarter
-            case .bottomLeftQuarter:
-                return .bottomRightQuarter
-            default:
-                return currentAction
-            }
-        } else {
-            switch currentAction {
-            case .topRightQuarter:
-                return .topLeftQuarter
-            case .bottomRightQuarter:
-                return .bottomLeftQuarter
-            default:
-                return currentAction
-            }
-        }
+    if abs(translation.x) >= abs(translation.y) {
+        return horizontalCornerDragTransition(
+            from: currentAction,
+            movingRight: translation.x > 0
+        )
     }
 
-    if translation.y > 0 {
-        switch currentAction {
-        case .bottomLeftQuarter:
-            return .topLeftQuarter
-        case .bottomRightQuarter:
-            return .topRightQuarter
-        default:
-            return currentAction
-        }
-    }
+    return verticalCornerDragTransition(
+        from: currentAction,
+        movingUp: translation.y > 0
+    )
+}
 
-    switch currentAction {
-    case .topLeftQuarter:
-        return .bottomLeftQuarter
-    case .topRightQuarter:
-        return .bottomRightQuarter
+private func horizontalCornerDragTransition(
+    from currentAction: WindowAction,
+    movingRight: Bool
+) -> WindowAction {
+    switch (currentAction, movingRight) {
+    case (.topLeftQuarter, true):
+        .topRightQuarter
+    case (.bottomLeftQuarter, true):
+        .bottomRightQuarter
+    case (.topRightQuarter, false):
+        .topLeftQuarter
+    case (.bottomRightQuarter, false):
+        .bottomLeftQuarter
     default:
-        return currentAction
+        currentAction
+    }
+}
+
+private func verticalCornerDragTransition(
+    from currentAction: WindowAction,
+    movingUp: Bool
+) -> WindowAction {
+    switch (currentAction, movingUp) {
+    case (.bottomLeftQuarter, true):
+        .topLeftQuarter
+    case (.bottomRightQuarter, true):
+        .topRightQuarter
+    case (.topLeftQuarter, false):
+        .bottomLeftQuarter
+    case (.topRightQuarter, false):
+        .bottomRightQuarter
+    default:
+        currentAction
     }
 }
 
@@ -1954,7 +1934,7 @@ enum TitleBarHoverSource: Equatable {
         case .titleBar:
             return true
         case .browserTabFallback:
-            return action == .closeWindow || action == .quitApplication
+            return action.supportsBrowserTabCloseReplacement
         }
     }
 }
@@ -1987,6 +1967,7 @@ private final class TitleBarAccessibilityProbe {
         let application: InteractionTarget
         let processIdentifier: pid_t
         let frame: CGRect
+        let isFullScreen: Bool
         let expiresAt: Date
     }
 
@@ -2058,84 +2039,67 @@ private final class TitleBarAccessibilityProbe {
             return nil
         }
 
-        guard let hoveredTarget = hoveredWindowTarget(at: appKitPoint) else {
+        guard let hitRegion = hitRegion(
+            at: appKitPoint,
+            titleBarHeight: titleBarHeight,
+            allowFullScreen: allowFullScreen,
+            expiresAt: { now.addingTimeInterval(cacheTTL) }
+        ) else {
             cachedHitRegion = nil
             return nil
         }
 
-        guard let appKitWindowFrame = appKitFrame(of: hoveredTarget.window) else {
-            cachedHitRegion = nil
-            return nil
-        }
-
-        let windowIsFullScreen = isFullScreen(hoveredTarget.window)
-        if windowIsFullScreen, !allowFullScreen {
-            cachedHitRegion = nil
-            return nil
-        }
-
-        let titleBarFrame = titleBarFrame(for: appKitWindowFrame, titleBarHeight: titleBarHeight)
-        guard titleBarFrame.isEmpty == false else {
-            cachedHitRegion = nil
-            return nil
-        }
-
-        cachedHitRegion = CachedHitRegion(
-            application: hoveredTarget.application,
-            processIdentifier: hoveredTarget.processIdentifier,
-            frame: titleBarFrame,
-            expiresAt: now.addingTimeInterval(cacheTTL)
-        )
+        cachedHitRegion = hitRegion
 
         if
-            titleBarFrame.contains(appKitPoint),
+            hitRegion.frame.contains(appKitPoint),
             pointBelongsToFrontmostApplication(
                 appKitPoint,
-                processIdentifier: hoveredTarget.processIdentifier,
+                processIdentifier: hitRegion.processIdentifier,
                 required: requireFrontmostOwnership
             )
         {
             logProbeIfNeeded(
-                key: "hit:\(hoveredTarget.processIdentifier):\(Int(titleBarFrame.minX)):\(Int(titleBarFrame.minY)):\(Int(titleBarFrame.width)):\(Int(titleBarFrame.height))",
+                key: "hit:\(hitRegion.processIdentifier):\(Int(hitRegion.frame.minX)):\(Int(hitRegion.frame.minY)):\(Int(hitRegion.frame.width)):\(Int(hitRegion.frame.height))",
                 message: {
-                    "Pointer hit title-bar region for \(hoveredTarget.application.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(titleBarFrame))"
+                    "Pointer hit title-bar region for \(hitRegion.application.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(hitRegion.frame))"
                 }
             )
             return TitleBarHoverTarget(
-                application: hoveredTarget.application.withSource(.titleBar),
+                application: hitRegion.application.withSource(.titleBar),
                 source: .titleBar
             )
         }
 
         if
             allowBrowserTabFallback,
-            windowIsFullScreen == false,
+            !hitRegion.isFullScreen,
             pointBelongsToFrontmostApplication(
                 appKitPoint,
-                processIdentifier: hoveredTarget.processIdentifier,
+                processIdentifier: hitRegion.processIdentifier,
                 required: requireFrontmostOwnership
             ),
             BrowserTabProbe.isBrowserTab(
                 at: appKitPoint,
-                processIdentifier: hoveredTarget.processIdentifier
+                processIdentifier: hitRegion.processIdentifier
             )
         {
             logProbeIfNeeded(
-                key: "hit-browser-tab:\(hoveredTarget.processIdentifier):\(Int(appKitPoint.x)):\(Int(appKitPoint.y))",
+                key: "hit-browser-tab:\(hitRegion.processIdentifier):\(Int(appKitPoint.x)):\(Int(appKitPoint.y))",
                 message: {
-                    "Pointer hit browser-tab fallback region for \(hoveredTarget.application.logDescription) at \(NSStringFromPoint(appKitPoint))"
+                    "Pointer hit browser-tab fallback region for \(hitRegion.application.logDescription) at \(NSStringFromPoint(appKitPoint))"
                 }
             )
             return TitleBarHoverTarget(
-                application: hoveredTarget.application.withSource(.browserTabFallback),
+                application: hitRegion.application.withSource(.browserTabFallback),
                 source: .browserTabFallback
             )
         }
 
         logProbeIfNeeded(
-            key: "miss:\(hoveredTarget.processIdentifier):\(Int(titleBarFrame.minX)):\(Int(titleBarFrame.minY)):\(Int(titleBarFrame.width)):\(Int(titleBarFrame.height))",
+            key: "miss:\(hitRegion.processIdentifier):\(Int(hitRegion.frame.minX)):\(Int(hitRegion.frame.minY)):\(Int(hitRegion.frame.width)):\(Int(hitRegion.frame.height))",
             message: {
-                "Pointer missed title-bar region for \(hoveredTarget.application.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(titleBarFrame))"
+                "Pointer missed title-bar region for \(hitRegion.application.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(hitRegion.frame))"
             }
         )
         return nil
@@ -2159,41 +2123,52 @@ private final class TitleBarAccessibilityProbe {
                 return
             }
 
-            guard let hoveredTarget = self.hoveredWindowTarget(at: mouseLocation) else {
+            guard let hitRegion = self.hitRegion(
+                at: mouseLocation,
+                titleBarHeight: titleBarHeight,
+                allowFullScreen: allowFullScreen,
+                expiresAt: { Date().addingTimeInterval(self.cacheTTL) }
+            ) else {
                 self.cachedHitRegion = nil
                 self.preheatTask = nil
                 return
             }
 
-            guard let appKitWindowFrame = self.appKitFrame(of: hoveredTarget.window) else {
-                self.cachedHitRegion = nil
-                self.preheatTask = nil
-                return
-            }
-
-            let windowIsFullScreen = self.isFullScreen(hoveredTarget.window)
-            if windowIsFullScreen, !allowFullScreen {
-                self.cachedHitRegion = nil
-                self.preheatTask = nil
-                return
-            }
-
-            let titleBarFrame = self.titleBarFrame(for: appKitWindowFrame, titleBarHeight: titleBarHeight)
-            guard titleBarFrame.isEmpty == false else {
-                self.cachedHitRegion = nil
-                self.preheatTask = nil
-                return
-            }
-
-            self.cachedHitRegion = CachedHitRegion(
-                application: hoveredTarget.application,
-                processIdentifier: hoveredTarget.processIdentifier,
-                frame: titleBarFrame,
-                expiresAt: Date().addingTimeInterval(self.cacheTTL)
-            )
-
+            self.cachedHitRegion = hitRegion
             self.preheatTask = nil
         }
+    }
+
+    private func hitRegion(
+        at appKitPoint: CGPoint,
+        titleBarHeight: CGFloat,
+        allowFullScreen: Bool,
+        expiresAt: () -> Date
+    ) -> CachedHitRegion? {
+        guard
+            let hoveredTarget = hoveredWindowTarget(at: appKitPoint),
+            let appKitWindowFrame = appKitFrame(of: hoveredTarget.window)
+        else {
+            return nil
+        }
+
+        let windowIsFullScreen = isFullScreen(hoveredTarget.window)
+        if windowIsFullScreen, !allowFullScreen {
+            return nil
+        }
+
+        let titleBarFrame = titleBarFrame(for: appKitWindowFrame, titleBarHeight: titleBarHeight)
+        guard !titleBarFrame.isEmpty else {
+            return nil
+        }
+
+        return CachedHitRegion(
+            application: hoveredTarget.application,
+            processIdentifier: hoveredTarget.processIdentifier,
+            frame: titleBarFrame,
+            isFullScreen: windowIsFullScreen,
+            expiresAt: expiresAt()
+        )
     }
 
     private func hoveredWindowTarget(at appKitPoint: CGPoint) -> HoveredWindowTarget? {
@@ -2207,7 +2182,7 @@ private final class TitleBarAccessibilityProbe {
 
         guard
             let application = NSRunningApplication(processIdentifier: hitProcessIdentifier),
-            application.isTerminated == false
+            !application.isTerminated
         else {
             return nil
         }
@@ -2275,15 +2250,15 @@ private final class TitleBarAccessibilityProbe {
         processIdentifier: pid_t,
         required: Bool
     ) -> Bool {
-        guard required == false else {
-            guard let hitProcessIdentifier = axHitProcessIdentifier(at: appKitPoint) else {
-                return true
-            }
-
-            return hitProcessIdentifier == processIdentifier
+        guard required else {
+            return true
         }
 
-        return true
+        guard let hitProcessIdentifier = AXAttributeReader.processIdentifier(at: appKitPoint) else {
+            return true
+        }
+
+        return hitProcessIdentifier == processIdentifier
     }
 
     private func isFullScreen(_ window: AXUIElement) -> Bool {
@@ -2300,14 +2275,6 @@ private final class TitleBarAccessibilityProbe {
         lastProbeLogAt = now
         DebugLog.debug(DebugLog.dock, message())
     }
-}
-
-private func axHitProcessIdentifier(at appKitPoint: CGPoint) -> pid_t? {
-    guard let hitElement = AXAttributeReader.hitElement(at: appKitPoint) else {
-        return nil
-    }
-
-    return AXAttributeReader.processIdentifier(of: hitElement)
 }
 
 final class MultitouchInputMonitor: @unchecked Sendable {
@@ -2332,12 +2299,12 @@ final class MultitouchInputMonitor: @unchecked Sendable {
     }
 
     func startIfAvailable() {
-        guard isMonitoring == false else { return }
+        guard !isMonitoring else { return }
 
         let context = Unmanaged.passUnretained(self).toOpaque()
         isMonitoring = SwooshyMTStartMonitoring(multitouchCallback, context)
         frameDeliveryCoalescer.reset()
-        if isMonitoring == false {
+        if !isMonitoring {
             DebugLog.error(DebugLog.dock, "MultitouchSupport monitoring unavailable")
         } else {
             DebugLog.info(DebugLog.dock, "MultitouchSupport monitoring active")
@@ -2450,16 +2417,16 @@ private final class FrameDeliveryCoalescer {
         }
 
         lastQueuedFingerCount = frame.touches.count
-        if let lastQueuedFrame = queuedFrames.last {
-            if sameCoalescingBucket(lhs: lastQueuedFrame, rhs: frame) {
-                queuedFrames[queuedFrames.count - 1] = frame
-            } else {
-                queuedFrames.append(frame)
-            }
+        if
+            let lastIndex = queuedFrames.indices.last,
+            sameCoalescingBucket(lhs: queuedFrames[lastIndex], rhs: frame)
+        {
+            queuedFrames[lastIndex] = frame
         } else {
             queuedFrames.append(frame)
         }
-        guard drainScheduled == false else {
+
+        guard !drainScheduled else {
             return .queued
         }
 
@@ -2471,7 +2438,7 @@ private final class FrameDeliveryCoalescer {
         lock.lock()
         defer { lock.unlock() }
 
-        if queuedFrames.isEmpty == false {
+        if !queuedFrames.isEmpty {
             return queuedFrames.removeFirst()
         }
 

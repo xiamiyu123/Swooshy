@@ -23,9 +23,7 @@ struct DockHoverSnapshot: Equatable {
 
     init(candidates: [DockHoverCandidate]) {
         self.candidates = candidates
-        self.bounds = candidates.reduce(into: CGRect.null) { partialResult, candidate in
-            partialResult = partialResult.union(candidate.frame)
-        }
+        self.bounds = candidates.reduce(CGRect.null) { $0.union($1.frame) }
     }
 
     func hoveredCandidate(at point: CGPoint) -> DockHoverCandidate? {
@@ -33,11 +31,7 @@ struct DockHoverSnapshot: Equatable {
     }
 
     func containsApproximateDockRegion(_ point: CGPoint) -> Bool {
-        guard bounds.isNull == false, bounds.isEmpty == false else {
-            return false
-        }
-
-        return bounds.contains(point)
+        !bounds.isNull && !bounds.isEmpty && bounds.contains(point)
     }
 }
 
@@ -82,7 +76,6 @@ final class MinimizedDockLedger {
         var token: DockElementToken
         var element: AXUIElement
         var frame: CGRect
-        let resolvedAtCreation: Bool
         var resolvedWindowIdentity: WindowIdentity?
     }
 
@@ -108,7 +101,6 @@ final class MinimizedDockLedger {
 
         for item in items {
             if var previousEntry = previousEntriesByToken[item.token] {
-                previousEntry.token = item.token
                 previousEntry.element = item.element
                 previousEntry.frame = item.frame
                 nextEntries.append(previousEntry)
@@ -127,14 +119,13 @@ final class MinimizedDockLedger {
                     token: item.token,
                     element: item.element,
                     frame: item.frame,
-                    resolvedAtCreation: resolvedWindowIdentity != nil,
                     resolvedWindowIdentity: resolvedWindowIdentity
                 )
             )
         }
 
         let liveHandles = Set(nextEntries.map(\.handle))
-        for previousEntry in entries where liveHandles.contains(previousEntry.handle) == false {
+        for previousEntry in entries where !liveHandles.contains(previousEntry.handle) {
             registry.unbindDockMinimizedHandle(previousEntry.handle)
         }
 
@@ -296,7 +287,7 @@ final class DockTargetResolver: DockTargetResolving {
             return true
         }
 
-        guard let hitProcessIdentifier = dockHitProcessIdentifier(at: appKitPoint) else {
+        guard let hitProcessIdentifier = AXAttributeReader.processIdentifier(at: appKitPoint) else {
             return true
         }
 
@@ -314,7 +305,7 @@ final class DockTargetResolver: DockTargetResolving {
 
             if
                 now < cachedSnapshot.regionExpiresAt,
-                cachedSnapshot.snapshot.containsApproximateDockRegion(appKitPoint) == false
+                !cachedSnapshot.snapshot.containsApproximateDockRegion(appKitPoint)
             {
                 if cachePolicy.shouldPreheat(now: now, candidateExpiresAt: cachedSnapshot.candidateExpiresAt) {
                     startPreheatIfNeeded()
@@ -357,19 +348,16 @@ final class DockTargetResolver: DockTargetResolving {
 
     private func rebuildDockSnapshot() -> DockHoverSnapshot {
         guard AXIsProcessTrusted() else {
-            minimizedDockLedger.clear(registry: registry)
-            return DockHoverSnapshot(candidates: [])
+            return emptyDockSnapshot()
         }
 
         guard let dockProcess = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
-            minimizedDockLedger.clear(registry: registry)
-            return DockHoverSnapshot(candidates: [])
+            return emptyDockSnapshot()
         }
 
         let dockElement = AXUIElementCreateApplication(dockProcess.processIdentifier)
         guard let dockList = AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: dockElement).first else {
-            minimizedDockLedger.clear(registry: registry)
-            return DockHoverSnapshot(candidates: [])
+            return emptyDockSnapshot()
         }
 
         let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
@@ -459,6 +447,11 @@ final class DockTargetResolver: DockTargetResolving {
         return DockHoverSnapshot(candidates: candidates)
     }
 
+    private func emptyDockSnapshot() -> DockHoverSnapshot {
+        minimizedDockLedger.clear(registry: registry)
+        return DockHoverSnapshot(candidates: [])
+    }
+
     private func logProbeIfNeeded(key: String, message: () -> String) {
 #if DEBUG
         let now = Date()
@@ -513,12 +506,4 @@ final class DockTargetResolver: DockTargetResolving {
         let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
         return sqrt((dx * dx) + (dy * dy))
     }
-}
-
-private func dockHitProcessIdentifier(at appKitPoint: CGPoint) -> pid_t? {
-    guard let hitElement = AXAttributeReader.hitElement(at: appKitPoint) else {
-        return nil
-    }
-
-    return AXAttributeReader.processIdentifier(of: hitElement)
 }

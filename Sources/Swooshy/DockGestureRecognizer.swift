@@ -11,6 +11,17 @@ struct TrackpadTouchFrame: Equatable {
     let timestamp: TimeInterval
 }
 
+private func midpoint(_ first: CGPoint, _ second: CGPoint) -> CGPoint {
+    CGPoint(
+        x: (first.x + second.x) / 2,
+        y: (first.y + second.y) / 2
+    )
+}
+
+private func distance(_ first: CGPoint, _ second: CGPoint) -> CGFloat {
+    hypot(second.x - first.x, second.y - first.y)
+}
+
 enum DockGestureEvent: Equatable {
     case swipeLeft(application: InteractionTarget)
     case swipeRight(application: InteractionTarget)
@@ -22,17 +33,17 @@ enum DockGestureEvent: Equatable {
     var gesture: DockGestureKind {
         switch self {
         case .swipeLeft:
-            return .swipeLeft
+            .swipeLeft
         case .swipeRight:
-            return .swipeRight
+            .swipeRight
         case .swipeDown:
-            return .swipeDown
+            .swipeDown
         case .swipeUp:
-            return .swipeUp
+            .swipeUp
         case .pinchIn:
-            return .pinchIn
+            .pinchIn
         case .pinchOut:
-            return .pinchOut
+            .pinchOut
         }
     }
 
@@ -44,7 +55,7 @@ enum DockGestureEvent: Equatable {
              .swipeUp(let application),
              .pinchIn(let application),
              .pinchOut(let application):
-            return application
+            application
         }
     }
 }
@@ -98,7 +109,7 @@ struct DockGestureRecognizer {
             return nil
         }
 
-        guard session.hasTriggered == false else {
+        guard !session.hasTriggered else {
             return nil
         }
 
@@ -111,41 +122,35 @@ struct DockGestureRecognizer {
             abs(fingerDistanceDelta) >= pinchThreshold,
             abs(fingerDistanceDelta) >= translationMagnitude * pinchBiasRatio
         {
-            self.session?.hasTriggered = true
             if fingerDistanceDelta > 0 {
-                return .pinchOut(application: session.application)
+                return trigger(.pinchOut(application: session.application))
             }
-            return .pinchIn(application: session.application)
+            return trigger(.pinchIn(application: session.application))
         }
 
         if
             abs(deltaY) >= translationThreshold,
             abs(deltaY) >= abs(deltaX) * directionalBiasRatio
         {
-            self.session?.hasTriggered = true
-
             if deltaY < 0 {
-                return .swipeDown(application: session.application)
+                return trigger(.swipeDown(application: session.application))
             }
 
-            return .swipeUp(application: session.application)
+            return trigger(.swipeUp(application: session.application))
         }
 
-        guard abs(deltaX) >= translationThreshold else {
+        guard
+            abs(deltaX) >= translationThreshold,
+            abs(deltaX) >= abs(deltaY) * directionalBiasRatio
+        else {
             return nil
         }
-
-        guard abs(deltaX) >= abs(deltaY) * directionalBiasRatio else {
-            return nil
-        }
-
-        self.session?.hasTriggered = true
 
         if deltaX < 0 {
-            return .swipeLeft(application: session.application)
+            return trigger(.swipeLeft(application: session.application))
         }
 
-        return .swipeRight(application: session.application)
+        return trigger(.swipeRight(application: session.application))
     }
 
     func predictedEvent(
@@ -163,17 +168,9 @@ struct DockGestureRecognizer {
         session = nil
     }
 
-    private func midpoint(_ first: CGPoint, _ second: CGPoint) -> CGPoint {
-        CGPoint(
-            x: (first.x + second.x) / 2,
-            y: (first.y + second.y) / 2
-        )
-    }
-
-    private func distance(_ first: CGPoint, _ second: CGPoint) -> CGFloat {
-        let dx = second.x - first.x
-        let dy = second.y - first.y
-        return hypot(dx, dy)
+    private mutating func trigger(_ event: DockGestureEvent) -> DockGestureEvent {
+        session?.hasTriggered = true
+        return event
     }
 }
 
@@ -264,15 +261,16 @@ struct TitleBarCornerDragRecognizer {
         if driftDistance > stationaryDistanceThreshold {
             // Rearm from the new resting point so a user can reposition their fingers
             // and still trigger the hold without lifting both touches first.
-            if let hoveredApplication {
-                self.session = Session(
-                    application: hoveredApplication,
-                    startAveragePoint: averagePoint,
-                    startTimestamp: frame.timestamp
-                )
-            } else {
+            guard let hoveredApplication else {
                 self.session = nil
+                return nil
             }
+
+            self.session = Session(
+                application: hoveredApplication,
+                startAveragePoint: averagePoint,
+                startTimestamp: frame.timestamp
+            )
             return nil
         }
         return nil
@@ -280,16 +278,5 @@ struct TitleBarCornerDragRecognizer {
 
     mutating func reset() {
         session = nil
-    }
-
-    private func midpoint(_ first: CGPoint, _ second: CGPoint) -> CGPoint {
-        CGPoint(
-            x: (first.x + second.x) / 2,
-            y: (first.y + second.y) / 2
-        )
-    }
-
-    private func distance(_ first: CGPoint, _ second: CGPoint) -> CGFloat {
-        hypot(second.x - first.x, second.y - first.y)
     }
 }

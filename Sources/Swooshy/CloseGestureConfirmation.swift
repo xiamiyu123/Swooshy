@@ -29,9 +29,9 @@ enum CloseGestureConfirmationAction: Equatable {
     var confirmationPromptLocalizationKey: String {
         switch self {
         case .closeWindow:
-            return "confirmation.pinch_again.close_window"
+            "confirmation.pinch_again.close_window"
         case .quitApplication:
-            return "confirmation.pinch_again.quit_application"
+            "confirmation.pinch_again.quit_application"
         }
     }
 }
@@ -61,22 +61,19 @@ enum CloseGestureConfirmationPolicy {
             return nil
         }
 
-        if closeAndQuitConfirmationEnabled, let confirmationAction = CloseGestureConfirmationAction(action) {
-            return confirmationAction
+        if closeAndQuitConfirmationEnabled {
+            return CloseGestureConfirmationAction(action)
         }
 
-        guard legacyBrowserWindowCloseConfirmationEnabled, action == .closeWindow else {
-            return nil
-        }
-
-        guard let appIdentity = application.appIdentity else {
-            return nil
-        }
-
-        guard BrowserTabProbe.supportsTabCloseHost(
-            bundleIdentifier: appIdentity.bundleIdentifier,
-            localizedName: appIdentity.localizedName
-        ) else {
+        guard
+            legacyBrowserWindowCloseConfirmationEnabled,
+            action == .closeWindow,
+            let appIdentity = application.appIdentity,
+            BrowserTabProbe.supportsTabCloseHost(
+                bundleIdentifier: appIdentity.bundleIdentifier,
+                localizedName: appIdentity.localizedName
+            )
+        else {
             return nil
         }
 
@@ -86,11 +83,6 @@ enum CloseGestureConfirmationPolicy {
 
 extension DockGestureKind {
     var isPinch: Bool {
-        switch self {
-        case .pinchIn, .pinchOut:
-            return true
-        case .swipeLeft, .swipeRight, .swipeDown, .swipeUp:
-            return false
-        }
+        self == .pinchIn || self == .pinchOut
     }
 }

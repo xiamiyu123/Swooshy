@@ -18,12 +18,16 @@ struct AppIdentity: Sendable {
             return nil
         }
 
-        self.bundleURL = Self.canonicalBundleURL(from: bundleURL)
+        let canonicalBundleURL = Self.canonicalBundleURL(from: bundleURL)
+
+        self.bundleURL = canonicalBundleURL
         self.bundleIdentifier = bundleIdentifier
         self.processIdentifier = processIdentifier
-        self.localizedName = localizedName?.isEmpty == false
-            ? localizedName ?? "Application"
-            : Self.canonicalBundleURL(from: bundleURL).deletingPathExtension().lastPathComponent
+        self.localizedName = if let localizedName, !localizedName.isEmpty {
+            localizedName
+        } else {
+            canonicalBundleURL.deletingPathExtension().lastPathComponent
+        }
     }
 
     init?(application: NSRunningApplication) {
@@ -36,7 +40,7 @@ struct AppIdentity: Sendable {
     }
 
     var logDescription: String {
-        if let bundleIdentifier, bundleIdentifier.isEmpty == false {
+        if let bundleIdentifier, !bundleIdentifier.isEmpty {
             return "\(localizedName) [\(bundleIdentifier)]"
         }
 
@@ -55,10 +59,6 @@ struct AppIdentity: Sendable {
         let standardizedURL = bundleURL
             .resolvingSymlinksInPath()
             .standardizedFileURL
-
-        if standardizedURL.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
-            return standardizedURL
-        }
 
         var currentURL = standardizedURL
         while currentURL.path != "/" {
@@ -143,27 +143,27 @@ enum InteractionTarget: Equatable, Sendable {
     var appIdentity: AppIdentity? {
         switch self {
         case .application(let app, _), .window(_, let app, _):
-            return app
+            app
         case .unresolvedDockMinimizedItem:
-            return nil
+            nil
         }
     }
 
     var source: InteractionSource? {
         switch self {
         case .application(_, let source), .window(_, _, let source):
-            return source
+            source
         case .unresolvedDockMinimizedItem:
-            return nil
+            nil
         }
     }
 
     var windowIdentity: WindowIdentity? {
         switch self {
         case .window(let identity, _, _):
-            return identity
+            identity
         case .application, .unresolvedDockMinimizedItem:
-            return nil
+            nil
         }
     }
 
@@ -172,14 +172,11 @@ enum InteractionTarget: Equatable, Sendable {
     }
 
     var logDescription: String {
-        switch self {
-        case .application(let app, let source):
-            return "\(app.logDescription) via \(source.logLabel)"
-        case .window(_, let app, let source):
-            return "\(app.logDescription) via \(source.logLabel)"
-        case .unresolvedDockMinimizedItem:
+        guard let appIdentity, let source else {
             return "unresolved minimized Dock item"
         }
+
+        return "\(appIdentity.logDescription) via \(source.logLabel)"
     }
 
     func withSource(_ source: InteractionSource) -> InteractionTarget {
@@ -198,34 +195,33 @@ extension InteractionSource {
     var logLabel: String {
         switch self {
         case .dockAppItem:
-            return "dock-app-item"
+            "dock-app-item"
         case .dockMinimizedItem:
-            return "dock-minimized-item"
+            "dock-minimized-item"
         case .titleBar:
-            return "title-bar"
+            "title-bar"
         case .browserTabFallback:
-            return "browser-tab-fallback"
+            "browser-tab-fallback"
         }
     }
-}
 
-extension InteractionSource {
     var isDockMinimizedItem: Bool {
-        if case .dockMinimizedItem = self {
-            return true
+        switch self {
+        case .dockMinimizedItem:
+            true
+        case .dockAppItem, .titleBar, .browserTabFallback:
+            false
         }
-
-        return false
     }
 
     var titleBarHoverSource: TitleBarHoverSource? {
         switch self {
         case .titleBar:
-            return .titleBar
+            .titleBar
         case .browserTabFallback:
-            return .browserTabFallback
+            .browserTabFallback
         case .dockAppItem, .dockMinimizedItem:
-            return nil
+            nil
         }
     }
 }

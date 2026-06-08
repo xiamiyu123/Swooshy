@@ -14,44 +14,26 @@ enum DockGestureKind: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         localeIdentifier: String? = nil,
         preferredLanguages: [String] = Locale.preferredLanguages
     ) -> String {
-        switch self {
+        let localizationKey = switch self {
         case .swipeLeft:
-            return L10n.string(
-                "settings.dock_gestures.gesture.swipe_left",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.dock_gestures.gesture.swipe_left"
         case .swipeRight:
-            return L10n.string(
-                "settings.dock_gestures.gesture.swipe_right",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.dock_gestures.gesture.swipe_right"
         case .swipeDown:
-            return L10n.string(
-                "settings.dock_gestures.gesture.swipe_down",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.dock_gestures.gesture.swipe_down"
         case .swipeUp:
-            return L10n.string(
-                "settings.dock_gestures.gesture.swipe_up",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.dock_gestures.gesture.swipe_up"
         case .pinchIn:
-            return L10n.string(
-                "settings.dock_gestures.gesture.pinch_in",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.dock_gestures.gesture.pinch_in"
         case .pinchOut:
-            return L10n.string(
-                "settings.dock_gestures.gesture.pinch_out",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "settings.dock_gestures.gesture.pinch_out"
         }
+
+        return L10n.string(
+            localizationKey,
+            localeIdentifier: localeIdentifier,
+            preferredLanguages: preferredLanguages
+        )
     }
 }
 
@@ -85,95 +67,43 @@ enum DockGestureAction: String, CaseIterable, Codable, Hashable, Identifiable, S
     var id: String { rawValue }
 
     var isDisplayMoveAction: Bool {
-        switch self {
-        case .moveWindowToNextDisplay,
-             .moveWindowToPreviousDisplay:
-            return true
-        case .minimizeWindow,
-             .restoreWindow,
-             .cycleWindowsForward,
-             .cycleWindowsBackward,
-             .closeWindow,
-             .closeTab,
-             .quitApplication,
-             .toggleFullScreenWindow,
-             .exitFullScreenWindow:
-            return false
-        }
+        self == .moveWindowToNextDisplay || self == .moveWindowToPreviousDisplay
     }
 
     func title(
         localeIdentifier: String? = nil,
         preferredLanguages: [String] = Locale.preferredLanguages
     ) -> String {
-        switch self {
+        let localizationKey = switch self {
         case .minimizeWindow:
-            return L10n.string(
-                "action.minimize",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.minimize"
         case .restoreWindow:
-            return L10n.string(
-                "action.restore_window",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.restore_window"
         case .cycleWindowsForward:
-            return L10n.string(
-                "action.cycle_same_app_windows_forward",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.cycle_same_app_windows_forward"
         case .cycleWindowsBackward:
-            return L10n.string(
-                "action.cycle_same_app_windows_backward",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.cycle_same_app_windows_backward"
         case .closeWindow:
-            return L10n.string(
-                "action.close_window",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.close_window"
         case .closeTab:
-            return L10n.string(
-                "action.close_tab",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.close_tab"
         case .quitApplication:
-            return L10n.string(
-                "action.quit_application",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.quit_application"
         case .toggleFullScreenWindow:
-            return L10n.string(
-                "action.toggle_full_screen",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.toggle_full_screen"
         case .exitFullScreenWindow:
-            return L10n.string(
-                "action.exit_full_screen",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.exit_full_screen"
         case .moveWindowToNextDisplay:
-            return L10n.string(
-                "action.move_to_next_display",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.move_to_next_display"
         case .moveWindowToPreviousDisplay:
-            return L10n.string(
-                "action.move_to_previous_display",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.move_to_previous_display"
         }
+
+        return L10n.string(
+            localizationKey,
+            localeIdentifier: localeIdentifier,
+            preferredLanguages: preferredLanguages
+        )
     }
 }
 
@@ -203,25 +133,18 @@ struct DockGestureBinding: Codable, Equatable, Hashable, Sendable {
 }
 
 enum DockGestureBindings {
-    private static let defaultActionsByGesture: [(DockGestureKind, DockGestureAction)] = [
-        (.swipeLeft, .cycleWindowsForward),
-        (.swipeRight, .cycleWindowsBackward),
-        (.swipeDown, .minimizeWindow),
-        (.swipeUp, .restoreWindow),
-        (.pinchIn, .quitApplication),
-        (.pinchOut, .toggleFullScreenWindow),
+    static let defaults: [DockGestureBinding] = [
+        DockGestureBinding(gesture: .swipeLeft, action: .cycleWindowsForward),
+        DockGestureBinding(gesture: .swipeRight, action: .cycleWindowsBackward),
+        DockGestureBinding(gesture: .swipeDown, action: .minimizeWindow),
+        DockGestureBinding(gesture: .swipeUp, action: .restoreWindow),
+        DockGestureBinding(gesture: .pinchIn, action: .quitApplication),
+        DockGestureBinding(gesture: .pinchOut, action: .toggleFullScreenWindow),
     ]
 
-    static let defaults: [DockGestureBinding] = defaultActionsByGesture.map { gesture, action in
-        DockGestureBinding(gesture: gesture, action: action)
-    }
-
     static func fallbackBinding(for gesture: DockGestureKind) -> DockGestureBinding {
-        if let action = defaultActionsByGesture.first(where: { $0.0 == gesture })?.1 {
-            return DockGestureBinding(gesture: gesture, action: action)
-        }
-
-        return DockGestureBinding(gesture: gesture, action: .quitApplication)
+        defaults.first(where: { $0.gesture == gesture }) ??
+            DockGestureBinding(gesture: gesture, action: .quitApplication)
     }
 
     static func binding(
@@ -231,12 +154,6 @@ enum DockGestureBindings {
         bindings.first(where: { $0.gesture == gesture }) ?? fallbackBinding(for: gesture)
     }
 
-    static func action(
-        for gesture: DockGestureKind,
-        in bindings: [DockGestureBinding]
-    ) -> DockGestureAction {
-        binding(for: gesture, in: bindings).action
-    }
 }
 
 struct TitleBarGestureBinding: Codable, Equatable, Hashable, Sendable {
@@ -265,34 +182,20 @@ struct TitleBarGestureBinding: Codable, Equatable, Hashable, Sendable {
 }
 
 enum TitleBarGestureBindings {
-    static let supportedGestures: [DockGestureKind] = [
-        .swipeLeft,
-        .swipeRight,
-        .swipeDown,
-        .swipeUp,
-        .pinchIn,
-        .pinchOut,
+    static let defaults: [TitleBarGestureBinding] = [
+        TitleBarGestureBinding(gesture: .swipeLeft, action: .leftHalf),
+        TitleBarGestureBinding(gesture: .swipeRight, action: .rightHalf),
+        TitleBarGestureBinding(gesture: .swipeDown, action: .minimize),
+        TitleBarGestureBinding(gesture: .swipeUp, action: .center),
+        TitleBarGestureBinding(gesture: .pinchIn, action: .closeWindow),
+        TitleBarGestureBinding(gesture: .pinchOut, action: .toggleFullScreen),
     ]
 
-    private static let defaultActionsByGesture: [(DockGestureKind, WindowAction)] = [
-        (.swipeLeft, .leftHalf),
-        (.swipeRight, .rightHalf),
-        (.swipeDown, .minimize),
-        (.swipeUp, .center),
-        (.pinchIn, .closeWindow),
-        (.pinchOut, .toggleFullScreen),
-    ]
-
-    static let defaults: [TitleBarGestureBinding] = defaultActionsByGesture.map { gesture, action in
-        TitleBarGestureBinding(gesture: gesture, action: action)
-    }
+    static let supportedGestures: [DockGestureKind] = defaults.map(\.gesture)
 
     static func fallbackBinding(for gesture: DockGestureKind) -> TitleBarGestureBinding {
-        if let action = defaultActionsByGesture.first(where: { $0.0 == gesture })?.1 {
-            return TitleBarGestureBinding(gesture: gesture, action: action)
-        }
-
-        return TitleBarGestureBinding(gesture: gesture, action: .center)
+        defaults.first(where: { $0.gesture == gesture }) ??
+            TitleBarGestureBinding(gesture: gesture, action: .center)
     }
 
     static func binding(
@@ -303,10 +206,4 @@ enum TitleBarGestureBindings {
         return bindings.first(where: { $0.gesture == gesture }) ?? fallbackBinding(for: gesture)
     }
 
-    static func action(
-        for gesture: DockGestureKind,
-        in bindings: [TitleBarGestureBinding]
-    ) -> WindowAction? {
-        binding(for: gesture, in: bindings)?.action
-    }
 }

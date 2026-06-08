@@ -48,7 +48,12 @@ enum BrowserTabProbe {
             return false
         }
 
-        if axElementIsTab(at: appKitPoint, hostFamily: hostSupport.family) {
+        let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
+        if axElementIsTab(
+            at: appKitPoint,
+            axPoint: geometry.axPoint(fromAppKitPoint: appKitPoint),
+            hostFamily: hostSupport.family
+        ) {
             DebugLog.debug(
                 DebugLog.dock,
                 "BrowserTabProbe result pid=\(processIdentifier) host=\(hostSupport.description) point=\(NSStringFromPoint(appKitPoint)) => tab"
@@ -59,12 +64,16 @@ enum BrowserTabProbe {
         // AX frames can be slightly smaller than visual tab bounds (padding,
         // rounded corners). Retry with small offsets around the original point.
         let margin: CGFloat = 4
-        for offset in proximityOffsets where offset != .zero {
+        for offset in proximityOffsets {
             let candidate = CGPoint(
                 x: appKitPoint.x + offset.x * margin,
                 y: appKitPoint.y + offset.y * margin
             )
-            if axElementIsTab(at: candidate, hostFamily: hostSupport.family) {
+            if axElementIsTab(
+                at: candidate,
+                axPoint: geometry.axPoint(fromAppKitPoint: candidate),
+                hostFamily: hostSupport.family
+            ) {
                 DebugLog.debug(
                     DebugLog.dock,
                     "BrowserTabProbe result pid=\(processIdentifier) host=\(hostSupport.description) point=\(NSStringFromPoint(appKitPoint)) => tab (proximity hit at offset \(offset.x * margin), \(offset.y * margin))"
@@ -81,7 +90,6 @@ enum BrowserTabProbe {
     }
 
     private static let proximityOffsets: [CGPoint] = [
-        CGPoint(x: 0, y: 0),
         CGPoint(x: 1, y: 0), CGPoint(x: -1, y: 0),
         CGPoint(x: 0, y: 1), CGPoint(x: 0, y: -1),
         CGPoint(x: 1, y: 1), CGPoint(x: -1, y: -1),
@@ -167,6 +175,9 @@ enum BrowserTabProbe {
         "com.google.antigravity",
     ]
 
+    private static let knownTabCloseBundleIdentifiers = knownBrowserBundleIdentifiers
+        .union(knownEditorBundleIdentifiers)
+
     private static let knownEditorNames: Set<String> = [
         "visual studio code",
         "visual studio code - insiders",
@@ -185,24 +196,18 @@ enum BrowserTabProbe {
     private static var hostSupportCache: [pid_t: CachedHostSupport] = [:]
 
     static func supportsTabCloseHost(bundleIdentifier: String?, localizedName: String?) -> Bool {
-        if let bundleIdentifier, knownBrowserBundleIdentifiers.contains(bundleIdentifier) {
+        if let bundleIdentifier, knownTabCloseBundleIdentifiers.contains(bundleIdentifier) {
             return true
         }
 
-        if let bundleIdentifier, knownEditorBundleIdentifiers.contains(bundleIdentifier) {
-            return true
-        }
-
-        guard
-            let localizedName = localizedName?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased(),
-            localizedName.isEmpty == false
-        else {
+        guard let localizedName else {
             return false
         }
 
-        return knownEditorNames.contains(localizedName)
+        let normalizedName = localizedName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return knownEditorNames.contains(normalizedName)
     }
 
     private static func hostSupport(processIdentifier: pid_t) -> CachedHostSupport? {
@@ -218,28 +223,31 @@ enum BrowserTabProbe {
             bundleIdentifier: app.bundleIdentifier,
             localizedName: app.localizedName
         )
-        let description = [app.localizedName, app.bundleIdentifier]
-            .compactMap { $0 }
-            .joined(separator: " / ")
         let support = CachedHostSupport(
             isSupported: isSupported,
-            description: description.isEmpty ? "<unknown>" : description,
+            description: hostDescription(for: app),
             family: tabHostFamily(bundleIdentifier: app.bundleIdentifier)
         )
         hostSupportCache[processIdentifier] = support
         return support
     }
 
+    private static func hostDescription(for app: NSRunningApplication) -> String {
+        let description = [app.localizedName, app.bundleIdentifier]
+            .compactMap { $0 }
+            .joined(separator: " / ")
+        return description.isEmpty ? "<unknown>" : description
+    }
+
     private static func tabHostFamily(bundleIdentifier: String?) -> TabHostFamily {
-        guard let bundleIdentifier else {
+        guard
+            let bundleIdentifier,
+            webKitBrowserBundleIdentifiers.contains(bundleIdentifier)
+        else {
             return .generic
         }
 
-        if webKitBrowserBundleIdentifiers.contains(bundleIdentifier) {
-            return .webKit
-        }
-
-        return .generic
+        return .webKit
     }
 
     // MARK: - AX Tab Detection
@@ -276,7 +284,18 @@ enum BrowserTabProbe {
         hostFamily: TabHostFamily
     ) -> Bool {
         let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
-        let axPoint = geometry.axPoint(fromAppKitPoint: appKitPoint)
+        return axElementIsTab(
+            at: appKitPoint,
+            axPoint: geometry.axPoint(fromAppKitPoint: appKitPoint),
+            hostFamily: hostFamily
+        )
+    }
+
+    private static func axElementIsTab(
+        at appKitPoint: CGPoint,
+        axPoint: CGPoint,
+        hostFamily: TabHostFamily
+    ) -> Bool {
         guard let element = AXAttributeReader.hitElement(atAXPoint: axPoint) else {
             DebugLog.debug(
                 DebugLog.dock,
@@ -290,14 +309,22 @@ enum BrowserTabProbe {
         var current: AXUIElement? = element
         let maxDepth = 10
         var ancestry: [TabAncestryNode] = []
+        let includeTitlesInLog = DebugLog.isEnabled
 
         for _ in 0..<maxDepth {
             guard let node = current else { break }
 
             let role = AXAttributeReader.string(kAXRoleAttribute as CFString, from: node) ?? "<nil>"
             let subrole = AXAttributeReader.string(kAXSubroleAttribute as CFString, from: node) ?? "<nil>"
-            let title = AXAttributeReader.string(kAXTitleAttribute as CFString, from: node) ?? "<nil>"
-            let matchedTabElement = isTabElement(node, at: axPoint)
+            let title = includeTitlesInLog
+                ? AXAttributeReader.string(kAXTitleAttribute as CFString, from: node) ?? "<nil>"
+                : ""
+            let matchedTabElement = isTabElement(
+                node,
+                role: role,
+                subrole: subrole,
+                at: axPoint
+            )
             ancestry.append(
                 TabAncestryNode(
                     role: role,
@@ -340,21 +367,12 @@ enum BrowserTabProbe {
             return false
         }
 
-        let matchedRadioTabButton = ancestry.contains {
-            $0.matchedTabElement &&
-                $0.role == "AXRadioButton" &&
-                tabSubroles.contains($0.subrole)
-        }
-
-        guard matchedRadioTabButton else {
+        guard containsSafariStyleTabButton(ancestry) else {
             return true
         }
 
-        if hostFamily == .webKit {
-            return true
-        }
-
-        return ancestry.contains { browserChromeContainerRoles.contains($0.role) }
+        return hostFamily == .webKit ||
+            ancestry.contains(where: isBrowserChromeContainer)
     }
 
     private static func logAndReturnAncestryVerdict(
@@ -397,19 +415,30 @@ enum BrowserTabProbe {
     }
 
     private static func isPageContentMarker(_ node: TabAncestryNode) -> Bool {
-        if pageContentRoles.contains(node.role) {
-            return true
-        }
-
-        if pageContentSubroles.contains(node.subrole) {
-            return true
-        }
-
-        return node.subrole.hasPrefix("AXLandmark")
+        pageContentRoles.contains(node.role) ||
+            pageContentSubroles.contains(node.subrole) ||
+            node.subrole.hasPrefix("AXLandmark")
     }
 
-    private static func isTabElement(_ element: AXUIElement, at axPoint: CGPoint) -> Bool {
-        guard let role = AXAttributeReader.string(kAXRoleAttribute as CFString, from: element) else {
+    private static func containsSafariStyleTabButton(_ ancestry: [TabAncestryNode]) -> Bool {
+        ancestry.contains { node in
+            node.matchedTabElement &&
+                node.role == "AXRadioButton" &&
+                tabSubroles.contains(node.subrole)
+        }
+    }
+
+    private static func isBrowserChromeContainer(_ node: TabAncestryNode) -> Bool {
+        browserChromeContainerRoles.contains(node.role)
+    }
+
+    private static func isTabElement(
+        _ element: AXUIElement,
+        role: String,
+        subrole: String,
+        at axPoint: CGPoint
+    ) -> Bool {
+        guard role != "<nil>" else {
             return false
         }
 
@@ -423,13 +452,13 @@ enum BrowserTabProbe {
         if tabRoles.contains(role) {
             // For AXRadioButton, further verify the subrole is AXTabButton (Safari).
             if role == "AXRadioButton" {
-                return subroleMatches(element)
+                return tabSubroles.contains(subrole)
             }
             return true
         }
 
         // Some browsers expose tab groups; check subrole on other roles too.
-        return subroleMatches(element)
+        return tabSubroles.contains(subrole)
     }
 
     private static func tabGroupContainsTab(at axPoint: CGPoint, within tabGroup: AXUIElement) -> Bool {
@@ -443,7 +472,7 @@ enum BrowserTabProbe {
             guard depth < maxDepth else { continue }
 
             for child in AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: node) {
-                if let frame = AXAttributeReader.rect("AXFrame" as CFString, from: child), frame.contains(axPoint) == false {
+                if let frame = AXAttributeReader.rect("AXFrame" as CFString, from: child), !frame.contains(axPoint) {
                     continue
                 }
 
@@ -455,16 +484,12 @@ enum BrowserTabProbe {
                     return true
                 }
 
-                if role == "AXRadioButton", tabSubroles.contains(subrole) {
-                    return true
-                }
-
                 if tabSubroles.contains(subrole) {
                     return true
                 }
 
                 // Chromium fallback: tabs can appear as AXGroup with title + press action.
-                if role == "AXGroup", title.isEmpty == false, supportsPressAction(child) {
+                if role == "AXGroup", !title.isEmpty, supportsPressAction(child) {
                     return true
                 }
 
@@ -477,14 +502,6 @@ enum BrowserTabProbe {
 
     private static func supportsPressAction(_ element: AXUIElement) -> Bool {
         AXAttributeReader.actionNames(of: element).contains("AXPress")
-    }
-
-    private static func subroleMatches(_ element: AXUIElement) -> Bool {
-        guard let subrole = AXAttributeReader.string(kAXSubroleAttribute as CFString, from: element) else {
-            return false
-        }
-
-        return tabSubroles.contains(subrole)
     }
 
     // MARK: - Cache Maintenance
