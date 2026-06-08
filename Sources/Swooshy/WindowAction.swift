@@ -40,82 +40,38 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
         .toggleFullScreen,
     ]
 
-    private static let gestureOnlyCases: [WindowAction] = [
-        .exitFullScreen,
-    ]
-
-    static let gestureCases: [WindowAction] = allCases + gestureOnlyCases
+    static let gestureCases: [WindowAction] = allCases + [.exitFullScreen]
 
     var title: String {
         title()
     }
 
     var isDisplayMoveAction: Bool {
-        switch self {
-        case .moveToNextDisplay,
-             .moveToPreviousDisplay:
-            return true
-        case .leftHalf,
-             .rightHalf,
-             .maximize,
-             .center,
-             .topLeftQuarter,
-             .topRightQuarter,
-             .bottomLeftQuarter,
-             .bottomRightQuarter,
-             .minimize,
-             .closeWindow,
-             .closeTab,
-             .quitApplication,
-             .cycleSameAppWindowsForward,
-             .cycleSameAppWindowsBackward,
-             .toggleFullScreen,
-             .exitFullScreen:
-            return false
-        }
+        self == .moveToNextDisplay || self == .moveToPreviousDisplay
     }
 
     var supportsSnapPreview: Bool {
         previewBehavior != nil
     }
 
+    var supportsBrowserTabCloseReplacement: Bool {
+        self == .closeWindow || self == .quitApplication
+    }
+
     var previewBehavior: WindowActionPreviewBehavior? {
         switch self {
-        case .leftHalf:
-            return .area(
-                defaultHorizontalAnchor: .leadingEdge,
-                defaultVerticalAnchor: .leadingEdge
-            )
-        case .rightHalf:
-            return .area(
-                defaultHorizontalAnchor: .trailingEdge,
-                defaultVerticalAnchor: .leadingEdge
-            )
-        case .maximize, .center:
-            return .area(
-                defaultHorizontalAnchor: .leadingEdge,
-                defaultVerticalAnchor: .leadingEdge
-            )
+        case .leftHalf,
+             .maximize,
+             .center,
+             .bottomLeftQuarter:
+            .area(defaultHorizontalAnchor: .leadingEdge, defaultVerticalAnchor: .leadingEdge)
+        case .rightHalf,
+             .bottomRightQuarter:
+            .area(defaultHorizontalAnchor: .trailingEdge, defaultVerticalAnchor: .leadingEdge)
         case .topLeftQuarter:
-            return .area(
-                defaultHorizontalAnchor: .leadingEdge,
-                defaultVerticalAnchor: .trailingEdge
-            )
+            .area(defaultHorizontalAnchor: .leadingEdge, defaultVerticalAnchor: .trailingEdge)
         case .topRightQuarter:
-            return .area(
-                defaultHorizontalAnchor: .trailingEdge,
-                defaultVerticalAnchor: .trailingEdge
-            )
-        case .bottomLeftQuarter:
-            return .area(
-                defaultHorizontalAnchor: .leadingEdge,
-                defaultVerticalAnchor: .leadingEdge
-            )
-        case .bottomRightQuarter:
-            return .area(
-                defaultHorizontalAnchor: .trailingEdge,
-                defaultVerticalAnchor: .leadingEdge
-            )
+            .area(defaultHorizontalAnchor: .trailingEdge, defaultVerticalAnchor: .trailingEdge)
         case .minimize,
              .closeWindow,
              .closeTab,
@@ -126,7 +82,7 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
              .exitFullScreen,
              .moveToNextDisplay,
              .moveToPreviousDisplay:
-            return nil
+            nil
         }
     }
 
@@ -134,151 +90,83 @@ enum WindowAction: Int, CaseIterable, Codable, Hashable, Sendable {
         localeIdentifier: String? = nil,
         preferredLanguages: [String] = Locale.preferredLanguages
     ) -> String {
-        switch self {
+        let localizationKey = switch self {
         case .leftHalf:
-            return L10n.string(
-                "action.left_half",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.left_half"
         case .rightHalf:
-            return L10n.string(
-                "action.right_half",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.right_half"
         case .maximize:
-            return L10n.string(
-                "action.maximize",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.maximize"
         case .center:
-            return L10n.string(
-                "action.center",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.center"
         case .topLeftQuarter:
-            return L10n.string(
-                "action.top_left_quarter",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.top_left_quarter"
         case .topRightQuarter:
-            return L10n.string(
-                "action.top_right_quarter",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.top_right_quarter"
         case .bottomLeftQuarter:
-            return L10n.string(
-                "action.bottom_left_quarter",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.bottom_left_quarter"
         case .bottomRightQuarter:
-            return L10n.string(
-                "action.bottom_right_quarter",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.bottom_right_quarter"
         case .minimize:
-            return L10n.string(
-                "action.minimize",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.minimize"
         case .closeWindow:
-            return L10n.string(
-                "action.close_window",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.close_window"
         case .closeTab:
-            return L10n.string(
-                "action.close_tab",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.close_tab"
         case .quitApplication:
-            return L10n.string(
-                "action.quit_application",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.quit_application"
         case .cycleSameAppWindowsForward:
-            return L10n.string(
-                "action.cycle_same_app_windows_forward",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.cycle_same_app_windows_forward"
         case .cycleSameAppWindowsBackward:
-            return L10n.string(
-                "action.cycle_same_app_windows_backward",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.cycle_same_app_windows_backward"
         case .toggleFullScreen:
-            return L10n.string(
-                "action.toggle_full_screen",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.toggle_full_screen"
         case .exitFullScreen:
-            return L10n.string(
-                "action.exit_full_screen",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.exit_full_screen"
         case .moveToNextDisplay:
-            return L10n.string(
-                "action.move_to_next_display",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.move_to_next_display"
         case .moveToPreviousDisplay:
-            return L10n.string(
-                "action.move_to_previous_display",
-                localeIdentifier: localeIdentifier,
-                preferredLanguages: preferredLanguages
-            )
+            "action.move_to_previous_display"
         }
+
+        return L10n.string(
+            localizationKey,
+            localeIdentifier: localeIdentifier,
+            preferredLanguages: preferredLanguages
+        )
     }
 
     var menuKeyEquivalent: String {
         switch self {
         case .leftHalf:
-            return "1"
+            "1"
         case .rightHalf:
-            return "2"
+            "2"
         case .maximize:
-            return "3"
+            "3"
         case .center:
-            return "4"
+            "4"
         case .topLeftQuarter,
              .topRightQuarter,
              .bottomLeftQuarter,
              .bottomRightQuarter,
              .moveToNextDisplay,
-             .moveToPreviousDisplay:
-            return ""
+             .moveToPreviousDisplay,
+             .closeTab,
+             .exitFullScreen:
+            ""
         case .minimize:
-            return "5"
+            "5"
         case .closeWindow:
-            return "6"
-        case .closeTab:
-            return ""
+            "6"
         case .quitApplication:
-            return "7"
+            "7"
         case .cycleSameAppWindowsForward:
-            return "8"
+            "8"
         case .cycleSameAppWindowsBackward:
-            return "9"
+            "9"
         case .toggleFullScreen:
-            return "0"
-        case .exitFullScreen:
-            return ""
+            "0"
         }
     }
 }

@@ -13,6 +13,21 @@ struct WindowRecordSnapshot: Equatable {
     let isMain: Bool
     let lastMinimizedAt: Date?
     let boundDockMinimizedHandle: DockMinimizedItemHandle?
+
+    func withBoundDockMinimizedHandle(_ handle: DockMinimizedItemHandle?) -> WindowRecordSnapshot {
+        WindowRecordSnapshot(
+            identity: identity,
+            appIdentity: appIdentity,
+            ownerProcessIdentifier: ownerProcessIdentifier,
+            title: title,
+            frame: frame,
+            isMinimized: isMinimized,
+            isFocused: isFocused,
+            isMain: isMain,
+            lastMinimizedAt: lastMinimizedAt,
+            boundDockMinimizedHandle: handle
+        )
+    }
 }
 
 @MainActor
@@ -93,8 +108,17 @@ final class WindowRegistry {
     }
 
     func refreshRunningApplications() {
+        let applications = refreshRunningApplicationRecords()
+
+        for application in applications {
+            refreshApplication(processIdentifier: application.application.processIdentifier)
+        }
+    }
+
+    @discardableResult
+    private func refreshRunningApplicationRecords() -> [ApplicationRecord] {
         let applications = NSWorkspace.shared.runningApplications.compactMap { application -> ApplicationRecord? in
-            guard application.isTerminated == false else {
+            guard !application.isTerminated else {
                 return nil
             }
 
@@ -136,9 +160,7 @@ final class WindowRegistry {
         )
         observationCenter.syncApplications(applications.map(\.application))
 
-        for application in applications {
-            refreshApplication(processIdentifier: application.application.processIdentifier)
-        }
+        return applications
     }
 
     func refreshApplication(processIdentifier: pid_t) {
@@ -159,7 +181,7 @@ final class WindowRegistry {
 
     func appIdentity(forProcessIdentifier processIdentifier: pid_t) -> AppIdentity? {
         if applicationsByProcessIdentifier[processIdentifier] == nil {
-            refreshRunningApplications()
+            refreshRunningApplicationRecords()
         }
 
         return applicationsByProcessIdentifier[processIdentifier]?.identity
@@ -175,8 +197,8 @@ final class WindowRegistry {
             return appIdentity
         }
 
-        guard matchingApplications.isEmpty == false else {
-            refreshRunningApplications()
+        guard !matchingApplications.isEmpty else {
+            refreshRunningApplicationRecords()
             return applicationsByBundleURL[canonicalBundleURL]
         }
 
@@ -193,7 +215,7 @@ final class WindowRegistry {
             let preferredProcessIdentifier,
             let preferredRecord = applicationsByProcessIdentifier[preferredProcessIdentifier],
             preferredRecord.identity == identity,
-            preferredRecord.application.isTerminated == false
+            !preferredRecord.application.isTerminated
         {
             return preferredRecord.application
         }
@@ -201,13 +223,13 @@ final class WindowRegistry {
         if
             let processRecord = applicationsByProcessIdentifier[identity.processIdentifier],
             processRecord.identity == identity,
-            processRecord.application.isTerminated == false
+            !processRecord.application.isTerminated
         {
             return processRecord.application
         }
 
         let matchingApplications = applicationsByProcessIdentifier.values
-            .filter { $0.identity == identity && $0.application.isTerminated == false }
+            .filter { $0.identity == identity && !$0.application.isTerminated }
             .sorted { lhs, rhs in
                 let lhsScore = applicationQualityScore(for: lhs.application)
                 let rhsScore = applicationQualityScore(for: rhs.application)
@@ -247,12 +269,7 @@ final class WindowRegistry {
             return nil
         }
 
-        let appElement = AXUIElementCreateApplication(application.processIdentifier)
-        guard let focusedWindow = AXAttributeReader.element(kAXFocusedWindowAttribute as CFString, from: appElement) else {
-            return nil
-        }
-
-        return windowIdentity(for: focusedWindow, in: application)
+        return windowIdentity(matching: kAXFocusedWindowAttribute as CFString, in: application)
     }
 
     func mainWindowIdentity(in identity: AppIdentity) -> WindowIdentity? {
@@ -260,12 +277,19 @@ final class WindowRegistry {
             return nil
         }
 
+        return windowIdentity(matching: kAXMainWindowAttribute as CFString, in: application)
+    }
+
+    private func windowIdentity(
+        matching attribute: CFString,
+        in application: NSRunningApplication
+    ) -> WindowIdentity? {
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
-        guard let mainWindow = AXAttributeReader.element(kAXMainWindowAttribute as CFString, from: appElement) else {
+        guard let window = AXAttributeReader.element(attribute, from: appElement) else {
             return nil
         }
 
-        return windowIdentity(for: mainWindow, in: application)
+        return windowIdentity(for: window, in: application)
     }
 
     func windowSnapshots(for identity: AppIdentity) -> [WindowRecordSnapshot] {
@@ -275,7 +299,7 @@ final class WindowRegistry {
     }
 
     func visibleWindowSnapshots(for identity: AppIdentity) -> [WindowRecordSnapshot] {
-        windowSnapshots(for: identity).filter { $0.isMinimized == false }
+        windowSnapshots(for: identity).filter { !$0.isMinimized }
     }
 
     func orderedVisibleWindowSnapshots(for identity: AppIdentity) -> [WindowRecordSnapshot] {
@@ -320,35 +344,13 @@ final class WindowRegistry {
             return
         }
 
-        record.snapshot = WindowRecordSnapshot(
-            identity: record.snapshot.identity,
-            appIdentity: record.snapshot.appIdentity,
-            ownerProcessIdentifier: record.snapshot.ownerProcessIdentifier,
-            title: record.snapshot.title,
-            frame: record.snapshot.frame,
-            isMinimized: record.snapshot.isMinimized,
-            isFocused: record.snapshot.isFocused,
-            isMain: record.snapshot.isMain,
-            lastMinimizedAt: record.snapshot.lastMinimizedAt,
-            boundDockMinimizedHandle: handle
-        )
+        record.snapshot = record.snapshot.withBoundDockMinimizedHandle(handle)
         windowsByIdentity[windowIdentity] = record
     }
 
     func unbindDockMinimizedHandle(_ handle: DockMinimizedItemHandle) {
         for (identity, var record) in windowsByIdentity where record.snapshot.boundDockMinimizedHandle == handle {
-            record.snapshot = WindowRecordSnapshot(
-                identity: record.snapshot.identity,
-                appIdentity: record.snapshot.appIdentity,
-                ownerProcessIdentifier: record.snapshot.ownerProcessIdentifier,
-                title: record.snapshot.title,
-                frame: record.snapshot.frame,
-                isMinimized: record.snapshot.isMinimized,
-                isFocused: record.snapshot.isFocused,
-                isMain: record.snapshot.isMain,
-                lastMinimizedAt: record.snapshot.lastMinimizedAt,
-                boundDockMinimizedHandle: nil
-            )
+            record.snapshot = record.snapshot.withBoundDockMinimizedHandle(nil)
             windowsByIdentity[identity] = record
         }
     }
@@ -396,12 +398,12 @@ final class WindowRegistry {
             liveWindowTokens.insert(token)
         }
 
-        for existingRecord in existingRecords where liveWindowIdentities.contains(existingRecord.identity) == false {
+        for existingRecord in existingRecords where !liveWindowIdentities.contains(existingRecord.identity) {
             windowsByIdentity.removeValue(forKey: existingRecord.identity)
             windowIdentitiesByToken.removeValue(forKey: existingRecord.token)
         }
 
-        for existingRecord in existingRecords where liveWindowTokens.contains(existingRecord.token) == false {
+        for existingRecord in existingRecords where !liveWindowTokens.contains(existingRecord.token) {
             windowIdentitiesByToken.removeValue(forKey: existingRecord.token)
         }
     }
@@ -475,7 +477,7 @@ final class WindowRegistry {
             score += 120
         }
 
-        if application.isHidden == false {
+        if !application.isHidden {
             score += 20
         }
 

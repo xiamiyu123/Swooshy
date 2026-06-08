@@ -14,9 +14,9 @@ private enum FrameWriteOrder: String {
     var alternate: Self {
         switch self {
         case .sizeThenPosition:
-            return .positionThenSize
+            .positionThenSize
         case .positionThenSize:
-            return .sizeThenPosition
+            .sizeThenPosition
         }
     }
 }
@@ -71,7 +71,7 @@ struct WindowConstraintObservationScope: Equatable {
 
     private static func normalizedTitleComponent(_ value: String?) -> String {
         let collapsed = collapsedWhitespace(value)
-        guard collapsed.isEmpty == false else {
+        guard !collapsed.isEmpty else {
             return "<untitled>"
         }
 
@@ -108,29 +108,23 @@ private func mergedConstraintSizeBounds(
 }
 
 private func mergeConstraintMaximum(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
-    switch (lhs, rhs) {
-    case let (.some(lhs), .some(rhs)):
-        return max(lhs, rhs)
-    case let (.some(lhs), .none):
-        return lhs
-    case let (.none, .some(rhs)):
-        return rhs
-    case (.none, .none):
-        return nil
-    }
+    mergeConstraintValues(lhs, rhs, combine: max)
 }
 
 private func mergeConstraintMinimum(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
-    switch (lhs, rhs) {
-    case let (.some(lhs), .some(rhs)):
-        return min(lhs, rhs)
-    case let (.some(lhs), .none):
-        return lhs
-    case let (.none, .some(rhs)):
-        return rhs
-    case (.none, .none):
-        return nil
+    mergeConstraintValues(lhs, rhs, combine: min)
+}
+
+private func mergeConstraintValues(
+    _ lhs: CGFloat?,
+    _ rhs: CGFloat?,
+    combine: (CGFloat, CGFloat) -> CGFloat
+) -> CGFloat? {
+    if let lhs, let rhs {
+        return combine(lhs, rhs)
     }
+
+    return lhs ?? rhs
 }
 
 private func normalizedConstraintSizeBounds(
@@ -172,6 +166,8 @@ private func normalizedConstraintMinimum(
     latestMaximum: CGFloat?
 ) -> CGFloat? {
     guard
+        latestMaximum != nil,
+        latestMinimum == nil,
         let minimum,
         let maximum,
         minimum > maximum
@@ -179,11 +175,7 @@ private func normalizedConstraintMinimum(
         return minimum
     }
 
-    if latestMaximum != nil, latestMinimum == nil {
-        return nil
-    }
-
-    return minimum
+    return nil
 }
 
 private func normalizedConstraintMaximum(
@@ -193,6 +185,8 @@ private func normalizedConstraintMaximum(
     latestMaximum: CGFloat?
 ) -> CGFloat? {
     guard
+        latestMinimum != nil,
+        latestMaximum == nil,
         let minimum,
         let maximum,
         minimum > maximum
@@ -200,11 +194,7 @@ private func normalizedConstraintMaximum(
         return maximum
     }
 
-    if latestMinimum != nil, latestMaximum == nil {
-        return nil
-    }
-
-    return maximum
+    return nil
 }
 
 @MainActor
@@ -262,30 +252,7 @@ final class CGWindowOrderingSnapshotCache {
     }
 
     private static func makeDescriptors(from windowInfoList: [[String: Any]]) -> [CachedWindowDescriptor] {
-        windowInfoList.compactMap { windowInfo in
-            guard
-                let ownerPID = windowInfo[kCGWindowOwnerPID as String] as? NSNumber,
-                let boundsDictionary = windowInfo[kCGWindowBounds as String] as? NSDictionary
-            else {
-                return nil
-            }
-
-            var frame = CGRect.null
-            guard
-                CGRectMakeWithDictionaryRepresentation(boundsDictionary, &frame),
-                frame.isNull == false,
-                frame.isEmpty == false
-            else {
-                return nil
-            }
-
-            let windowID = (windowInfo[kCGWindowNumber as String] as? NSNumber)?.uint32Value
-            return CachedWindowDescriptor(
-                ownerProcessIdentifier: ownerPID.int32Value,
-                windowID: windowID,
-                frame: frame.integral
-            )
-        }
+        windowInfoList.compactMap(CachedWindowDescriptor.init)
     }
 }
 
@@ -293,6 +260,28 @@ private struct CachedWindowDescriptor {
     let ownerProcessIdentifier: pid_t
     let windowID: CGWindowID?
     let frame: CGRect
+
+    init?(windowInfo: [String: Any]) {
+        guard
+            let ownerPID = windowInfo[kCGWindowOwnerPID as String] as? NSNumber,
+            let boundsDictionary = windowInfo[kCGWindowBounds as String] as? NSDictionary
+        else {
+            return nil
+        }
+
+        var frame = CGRect.null
+        guard
+            CGRectMakeWithDictionaryRepresentation(boundsDictionary, &frame),
+            !frame.isNull,
+            !frame.isEmpty
+        else {
+            return nil
+        }
+
+        ownerProcessIdentifier = ownerPID.int32Value
+        windowID = (windowInfo[kCGWindowNumber as String] as? NSNumber)?.uint32Value
+        self.frame = frame.integral
+    }
 }
 
 @MainActor
@@ -400,14 +389,14 @@ final class ObservedWindowConstraintStore {
         )
 
         if sizeBounds.hasConstraints {
-            applicationConstraints.sharedSizeBounds = merged(
+            applicationConstraints.sharedSizeBounds = mergedConstraintSizeBounds(
                 applicationConstraints.sharedSizeBounds,
                 with: sizeBounds
             )
         }
 
         if var existingObservation = applicationConstraints.observationsByAction[action] {
-            existingObservation.sizeBounds = merged(
+            existingObservation.sizeBounds = mergedConstraintSizeBounds(
                 existingObservation.sizeBounds,
                 with: sizeBounds
             )
@@ -520,32 +509,28 @@ final class ObservedWindowConstraintStore {
             return
         }
 
-        guard constraintsByApplicationKey.isEmpty == false else {
+        guard !constraintsByApplicationKey.isEmpty else {
             userDefaults.removeObject(forKey: Self.persistenceKey)
             hasPendingPersistence = false
             return
         }
 
-        let applications: [PersistedApplicationConstraints] = constraintsByApplicationKey.keys.sorted().compactMap { applicationKey in
-            guard let constraints = constraintsByApplicationKey[applicationKey] else {
-                return nil
-            }
-
-            let observations = constraints.observationsByAction.keys
-                .sorted(by: { $0.rawValue < $1.rawValue })
-                .compactMap { action in
-                    constraints.observationsByAction[action].map { observation in
+        let applications = constraintsByApplicationKey
+            .sorted { $0.key < $1.key }
+            .map { applicationKey, constraints in
+                let observations = constraints.observationsByAction
+                    .sorted { $0.key.rawValue < $1.key.rawValue }
+                    .map { action, observation in
                         PersistedActionObservation(action: action, observation: observation)
                     }
-                }
 
-            return PersistedApplicationConstraints(
-                applicationKey: applicationKey,
-                sharedSizeBounds: constraints.sharedSizeBounds,
-                observations: observations,
-                lastUsedAt: constraints.lastUsedAt
-            )
-        }
+                return PersistedApplicationConstraints(
+                    applicationKey: applicationKey,
+                    sharedSizeBounds: constraints.sharedSizeBounds,
+                    observations: observations,
+                    lastUsedAt: constraints.lastUsedAt
+                )
+            }
 
         do {
             let data = try JSONEncoder().encode(PersistedSnapshot(applications: applications))
@@ -557,13 +542,6 @@ final class ObservedWindowConstraintStore {
                 "Failed to persist observed window constraint store: \(error.localizedDescription)"
             )
         }
-    }
-
-    private func merged(
-        _ lhs: WindowActionPreview.SizeBounds,
-        with rhs: WindowActionPreview.SizeBounds
-    ) -> WindowActionPreview.SizeBounds {
-        mergedConstraintSizeBounds(lhs, with: rhs)
     }
 }
 
@@ -603,6 +581,12 @@ final class WindowManager: WindowManaging {
         registry.shutdown()
     }
 
+    private func requireAccessibilityPermission() throws {
+        guard AXIsProcessTrusted() else {
+            throw WindowManagerError.accessibilityPermissionMissing
+        }
+    }
+
     func perform(_ action: WindowAction, layoutEngine: WindowLayoutEngine) throws {
         try perform(
             action,
@@ -630,23 +614,22 @@ final class WindowManager: WindowManaging {
         let app = try frontmostApplication()
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
 
-        switch action {
-        case .minimize:
-            let window = try targetedWindow(
+        func targetedFrontmostWindow() throws -> AXUIElement {
+            try targetedWindow(
                 in: app,
                 appElement: appElement,
                 preferredAppKitPoint: preferredAppKitPoint,
                 fallback: { try focusedWindowElement(in: appElement) }
             )
+        }
+
+        switch action {
+        case .minimize:
+            let window = try targetedFrontmostWindow()
             try setMinimized(true, for: window)
             return
         case .closeWindow:
-            let window = try targetedWindow(
-                in: app,
-                appElement: appElement,
-                preferredAppKitPoint: preferredAppKitPoint,
-                fallback: { try focusedWindowElement(in: appElement) }
-            )
+            let window = try targetedFrontmostWindow()
             guard try closeWindow(window, owningApp: app) else {
                 throw WindowManagerError.unableToPerformAction
             }
@@ -657,12 +640,7 @@ final class WindowManager: WindowManaging {
             }
             return
         case .cycleSameAppWindowsForward:
-            let currentWindow = try targetedWindow(
-                in: app,
-                appElement: appElement,
-                preferredAppKitPoint: preferredAppKitPoint,
-                fallback: { try focusedWindowElement(in: appElement) }
-            )
+            let currentWindow = try targetedFrontmostWindow()
             try focusAdjacentVisibleWindow(
                 in: app,
                 appElement: appElement,
@@ -671,12 +649,7 @@ final class WindowManager: WindowManaging {
             )
             return
         case .cycleSameAppWindowsBackward:
-            let currentWindow = try targetedWindow(
-                in: app,
-                appElement: appElement,
-                preferredAppKitPoint: preferredAppKitPoint,
-                fallback: { try focusedWindowElement(in: appElement) }
-            )
+            let currentWindow = try targetedFrontmostWindow()
             try focusAdjacentVisibleWindow(
                 in: app,
                 appElement: appElement,
@@ -685,12 +658,7 @@ final class WindowManager: WindowManaging {
             )
             return
         case .moveToNextDisplay, .moveToPreviousDisplay:
-            let window = try targetedWindow(
-                in: app,
-                appElement: appElement,
-                preferredAppKitPoint: preferredAppKitPoint,
-                fallback: { try focusedWindowElement(in: appElement) }
-            )
+            let window = try targetedFrontmostWindow()
             try performDisplayMove(
                 direction: action.displayMoveDirection,
                 application: app,
@@ -720,24 +688,14 @@ final class WindowManager: WindowManaging {
         case .quitApplication:
             return
         case .toggleFullScreen:
-            let window = try targetedWindow(
-                in: app,
-                appElement: appElement,
-                preferredAppKitPoint: preferredAppKitPoint,
-                fallback: { try focusedWindowElement(in: appElement) }
-            )
+            let window = try targetedFrontmostWindow()
             let isFullScreen = isFullScreen(window)
             if !isFullScreen {
                 try setFullScreen(true, for: window)
             }
             return
         case .exitFullScreen:
-            let window = try targetedWindow(
-                in: app,
-                appElement: appElement,
-                preferredAppKitPoint: preferredAppKitPoint,
-                fallback: { try focusedWindowElement(in: appElement) }
-            )
+            let window = try targetedFrontmostWindow()
             if isFullScreen(window) {
                 try setFullScreen(false, for: window)
             }
@@ -913,9 +871,7 @@ final class WindowManager: WindowManaging {
         on target: InteractionTarget,
         preferredAppKitPoint: CGPoint?
     ) throws -> SmoothDockingSession {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         let resolvedApplication = try resolvedApplicationContext(for: target)
         let targetWindow = try preferredWindowActionTarget(
@@ -979,7 +935,7 @@ final class WindowManager: WindowManaging {
         usesObservedConstraints: Bool = true
     ) throws -> ResolvedWindowActionLayout {
         let screens = NSScreen.screens
-        guard screens.isEmpty == false else {
+        guard !screens.isEmpty else {
             throw WindowManagerError.unableToResolveScreen
         }
         logScreenConfiguration(screens, preferredAppKitPoint: preferredAppKitPoint)
@@ -1011,11 +967,11 @@ final class WindowManager: WindowManaging {
 
         if
             let preferredAppKitPoint,
-            let preferredScreenFrame = screenFrames.first(where: { $0.contains(preferredAppKitPoint) })
+            currentScreenFrame.contains(preferredAppKitPoint)
         {
             DebugLog.debug(
                 DebugLog.windows,
-                "Resolved target screen from preferred point \(NSStringFromPoint(preferredAppKitPoint)): \(NSStringFromRect(preferredScreenFrame))"
+                "Resolved target screen from preferred point \(NSStringFromPoint(preferredAppKitPoint)): \(NSStringFromRect(currentScreenFrame))"
             )
         }
 
@@ -1117,7 +1073,7 @@ final class WindowManager: WindowManaging {
     private func prefersWindowScopedAction(_ target: InteractionTarget) -> Bool {
         switch target {
         case .window(_, _, let source):
-            return source.isDockMinimizedItem == false
+            return !source.isDockMinimizedItem
         case .application, .unresolvedDockMinimizedItem:
             return false
         }
@@ -1315,12 +1271,12 @@ final class WindowManager: WindowManaging {
         bringToFront: Bool
     ) throws {
         let screens = NSScreen.screens
-        guard screens.isEmpty == false else {
+        guard !screens.isEmpty else {
             throw WindowManagerError.unableToResolveScreen
         }
         guard screens.count > 1 else {
             DebugLog.debug(DebugLog.windows, "Skipping display move because only one display is available")
-            return
+            throw WindowManagerError.noOtherDisplay
         }
 
         if isMinimized(window) {
@@ -1338,21 +1294,15 @@ final class WindowManager: WindowManaging {
         let currentFrame = screenGeometry.appKitFrame(fromAXFrame: currentAXFrame)
         let visibleFrames = screens.map(\.visibleFrame)
 
-        guard let currentVisibleFrame = layoutEngine.resolvedVisibleFrame(
-            preferredPoint: nil,
+        guard let targetFrame = layoutEngine.displayMoveTargetFrame(
+            direction: direction,
             currentWindowFrame: currentFrame,
+            preferredPoint: preferredAppKitPoint,
             screenFrames: visibleFrames
         ) else {
             throw WindowManagerError.unableToResolveScreen
         }
-
-        let targetFrame = layoutEngine.displayMoveTargetFrame(
-            direction: direction,
-            currentWindowFrame: currentFrame,
-            currentVisibleFrame: currentVisibleFrame,
-            screenFrames: visibleFrames
-        )
-        guard framesAreClose(currentFrame, targetFrame) == false else {
+        guard !framesAreClose(currentFrame, targetFrame) else {
             DebugLog.debug(DebugLog.windows, "Display move resolved to current frame; no frame write needed")
             return
         }
@@ -1390,7 +1340,7 @@ final class WindowManager: WindowManaging {
         }
 
         let screens = NSScreen.screens
-        guard screens.isEmpty == false else {
+        guard !screens.isEmpty else {
             throw WindowManagerError.unableToResolveScreen
         }
 
@@ -1461,15 +1411,7 @@ final class WindowManager: WindowManaging {
     }
 
     private func smoothDockingSizeConstraintDescription(_ constraints: SmoothDockingSizeConstraints) -> String {
-        "[minWidth=\(smoothDockingConstraintValue(constraints.minimumWidth)), maxWidth=\(smoothDockingConstraintValue(constraints.maximumWidth)), minHeight=\(smoothDockingConstraintValue(constraints.minimumHeight)), maxHeight=\(smoothDockingConstraintValue(constraints.maximumHeight))]"
-    }
-
-    private func smoothDockingConstraintValue(_ value: CGFloat?) -> String {
-        guard let value else {
-            return "nil"
-        }
-
-        return String(format: "%.1f", value)
+        "[minWidth=\(formattedConstraintValue(constraints.minimumWidth)), maxWidth=\(formattedConstraintValue(constraints.maximumWidth)), minHeight=\(formattedConstraintValue(constraints.minimumHeight)), maxHeight=\(formattedConstraintValue(constraints.maximumHeight))]"
     }
 
     private func observedConstraintObservation(
@@ -1530,11 +1472,11 @@ final class WindowManager: WindowManaging {
     }
 
     private func baseObservationKey(for application: NSRunningApplication) -> String {
-        if let bundleIdentifier = application.bundleIdentifier, bundleIdentifier.isEmpty == false {
+        if let bundleIdentifier = application.bundleIdentifier, !bundleIdentifier.isEmpty {
             return bundleIdentifier
         }
 
-        if let localizedName = application.localizedName, localizedName.isEmpty == false {
+        if let localizedName = application.localizedName, !localizedName.isEmpty {
             return "name:\(localizedName)"
         }
 
@@ -1614,10 +1556,10 @@ final class WindowManager: WindowManaging {
         let appliedMidpoint = (appliedMin + appliedMax) / 2
         let matchesCenter = abs(appliedMidpoint - requestedMidpoint) <= tolerance
 
-        if matchesLeadingEdge && matchesTrailingEdge == false {
+        if matchesLeadingEdge && !matchesTrailingEdge {
             return .leadingEdge
         }
-        if matchesTrailingEdge && matchesLeadingEdge == false {
+        if matchesTrailingEdge && !matchesLeadingEdge {
             return .trailingEdge
         }
         if matchesCenter {
@@ -1627,10 +1569,10 @@ final class WindowManager: WindowManaging {
     }
 
     private func constraintBoundsDescription(_ sizeBounds: WindowActionPreview.SizeBounds) -> String {
-        "[minWidth=\(constraintBoundValue(sizeBounds.minimumWidth)), maxWidth=\(constraintBoundValue(sizeBounds.maximumWidth)), minHeight=\(constraintBoundValue(sizeBounds.minimumHeight)), maxHeight=\(constraintBoundValue(sizeBounds.maximumHeight))]"
+        "[minWidth=\(formattedConstraintValue(sizeBounds.minimumWidth)), maxWidth=\(formattedConstraintValue(sizeBounds.maximumWidth)), minHeight=\(formattedConstraintValue(sizeBounds.minimumHeight)), maxHeight=\(formattedConstraintValue(sizeBounds.maximumHeight))]"
     }
 
-    private func constraintBoundValue(_ value: CGFloat?) -> String {
+    private func formattedConstraintValue(_ value: CGFloat?) -> String {
         guard let value else {
             return "nil"
         }
@@ -1642,9 +1584,7 @@ final class WindowManager: WindowManaging {
         of target: InteractionTarget,
         preferredAppKitPoint: CGPoint? = nil
     ) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         DebugLog.info(DebugLog.windows, "Attempting to minimize a visible window for \(target.logDescription)")
 
@@ -1680,7 +1620,7 @@ final class WindowManager: WindowManaging {
             "Visible window candidates for \(target.logDescription): [\(windowSummary(windows))]"
         )
 
-        guard windows.isEmpty == false else {
+        guard !windows.isEmpty else {
             DebugLog.debug(DebugLog.windows, "No visible window found to minimize for \(target.logDescription)")
             return false
         }
@@ -1704,9 +1644,7 @@ final class WindowManager: WindowManaging {
     }
 
     func restoreMinimizedWindow(of application: AppIdentity) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         DebugLog.info(DebugLog.windows, "Attempting to restore a minimized window for \(application.logDescription)")
 
@@ -1732,9 +1670,7 @@ final class WindowManager: WindowManaging {
     }
 
     func restoreWindow(_ windowIdentity: WindowIdentity) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         let resolvedWindow = try resolvedWindowContext(for: windowIdentity)
         guard isMinimized(resolvedWindow.window) else {
@@ -1749,9 +1685,7 @@ final class WindowManager: WindowManaging {
     }
 
     func restoreDockItem(_ handle: DockMinimizedItemHandle) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         guard dockTargetResolver.pressDockMinimizedItem(handle) else {
             throw WindowManagerError.unableToPerformAction
@@ -1764,9 +1698,7 @@ final class WindowManager: WindowManaging {
         of target: InteractionTarget,
         preferredAppKitPoint: CGPoint? = nil
     ) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         DebugLog.info(DebugLog.windows, "Attempting to toggle full screen for a visible window of \(target.logDescription)")
 
@@ -1776,7 +1708,7 @@ final class WindowManager: WindowManaging {
             let targetWindow = try preferredWindowActionTarget(for: target, preferredAppKitPoint: preferredAppKitPoint)
 
             try bringWindowToFront(targetWindow, for: resolvedApplication.application)
-            if isFullScreen(targetWindow) == false {
+            if !isFullScreen(targetWindow) {
                 try setFullScreen(true, for: targetWindow)
             }
 
@@ -1789,7 +1721,7 @@ final class WindowManager: WindowManaging {
             in: resolvedApplication.application,
             appElement: resolvedApplication.appElement
         )
-        guard windows.isEmpty == false else {
+        guard !windows.isEmpty else {
             DebugLog.debug(DebugLog.windows, "No visible window found to toggle full screen for \(target.logDescription)")
             return false
         }
@@ -1797,7 +1729,7 @@ final class WindowManager: WindowManaging {
         for targetWindow in windows {
             do {
                 try bringWindowToFront(targetWindow, for: resolvedApplication.application)
-                if isFullScreen(targetWindow) == false {
+                if !isFullScreen(targetWindow) {
                     try setFullScreen(true, for: targetWindow)
                 }
 
@@ -1820,9 +1752,7 @@ final class WindowManager: WindowManaging {
         of target: InteractionTarget,
         preferredAppKitPoint: CGPoint? = nil
     ) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         DebugLog.info(DebugLog.windows, "Attempting to exit full screen for a visible window of \(target.logDescription)")
 
@@ -1847,7 +1777,7 @@ final class WindowManager: WindowManaging {
             in: resolvedApplication.application,
             appElement: resolvedApplication.appElement
         )
-        guard windows.isEmpty == false else {
+        guard !windows.isEmpty else {
             DebugLog.debug(DebugLog.windows, "No visible window found to exit full screen for \(target.logDescription)")
             return false
         }
@@ -1876,9 +1806,7 @@ final class WindowManager: WindowManaging {
     }
 
     func closeVisibleWindow(of application: AppIdentity) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         DebugLog.info(DebugLog.windows, "Attempting to close a visible window for \(application.logDescription)")
 
@@ -1890,21 +1818,18 @@ final class WindowManager: WindowManaging {
             "Close-window candidates for \(application.logDescription): [\(windowSummary(windows))]"
         )
 
-        guard let targetWindow = windows.first else {
+        guard !windows.isEmpty else {
             DebugLog.debug(DebugLog.windows, "No visible window found to close for \(application.logDescription)")
             return false
         }
 
-        if try closeWindow(targetWindow, owningApp: app) {
-            cycleSessions.invalidate(for: app.processIdentifier)
-            DebugLog.info(DebugLog.windows, "Closed one visible window for \(application.logDescription)")
-            return true
-        }
-
-        for fallbackWindow in windows.dropFirst() {
-            if try closeWindow(fallbackWindow, owningApp: app) {
+        for (index, targetWindow) in windows.enumerated() {
+            if try closeWindow(targetWindow, owningApp: app) {
                 cycleSessions.invalidate(for: app.processIdentifier)
-                DebugLog.info(DebugLog.windows, "Closed one fallback visible window for \(application.logDescription)")
+                let message = index == 0
+                    ? "Closed one visible window for \(application.logDescription)"
+                    : "Closed one fallback visible window for \(application.logDescription)"
+                DebugLog.info(DebugLog.windows, message)
                 return true
             }
         }
@@ -1917,15 +1842,11 @@ final class WindowManager: WindowManaging {
         of target: InteractionTarget,
         preferredAppKitPoint: CGPoint?
     ) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         switch target {
         case .unresolvedDockMinimizedItem:
             return false
-        case .window(let windowIdentity, _, let source) where source.isDockMinimizedItem && preferredAppKitPoint == nil:
-            return try closeWindow(windowIdentity)
         case .window(let windowIdentity, _, _) where preferredAppKitPoint == nil:
             return try closeWindow(windowIdentity)
         case .application(let application, _):
@@ -1989,21 +1910,18 @@ final class WindowManager: WindowManaging {
             "Recent-window fallback candidates for \(application.logDescription): [\(windowSummary(windows))]"
         )
 
-        guard let targetWindow = windows.first else {
+        guard !windows.isEmpty else {
             DebugLog.debug(DebugLog.windows, "No recent window candidate found for \(application.logDescription)")
             return false
         }
 
-        if try closeWindow(targetWindow, owningApp: app) {
-            cycleSessions.invalidate(for: app.processIdentifier)
-            DebugLog.info(DebugLog.windows, "Closed recent-window fallback target for \(application.logDescription)")
-            return true
-        }
-
-        for fallbackWindow in windows.dropFirst() {
-            if try closeWindow(fallbackWindow, owningApp: app) {
+        for (index, targetWindow) in windows.enumerated() {
+            if try closeWindow(targetWindow, owningApp: app) {
                 cycleSessions.invalidate(for: app.processIdentifier)
-                DebugLog.info(DebugLog.windows, "Closed fallback recent-window candidate for \(application.logDescription)")
+                let message = index == 0
+                    ? "Closed recent-window fallback target for \(application.logDescription)"
+                    : "Closed fallback recent-window candidate for \(application.logDescription)"
+                DebugLog.info(DebugLog.windows, message)
                 return true
             }
         }
@@ -2013,9 +1931,7 @@ final class WindowManager: WindowManaging {
     }
 
     func quitApplication(matching target: AppIdentity) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         let app = try runningApplication(matching: target)
         guard app.terminate() else {
@@ -2032,9 +1948,7 @@ final class WindowManager: WindowManaging {
         direction: WindowCycleDirection,
         preferredAppKitPoint: CGPoint? = nil
     ) throws -> Bool {
-        guard AXIsProcessTrusted() else {
-            throw WindowManagerError.accessibilityPermissionMissing
-        }
+        try requireAccessibilityPermission()
 
         DebugLog.info(
             DebugLog.windows,
@@ -2093,13 +2007,13 @@ final class WindowManager: WindowManaging {
         appElement: AXUIElement
     ) throws -> [AXUIElement] {
         let allWindows = try windowElements(in: appElement)
-        guard allWindows.isEmpty == false else {
+        guard !allWindows.isEmpty else {
             return []
         }
 
         let visibleWindows = allWindows.filter { !isMinimized($0) }
         var orderedVisibleWindows: [AXUIElement] = []
-        if visibleWindows.isEmpty == false {
+        if !visibleWindows.isEmpty {
             orderedVisibleWindows = try orderedVisibleWindowElements(in: app, appElement: appElement)
         }
 
@@ -2109,13 +2023,14 @@ final class WindowManager: WindowManaging {
             candidates.append(referenceWindow)
         }
 
-        for window in orderedVisibleWindows where candidates.contains(where: { sameWindow($0, window) }) == false {
-            candidates.append(window)
+        func appendUniqueWindows(_ windows: [AXUIElement]) {
+            for window in windows where !candidates.contains(where: { sameWindow($0, window) }) {
+                candidates.append(window)
+            }
         }
 
-        for window in allWindows where candidates.contains(where: { sameWindow($0, window) }) == false {
-            candidates.append(window)
-        }
+        appendUniqueWindows(orderedVisibleWindows)
+        appendUniqueWindows(allWindows)
 
         return candidates
     }
@@ -2173,13 +2088,13 @@ final class WindowManager: WindowManaging {
             score += 120
         }
 
-        if application.isHidden == false {
+        if !application.isHidden {
             score += 20
         }
 
         if RunningApplicationIdentity.isLikelyHelperProcess(application) {
             score -= allowHelperWithoutWindows ? 80 : 220
-            if hasWindow == false {
+            if !hasWindow {
                 score -= allowHelperWithoutWindows ? 30 : 300
             }
         }
@@ -2210,7 +2125,8 @@ final class WindowManager: WindowManaging {
         var value: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
 
-        let hasWindow = (error == .success) && ((value as? [AnyObject])?.isEmpty == false)
+        let windows = value as? [AnyObject] ?? []
+        let hasWindow = error == .success && !windows.isEmpty
         windowPresenceCache[application.processIdentifier] = hasWindow
         return hasWindow
     }
@@ -2562,7 +2478,7 @@ final class WindowManager: WindowManaging {
             order: preferredOrder
         )
 
-        if initialWriteResult.succeeded == false {
+        if !initialWriteResult.succeeded {
             if let recoveredOutcome = recoveredFrameOutcome(
                 for: window,
                 targetFrame: frame,
@@ -2607,7 +2523,7 @@ final class WindowManager: WindowManaging {
             return .exact(frame)
         }
 
-        if framesAreClose(appliedFrame, frame) == false {
+        if !framesAreClose(appliedFrame, frame) {
             let fallbackOrder = preferredOrder.alternate
             DebugLog.debug(
                 DebugLog.windows,
@@ -2623,7 +2539,7 @@ final class WindowManager: WindowManaging {
                 order: fallbackOrder
             )
 
-            if fallbackWriteResult.succeeded == false {
+            if !fallbackWriteResult.succeeded {
                 if let recoveredOutcome = recoveredFrameOutcome(
                     for: window,
                     targetFrame: frame,
@@ -2772,7 +2688,7 @@ final class WindowManager: WindowManaging {
         comparedTo targetFrame: CGRect,
         tolerance: CGFloat = 1
     ) -> Bool {
-        let materiallyDifferent = framesAreClose(appliedFrame, targetFrame, tolerance: tolerance) == false
+        let materiallyDifferent = !framesAreClose(appliedFrame, targetFrame, tolerance: tolerance)
         let horizontallyAnchored = axisLooksConstraintLimited(
             requestedMin: targetFrame.minX,
             requestedMax: targetFrame.maxX,
@@ -2964,7 +2880,7 @@ final class WindowManager: WindowManaging {
         let orderedWindowDescriptors = frontToBackWindowDescriptors(
             forOwnerProcessIdentifier: app.processIdentifier
         )
-        guard orderedWindowDescriptors.isEmpty == false else {
+        guard !orderedWindowDescriptors.isEmpty else {
             DebugLog.debug(
                 DebugLog.windows,
                 "CGWindowList returned no front-to-back descriptors for \(app.localizedName ?? "unknown"); using AX window order"
@@ -2978,7 +2894,7 @@ final class WindowManager: WindowManaging {
             using: orderedWindowDescriptors
         )
 
-        if sameWindowSequence(windows, orderedWindows) == false {
+        if !sameWindowSequence(windows, orderedWindows) {
             DebugLog.debug(
                 DebugLog.windows,
                 "Reordered visible windows for \(app.localizedName ?? "unknown") from AX order [\(windowSummary(windows))] to front-to-back [\(windowSummary(orderedWindows))]"
@@ -3006,11 +2922,7 @@ final class WindowManager: WindowManaging {
     }
 
     private func sameWindowSequence(_ lhs: [AXUIElement], _ rhs: [AXUIElement]) -> Bool {
-        guard lhs.count == rhs.count else {
-            return false
-        }
-
-        return zip(lhs, rhs).allSatisfy { sameWindow($0, $1) }
+        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { sameWindow($0, $1) }
     }
 
     private func sameWindow(_ lhs: AXUIElement, _ rhs: AXUIElement) -> Bool {
@@ -3081,9 +2993,9 @@ private extension DisplayMoveDirection {
     var logDescription: String {
         switch self {
         case .next:
-            return "next"
+            "next"
         case .previous:
-            return "previous"
+            "previous"
         }
     }
 }
@@ -3092,9 +3004,9 @@ private extension WindowAction {
     var displayMoveDirection: DisplayMoveDirection {
         switch self {
         case .moveToNextDisplay:
-            return .next
+            .next
         case .moveToPreviousDisplay:
-            return .previous
+            .previous
         case .leftHalf,
              .rightHalf,
              .maximize,
@@ -3127,6 +3039,7 @@ enum WindowManagerError: LocalizedError, Equatable {
     case unableToQuitApplication
     case unableToEnumerateWindows
     case noAlternateWindow
+    case noOtherDisplay
 
     var errorDescription: String? {
         switch self {
@@ -3150,6 +3063,8 @@ enum WindowManagerError: LocalizedError, Equatable {
             return L10n.string("error.enumerate_windows_failed")
         case .noAlternateWindow:
             return L10n.string("error.no_alternate_window")
+        case .noOtherDisplay:
+            return L10n.string("error.no_other_display")
         }
     }
 }

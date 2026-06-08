@@ -46,19 +46,18 @@ enum AXAttributeReader {
     }
 
     static func url(_ attribute: CFString, from element: AXUIElement) -> URL? {
-        if let url = attributeValue(attribute, from: element) as? URL {
+        guard let value = attributeValue(attribute, from: element) else { return nil }
+
+        switch value {
+        case let url as URL:
             return url
-        }
-
-        if let url = attributeValue(attribute, from: element) as? NSURL {
+        case let url as NSURL:
             return url as URL
-        }
-
-        if let urlString = attributeValue(attribute, from: element) as? String {
+        case let urlString as String:
             return URL(string: urlString)
+        default:
+            return nil
         }
-
-        return nil
     }
 
     static func point(_ attribute: CFString, from element: AXUIElement) -> CGPoint? {
@@ -91,15 +90,14 @@ enum AXAttributeReader {
     static func bool(_ attribute: CFString, from element: AXUIElement) -> Bool? {
         guard let value = attributeValue(attribute, from: element) else { return nil }
 
-        if let boolValue = value as? Bool {
+        switch value {
+        case let boolValue as Bool:
             return boolValue
-        }
-
-        if let numberValue = value as? NSNumber {
+        case let numberValue as NSNumber:
             return numberValue.boolValue
+        default:
+            return nil
         }
-
-        return nil
     }
 
     static func actionNames(of element: AXUIElement) -> [String] {
@@ -124,6 +122,14 @@ enum AXAttributeReader {
     static func hitElement(at appKitPoint: CGPoint) -> AXUIElement? {
         let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
         return hitElement(atAXPoint: geometry.axPoint(fromAppKitPoint: appKitPoint))
+    }
+
+    static func processIdentifier(at appKitPoint: CGPoint) -> pid_t? {
+        guard let hitElement = hitElement(at: appKitPoint) else {
+            return nil
+        }
+
+        return processIdentifier(of: hitElement)
     }
 
     static func hitElement(atAXPoint axPoint: CGPoint) -> AXUIElement? {

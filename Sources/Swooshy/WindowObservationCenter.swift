@@ -48,7 +48,7 @@ final class WindowObservationCenter {
     func syncApplications(_ applications: [NSRunningApplication]) {
         let nextProcessIdentifiers = Set(
             applications
-                .filter { $0.isTerminated == false }
+                .filter { !$0.isTerminated }
                 .map(\.processIdentifier)
         )
 
@@ -87,7 +87,7 @@ final class WindowObservationCenter {
 
         for window in windows {
             let token = DockElementToken(element: window)
-            guard observedApplication.observedWindowTokens.contains(token) == false else {
+            guard !observedApplication.observedWindowTokens.contains(token) else {
                 continue
             }
             addNotifications(
@@ -199,7 +199,7 @@ final class WindowObservationCenter {
                 refcon
             )
 
-            guard shouldIgnoreNotificationError(error) == false else {
+            guard shouldLogNotificationError(error) else {
                 continue
             }
 
@@ -216,19 +216,16 @@ final class WindowObservationCenter {
         observer: AXObserver
     ) {
         for notification in notifications {
-            let error = AXObserverRemoveNotification(observer, element, notification)
-            guard error == .success || error == .notificationNotRegistered else {
-                continue
-            }
+            _ = AXObserverRemoveNotification(observer, element, notification)
         }
     }
 
-    private func shouldIgnoreNotificationError(_ error: AXError) -> Bool {
+    private func shouldLogNotificationError(_ error: AXError) -> Bool {
         switch error {
         case .success, .notificationAlreadyRegistered, .notificationUnsupported, .cannotComplete:
-            return true
-        default:
             return false
+        default:
+            return true
         }
     }
 }

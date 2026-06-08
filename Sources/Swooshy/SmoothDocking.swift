@@ -52,86 +52,84 @@ struct SmoothDockingSizeConstraints: Equatable, Sendable {
         for proposedSize: CGSize,
         within desktopSize: CGSize
     ) -> CGSize {
-        var width = proposedSize.width
-        var height = proposedSize.height
-
-        if let minimumWidth {
-            width = max(width, minimumWidth)
-        }
-        if let maximumWidth {
-            width = min(width, maximumWidth)
-        }
-        if let minimumHeight {
-            height = max(height, minimumHeight)
-        }
-        if let maximumHeight {
-            height = min(height, maximumHeight)
-        }
-
-        width = min(width, desktopSize.width)
-        height = min(height, desktopSize.height)
-
-        return CGSize(width: width, height: height)
-    }
-
-    private func normalized() -> Self {
-        var normalizedMinimumWidth = minimumWidth
-        var normalizedMaximumWidth = maximumWidth
-        var normalizedMinimumHeight = minimumHeight
-        var normalizedMaximumHeight = maximumHeight
-
-        if
-            let minimumWidth = normalizedMinimumWidth,
-            let maximumWidth = normalizedMaximumWidth,
-            minimumWidth > maximumWidth
-        {
-            let lockedWidth = max(minimumWidth, maximumWidth)
-            normalizedMinimumWidth = lockedWidth
-            normalizedMaximumWidth = lockedWidth
-        }
-
-        if
-            let minimumHeight = normalizedMinimumHeight,
-            let maximumHeight = normalizedMaximumHeight,
-            minimumHeight > maximumHeight
-        {
-            let lockedHeight = max(minimumHeight, maximumHeight)
-            normalizedMinimumHeight = lockedHeight
-            normalizedMaximumHeight = lockedHeight
-        }
-
-        return Self(
-            minimumWidth: normalizedMinimumWidth,
-            maximumWidth: normalizedMaximumWidth,
-            minimumHeight: normalizedMinimumHeight,
-            maximumHeight: normalizedMaximumHeight
+        CGSize(
+            width: resolvedDimension(
+                proposedSize.width,
+                minimum: minimumWidth,
+                maximum: maximumWidth,
+                desktopMaximum: desktopSize.width
+            ),
+            height: resolvedDimension(
+                proposedSize.height,
+                minimum: minimumHeight,
+                maximum: maximumHeight,
+                desktopMaximum: desktopSize.height
+            )
         )
     }
 
-    private func maxNonNil(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
-        switch (lhs, rhs) {
-        case let (.some(lhs), .some(rhs)):
-            return max(lhs, rhs)
-        case let (.some(lhs), .none):
-            return lhs
-        case let (.none, .some(rhs)):
-            return rhs
-        case (.none, .none):
-            return nil
+    private func resolvedDimension(
+        _ proposed: CGFloat,
+        minimum: CGFloat?,
+        maximum: CGFloat?,
+        desktopMaximum: CGFloat
+    ) -> CGFloat {
+        var resolved = proposed
+        if let minimum {
+            resolved = max(resolved, minimum)
         }
+        if let maximum {
+            resolved = min(resolved, maximum)
+        }
+        return min(resolved, desktopMaximum)
+    }
+
+    private func normalized() -> Self {
+        let widthBounds = normalizedBounds(minimum: minimumWidth, maximum: maximumWidth)
+        let heightBounds = normalizedBounds(minimum: minimumHeight, maximum: maximumHeight)
+
+        return Self(
+            minimumWidth: widthBounds.minimum,
+            maximumWidth: widthBounds.maximum,
+            minimumHeight: heightBounds.minimum,
+            maximumHeight: heightBounds.maximum
+        )
+    }
+
+    private func normalizedBounds(
+        minimum: CGFloat?,
+        maximum: CGFloat?
+    ) -> (minimum: CGFloat?, maximum: CGFloat?) {
+        guard
+            let minimum,
+            let maximum,
+            minimum > maximum
+        else {
+            return (minimum, maximum)
+        }
+
+        let lockedValue = max(minimum, maximum)
+        return (lockedValue, lockedValue)
+    }
+
+    private func maxNonNil(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
+        mergeNonNil(lhs, rhs, combine: max)
     }
 
     private func minNonNil(_ lhs: CGFloat?, _ rhs: CGFloat?) -> CGFloat? {
-        switch (lhs, rhs) {
-        case let (.some(lhs), .some(rhs)):
-            return min(lhs, rhs)
-        case let (.some(lhs), .none):
-            return lhs
-        case let (.none, .some(rhs)):
-            return rhs
-        case (.none, .none):
-            return nil
+        mergeNonNil(lhs, rhs, combine: min)
+    }
+
+    private func mergeNonNil(
+        _ lhs: CGFloat?,
+        _ rhs: CGFloat?,
+        combine: (CGFloat, CGFloat) -> CGFloat
+    ) -> CGFloat? {
+        if let lhs, let rhs {
+            return combine(lhs, rhs)
         }
+
+        return lhs ?? rhs
     }
 }
 
@@ -146,42 +144,23 @@ struct SmoothDockingPlan: Equatable, Sendable {
 /// Resolves the ideal desktop region for a snap action before app-specific size
 /// constraints are applied.
 struct SmoothDockingResolver {
+    private let layoutEngine = WindowLayoutEngine()
+
     func desktopFrame(
         preferredPoint: CGPoint?,
         currentWindowFrame: CGRect,
         screens: [NSScreen]
     ) -> CGRect? {
-        let desktopFrames = screens.map(\.visibleFrame).filter { $0.isEmpty == false }
-        guard desktopFrames.isEmpty == false else {
+        let desktopFrames = screens.map(\.visibleFrame).filter { !$0.isEmpty }
+        guard !desktopFrames.isEmpty else {
             return nil
         }
 
-        if
-            let preferredPoint,
-            let preferredDesktop = desktopFrames.first(where: { $0.contains(preferredPoint) })
-        {
-            return preferredDesktop.integral
-        }
-
-        let midpoint = CGPoint(x: currentWindowFrame.midX, y: currentWindowFrame.midY)
-        if let midpointDesktop = desktopFrames.first(where: { $0.contains(midpoint) }) {
-            return midpointDesktop.integral
-        }
-
-        let overlaps = desktopFrames.map { frame in
-            (frame, frame.intersection(currentWindowFrame).area)
-        }
-        let maxOverlapArea = overlaps.map(\.1).max() ?? 0
-        if maxOverlapArea > 0 {
-            let candidates = overlaps
-                .filter { abs($0.1 - maxOverlapArea) <= 1 }
-                .map(\.0)
-            if let bestMatch = nearestFrame(to: midpoint, in: candidates) {
-                return bestMatch.integral
-            }
-        }
-
-        return nearestFrame(to: midpoint, in: desktopFrames)?.integral
+        return layoutEngine.resolvedVisibleFrame(
+            preferredPoint: preferredPoint,
+            currentWindowFrame: currentWindowFrame,
+            screenFrames: desktopFrames
+        )?.integral
     }
 
     func plan(
@@ -190,7 +169,11 @@ struct SmoothDockingResolver {
         sizeConstraints: SmoothDockingSizeConstraints
     ) -> SmoothDockingPlan {
         let normalizedDesktopFrame = desktopFrame.integral
-        let idealFrame = idealFrame(for: action, in: normalizedDesktopFrame)
+        let idealFrame = layoutEngine.targetFrame(
+            for: action,
+            currentWindowFrame: normalizedDesktopFrame,
+            currentVisibleFrame: normalizedDesktopFrame
+        )
         let resolvedSize = sizeConstraints.resolvedSize(
             for: idealFrame.size,
             within: normalizedDesktopFrame.size
@@ -211,102 +194,11 @@ struct SmoothDockingResolver {
         )
     }
 
-    private func idealFrame(for action: WindowAction, in desktopFrame: CGRect) -> CGRect {
-        switch action {
-        case .leftHalf:
-            let splitX = desktopFrame.minX + floor(desktopFrame.width / 2)
-            return CGRect(
-                x: desktopFrame.minX,
-                y: desktopFrame.minY,
-                width: splitX - desktopFrame.minX,
-                height: desktopFrame.height
-            ).integral
-        case .rightHalf:
-            let splitX = desktopFrame.minX + floor(desktopFrame.width / 2)
-            return CGRect(
-                x: splitX,
-                y: desktopFrame.minY,
-                width: desktopFrame.maxX - splitX,
-                height: desktopFrame.height
-            ).integral
-        case .maximize, .center:
-            return desktopFrame.integral
-        case .topLeftQuarter:
-            return quarterFrame(
-                in: desktopFrame,
-                horizontalAnchor: .topLeading,
-                verticalAnchor: .topLeading
-            )
-        case .topRightQuarter:
-            return quarterFrame(
-                in: desktopFrame,
-                horizontalAnchor: .topTrailing,
-                verticalAnchor: .topTrailing
-            )
-        case .bottomLeftQuarter:
-            return quarterFrame(
-                in: desktopFrame,
-                horizontalAnchor: .bottomLeading,
-                verticalAnchor: .bottomLeading
-            )
-        case .bottomRightQuarter:
-            return quarterFrame(
-                in: desktopFrame,
-                horizontalAnchor: .bottomTrailing,
-                verticalAnchor: .bottomTrailing
-            )
-        case .minimize,
-             .closeWindow,
-             .closeTab,
-             .quitApplication,
-             .cycleSameAppWindowsForward,
-             .cycleSameAppWindowsBackward,
-             .toggleFullScreen,
-             .exitFullScreen,
-             .moveToNextDisplay,
-             .moveToPreviousDisplay:
-            return desktopFrame.integral
-        }
-    }
-
-    private func quarterFrame(
-        in desktopFrame: CGRect,
-        horizontalAnchor: SmoothDockingAnchor,
-        verticalAnchor: SmoothDockingAnchor
-    ) -> CGRect {
-        let splitX = desktopFrame.minX + floor(desktopFrame.width / 2)
-        let splitY = desktopFrame.minY + floor(desktopFrame.height / 2)
-
-        let minX = (horizontalAnchor == .topLeading || horizontalAnchor == .bottomLeading)
-            ? desktopFrame.minX
-            : splitX
-        let maxX = (horizontalAnchor == .topLeading || horizontalAnchor == .bottomLeading)
-            ? splitX
-            : desktopFrame.maxX
-        let minY = (verticalAnchor == .bottomLeading || verticalAnchor == .bottomTrailing)
-            ? desktopFrame.minY
-            : splitY
-        let maxY = (verticalAnchor == .bottomLeading || verticalAnchor == .bottomTrailing)
-            ? splitY
-            : desktopFrame.maxY
-
-        return CGRect(
-            x: minX,
-            y: minY,
-            width: maxX - minX,
-            height: maxY - minY
-        ).integral
-    }
-
     private func anchor(for action: WindowAction) -> SmoothDockingAnchor {
         switch action {
-        case .leftHalf, .maximize, .center:
+        case .leftHalf, .topLeftQuarter, .maximize, .center:
             return .topLeading
-        case .rightHalf:
-            return .topTrailing
-        case .topLeftQuarter:
-            return .topLeading
-        case .topRightQuarter:
+        case .rightHalf, .topRightQuarter:
             return .topTrailing
         case .bottomLeftQuarter:
             return .bottomLeading
@@ -331,21 +223,8 @@ struct SmoothDockingResolver {
         size: CGSize,
         anchor: SmoothDockingAnchor
     ) -> CGRect {
-        let originX: CGFloat
-        switch anchor {
-        case .topLeading, .bottomLeading:
-            originX = desktopFrame.minX
-        case .topTrailing, .bottomTrailing:
-            originX = desktopFrame.maxX - size.width
-        }
-
-        let originY: CGFloat
-        switch anchor {
-        case .topLeading, .topTrailing:
-            originY = desktopFrame.maxY - size.height
-        case .bottomLeading, .bottomTrailing:
-            originY = desktopFrame.minY
-        }
+        let originX = anchor.isLeading ? desktopFrame.minX : desktopFrame.maxX - size.width
+        let originY = anchor.isBottom ? desktopFrame.minY : desktopFrame.maxY - size.height
 
         return CGRect(
             x: originX,
@@ -355,10 +234,15 @@ struct SmoothDockingResolver {
         ).integral
     }
 
-    private func nearestFrame(to point: CGPoint, in frames: [CGRect]) -> CGRect? {
-        frames.min { lhs, rhs in
-            lhs.center.distance(to: point) < rhs.center.distance(to: point)
-        }
+}
+
+private extension SmoothDockingAnchor {
+    var isLeading: Bool {
+        self == .topLeading || self == .bottomLeading
+    }
+
+    var isBottom: Bool {
+        self == .bottomLeading || self == .bottomTrailing
     }
 }
 
@@ -446,7 +330,7 @@ final class SmoothDockingSession {
         }
 
         let currentFrame = loadCurrentFrame() ?? originalFrame
-        guard framesAreClose(currentFrame, targetFrame, tolerance: snapThreshold) == false else {
+        guard !framesAreClose(currentFrame, targetFrame, tolerance: snapThreshold) else {
             return
         }
 
@@ -567,44 +451,6 @@ final class SmoothDockingSession {
 
 extension WindowAction {
     var supportsSmoothDocking: Bool {
-        switch self {
-        case .leftHalf,
-             .rightHalf,
-             .maximize,
-             .center,
-             .topLeftQuarter,
-             .topRightQuarter,
-             .bottomLeftQuarter,
-             .bottomRightQuarter:
-            return true
-        case .minimize,
-             .closeWindow,
-             .closeTab,
-             .quitApplication,
-             .cycleSameAppWindowsForward,
-             .cycleSameAppWindowsBackward,
-             .toggleFullScreen,
-             .exitFullScreen,
-             .moveToNextDisplay,
-             .moveToPreviousDisplay:
-            return false
-        }
-    }
-}
-
-private extension CGRect {
-    var area: CGFloat {
-        guard !isNull, !isEmpty else { return 0 }
-        return width * height
-    }
-
-    var center: CGPoint {
-        CGPoint(x: midX, y: midY)
-    }
-}
-
-private extension CGPoint {
-    func distance(to point: CGPoint) -> CGFloat {
-        hypot(point.x - x, point.y - y)
+        supportsSnapPreview
     }
 }

@@ -15,20 +15,18 @@ struct WindowOrdering {
         descriptor: (T) throws -> WindowOrderDescriptor,
         using orderedDescriptors: [WindowOrderDescriptor]
     ) rethrows -> [T] {
-        guard windows.count > 1, orderedDescriptors.isEmpty == false else {
+        guard windows.count > 1, !orderedDescriptors.isEmpty else {
             return windows
         }
 
         let windowDescriptors = try windows.map(descriptor)
-        let allWindowIndices = Array(windows.indices)
-        var unmatchedWindowIndexSet = Set(allWindowIndices)
+        var unmatchedWindowIndices = Array(windows.indices)
         var orderedWindowIndices: [Int] = []
         orderedWindowIndices.reserveCapacity(windows.count)
 
         for orderedDescriptor in orderedDescriptors {
             guard let bestMatch = bestMatchingWindowIndex(
-                allWindowIndices: allWindowIndices,
-                unmatchedWindowIndexSet: unmatchedWindowIndexSet,
+                unmatchedWindowIndices: unmatchedWindowIndices,
                 windowDescriptors: windowDescriptors,
                 orderedDescriptor: orderedDescriptor
             ) else {
@@ -36,69 +34,73 @@ struct WindowOrdering {
             }
 
             orderedWindowIndices.append(bestMatch)
-            unmatchedWindowIndexSet.remove(bestMatch)
+            unmatchedWindowIndices.removeAll { $0 == bestMatch }
         }
 
-        orderedWindowIndices.append(
-            contentsOf: allWindowIndices.filter { unmatchedWindowIndexSet.contains($0) }
-        )
+        orderedWindowIndices.append(contentsOf: unmatchedWindowIndices)
         return orderedWindowIndices.map { windows[$0] }
     }
 
     private func bestMatchingWindowIndex(
-        allWindowIndices: [Int],
-        unmatchedWindowIndexSet: Set<Int>,
+        unmatchedWindowIndices: [Int],
         windowDescriptors: [WindowOrderDescriptor],
         orderedDescriptor: WindowOrderDescriptor
     ) -> Int? {
-        var bestMatchIndex: Int?
-        var bestScore = Int.min
-
-        for windowIndex in allWindowIndices where unmatchedWindowIndexSet.contains(windowIndex) {
+        unmatchedWindowIndices.compactMap { windowIndex -> (index: Int, score: Int)? in
             guard let score = matchScore(
                 windowDescriptor: windowDescriptors[windowIndex],
                 orderedDescriptor: orderedDescriptor
             ) else {
-                continue
+                return nil
             }
 
-            if score > bestScore {
-                bestScore = score
-                bestMatchIndex = windowIndex
-            }
+            return (index: windowIndex, score: score)
         }
-
-        return bestMatchIndex
+        .max { $0.score < $1.score }?
+        .index
     }
 
     private func matchScore(
         windowDescriptor: WindowOrderDescriptor,
         orderedDescriptor: WindowOrderDescriptor
     ) -> Int? {
+        let windowFrame = windowDescriptor.frame
+        let orderedFrame = orderedDescriptor.frame
+
         if
             let windowID = windowDescriptor.windowID,
             let orderedWindowID = orderedDescriptor.windowID,
             windowID == orderedWindowID
         {
-            let delta = frameDelta(windowDescriptor.frame, orderedDescriptor.frame)
-            return 1_000_000 - Int(delta.rounded(.down))
+            return frameMatchScore(
+                windowFrame,
+                orderedFrame,
+                baseScore: 1_000_000
+            )
         }
 
-        if framesAreClose(windowDescriptor.frame, orderedDescriptor.frame) {
-            let delta = frameDelta(windowDescriptor.frame, orderedDescriptor.frame)
-            return 100_000 - Int(delta.rounded(.down))
+        if framesAreClose(windowFrame, orderedFrame) {
+            return frameMatchScore(
+                windowFrame,
+                orderedFrame,
+                baseScore: 100_000
+            )
         }
 
-        guard sizesAreClose(windowDescriptor.frame, orderedDescriptor.frame) else {
+        guard sizesAreClose(windowFrame, orderedFrame) else {
             return nil
         }
 
-        let distance = centerDistance(windowDescriptor.frame, orderedDescriptor.frame)
+        let distance = centerDistance(windowFrame, orderedFrame)
         guard distance <= centerTolerance else {
             return nil
         }
 
         return 10_000 - Int(distance.rounded(.down))
+    }
+
+    private func frameMatchScore(_ lhs: CGRect, _ rhs: CGRect, baseScore: Int) -> Int {
+        baseScore - Int(frameDelta(lhs, rhs).rounded(.down))
     }
 
     private func framesAreClose(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
@@ -154,18 +156,17 @@ final class WindowCycleSessionStore<Item> {
             return nil
         }
 
-        let baseOrder: [Item]
-        if shouldContinueSession(
+        let baseOrder = if shouldContinueSession(
             for: processIdentifier,
             currentWindow: currentWindow,
             now: now
         ), let session {
-            baseOrder = mergedOrder(
+            mergedOrder(
                 rememberedOrder: session.orderedWindows,
                 liveOrder: liveOrder
             )
         } else {
-            baseOrder = liveOrder
+            liveOrder
         }
 
         guard baseOrder.count > 1 else {
@@ -176,14 +177,7 @@ final class WindowCycleSessionStore<Item> {
         let currentIndex = currentWindow.flatMap { currentWindow in
             firstIndex(of: currentWindow, in: baseOrder)
         } ?? 0
-        let targetIndex: Int
-
-        switch direction {
-        case .forward:
-            targetIndex = (currentIndex + 1) % baseOrder.count
-        case .backward:
-            targetIndex = (currentIndex + baseOrder.count - 1) % baseOrder.count
-        }
+        let targetIndex = (currentIndex + direction.indexOffset + baseOrder.count) % baseOrder.count
 
         let target = baseOrder[targetIndex]
         session = Session(
@@ -210,19 +204,12 @@ final class WindowCycleSessionStore<Item> {
         currentWindow: Item?,
         now: Date
     ) -> Bool {
-        guard let session else {
-            return false
-        }
-
-        guard session.processIdentifier == processIdentifier else {
-            return false
-        }
-
-        guard now.timeIntervalSince(session.updatedAt) <= expirationInterval else {
-            return false
-        }
-
-        guard let currentWindow else {
+        guard
+            let session,
+            session.processIdentifier == processIdentifier,
+            now.timeIntervalSince(session.updatedAt) <= expirationInterval,
+            let currentWindow
+        else {
             return false
         }
 
@@ -234,19 +221,26 @@ final class WindowCycleSessionStore<Item> {
         liveOrder: [Item]
     ) -> [Item] {
         let retainedWindows = rememberedOrder.filter { rememberedWindow in
-            contains(rememberedWindow, in: liveOrder)
+            liveOrder.contains { areEqual($0, rememberedWindow) }
         }
         let newWindows = liveOrder.filter { liveWindow in
-            contains(liveWindow, in: retainedWindows) == false
+            !retainedWindows.contains { areEqual($0, liveWindow) }
         }
         return retainedWindows + newWindows
     }
 
-    private func contains(_ candidate: Item, in windows: [Item]) -> Bool {
-        windows.contains { areEqual($0, candidate) }
-    }
-
     private func firstIndex(of candidate: Item, in windows: [Item]) -> Int? {
         windows.firstIndex { areEqual($0, candidate) }
+    }
+}
+
+private extension WindowCycleDirection {
+    var indexOffset: Int {
+        switch self {
+        case .forward:
+            return 1
+        case .backward:
+            return -1
+        }
     }
 }

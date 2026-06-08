@@ -91,9 +91,7 @@ struct WindowLayoutEngine {
             return bottomLeftQuarterFrame(in: currentVisibleFrame)
         case .bottomRightQuarter:
             return bottomRightQuarterFrame(in: currentVisibleFrame)
-        case .maximize:
-            return currentVisibleFrame.integral
-        case .center:
+        case .maximize, .center:
             return currentVisibleFrame.integral
         case .minimize,
              .closeWindow,
@@ -122,16 +120,12 @@ struct WindowLayoutEngine {
             return targetFrame
         }
 
-        switch previewBehavior {
-        case .area(let defaultHorizontalAnchor, let defaultVerticalAnchor):
-            return areaPreviewFrame(
-                for: action,
-                targetFrame: targetFrame,
-                observation: observation,
-                defaultHorizontalAnchor: defaultHorizontalAnchor,
-                defaultVerticalAnchor: defaultVerticalAnchor
-            )
-        }
+        return makePreview(
+            for: action,
+            targetFrame: targetFrame,
+            observation: observation,
+            behavior: previewBehavior
+        ).frame
     }
 
     func preview(
@@ -143,21 +137,16 @@ struct WindowLayoutEngine {
             return nil
         }
 
-        switch previewBehavior {
-        case .area(let defaultHorizontalAnchor, let defaultVerticalAnchor):
-            let frame = areaPreviewFrame(
-                for: action,
-                targetFrame: targetFrame,
-                observation: observation,
-                defaultHorizontalAnchor: defaultHorizontalAnchor,
-                defaultVerticalAnchor: defaultVerticalAnchor
-            )
-            return WindowActionPreview(frame: frame, style: .area)
-        }
+        return makePreview(
+            for: action,
+            targetFrame: targetFrame,
+            observation: observation,
+            behavior: previewBehavior
+        )
     }
 
     func screenContainingMost(of windowFrame: CGRect, in screenFrames: [CGRect]) -> CGRect? {
-        guard screenFrames.isEmpty == false else {
+        guard !screenFrames.isEmpty else {
             return nil
         }
 
@@ -177,10 +166,6 @@ struct WindowLayoutEngine {
                 .filter { abs($0.overlapArea - maxOverlapArea) <= overlapTolerance }
                 .map(\.frame)
 
-            if bestCandidates.count == 1 {
-                return bestCandidates.first
-            }
-
             if let nearestBestCandidate = nearestScreen(to: midpoint, in: bestCandidates) {
                 return nearestBestCandidate
             }
@@ -196,13 +181,36 @@ struct WindowLayoutEngine {
     ) -> CGRect? {
         // Prefer the screen the pointer came from so a drag or gesture near a
         // display boundary still snaps onto the intended monitor.
-        let preferredScreenFrame = preferredPoint.flatMap { preferredPoint in
-            screenFrames.first { $0.contains(preferredPoint) }
+        if let preferredPoint,
+           let preferredScreenFrame = screenFrames.first(where: { $0.contains(preferredPoint) }) {
+            return preferredScreenFrame
         }
 
-        return preferredScreenFrame ?? screenContainingMost(
+        return screenContainingMost(
             of: currentWindowFrame,
             in: screenFrames
+        )
+    }
+
+    func displayMoveTargetFrame(
+        direction: DisplayMoveDirection,
+        currentWindowFrame: CGRect,
+        preferredPoint: CGPoint?,
+        screenFrames: [CGRect]
+    ) -> CGRect? {
+        guard let currentVisibleFrame = resolvedVisibleFrame(
+            preferredPoint: preferredPoint,
+            currentWindowFrame: currentWindowFrame,
+            screenFrames: screenFrames
+        ) else {
+            return nil
+        }
+
+        return displayMoveTargetFrame(
+            direction: direction,
+            currentWindowFrame: currentWindowFrame,
+            currentVisibleFrame: currentVisibleFrame,
+            screenFrames: screenFrames
         )
     }
 
@@ -220,14 +228,9 @@ struct WindowLayoutEngine {
             return currentWindowFrame.integral
         }
 
-        let targetIndex: Int
-        switch direction {
-        case .next:
-            targetIndex = (currentIndex + 1) % orderedScreenFrames.count
-        case .previous:
-            targetIndex = (currentIndex + orderedScreenFrames.count - 1) % orderedScreenFrames.count
-        }
-
+        let targetIndex = (
+            currentIndex + direction.indexOffset + orderedScreenFrames.count
+        ) % orderedScreenFrames.count
         let targetVisibleFrame = orderedScreenFrames[targetIndex]
         let relativeCenter = relativeCenter(
             of: currentWindowFrame,
@@ -312,26 +315,19 @@ struct WindowLayoutEngine {
         defaultVerticalAnchor: WindowActionPreview.AxisAnchor
     ) -> CGRect {
         let sizeBounds = observation?.sizeBounds
-        let resolvedSize: CGSize
-        if let sizeBounds {
-            resolvedSize = sizeBounds.constrainedSize(for: targetFrame.size)
-        } else {
-            resolvedSize = targetFrame.size
-        }
+        let resolvedSize = sizeBounds?.constrainedSize(for: targetFrame.size) ?? targetFrame.size
 
         var horizontalAnchor = observation?.horizontalAnchor ?? defaultHorizontalAnchor
         var verticalAnchor = observation?.verticalAnchor ?? defaultVerticalAnchor
 
         if let sizeBounds {
-            let constrainedSize = resolvedSize
-
             // Quarter actions look wrong when a constrained window drifts inward,
             // so keep any dimension that changed pinned to the action's outer edge.
             if action.prefersOuterEdgeAnchoringWhenConstrained {
-                if abs(constrainedSize.width - targetFrame.width) > 1 {
+                if abs(resolvedSize.width - targetFrame.width) > 1 {
                     horizontalAnchor = defaultHorizontalAnchor
                 }
-                if abs(constrainedSize.height - targetFrame.height) > 1 {
+                if abs(resolvedSize.height - targetFrame.height) > 1 {
                     verticalAnchor = defaultVerticalAnchor
                 }
             }
@@ -339,21 +335,17 @@ struct WindowLayoutEngine {
             // When an app enforces a much smaller maximum size, center anchoring
             // can make the preview appear detached from the intended snap area.
             if sizeBounds.maximumWidth != nil,
-               constrainedSize.width <= targetFrame.width,
-               horizontalAnchor != defaultHorizontalAnchor {
-                let widthRatio = constrainedSize.width / targetFrame.width
-                if widthRatio <= 0.5 {
-                    horizontalAnchor = defaultHorizontalAnchor
-                }
+               resolvedSize.width <= targetFrame.width,
+               horizontalAnchor != defaultHorizontalAnchor,
+               resolvedSize.width / targetFrame.width <= 0.5 {
+                horizontalAnchor = defaultHorizontalAnchor
             }
 
             if sizeBounds.maximumHeight != nil,
-               constrainedSize.height <= targetFrame.height,
-               verticalAnchor != defaultVerticalAnchor {
-                let heightRatio = constrainedSize.height / targetFrame.height
-                if heightRatio <= 0.5 {
-                    verticalAnchor = defaultVerticalAnchor
-                }
+               resolvedSize.height <= targetFrame.height,
+               verticalAnchor != defaultVerticalAnchor,
+               resolvedSize.height / targetFrame.height <= 0.5 {
+                verticalAnchor = defaultVerticalAnchor
             }
         }
 
@@ -383,6 +375,27 @@ struct WindowLayoutEngine {
         ).integral
     }
 
+    private func makePreview(
+        for action: WindowAction,
+        targetFrame: CGRect,
+        observation: WindowActionPreview.Observation?,
+        behavior: WindowActionPreviewBehavior
+    ) -> WindowActionPreview {
+        switch behavior {
+        case .area(let defaultHorizontalAnchor, let defaultVerticalAnchor):
+            return WindowActionPreview(
+                frame: areaPreviewFrame(
+                    for: action,
+                    targetFrame: targetFrame,
+                    observation: observation,
+                    defaultHorizontalAnchor: defaultHorizontalAnchor,
+                    defaultVerticalAnchor: defaultVerticalAnchor
+                ),
+                style: .area
+            )
+        }
+    }
+
     private func anchoredOrigin(
         min: CGFloat,
         max: CGFloat,
@@ -401,21 +414,25 @@ struct WindowLayoutEngine {
     }
 
     private func leftHalfFrame(in visibleFrame: CGRect) -> CGRect {
-        let splitX = visibleFrame.minX + floor(visibleFrame.width / 2)
-        return CGRect(
-            x: visibleFrame.minX,
-            y: visibleFrame.minY,
-            width: splitX - visibleFrame.minX,
-            height: visibleFrame.height
-        ).integral
+        halfFrame(in: visibleFrame, horizontalAnchor: .leadingEdge)
     }
 
     private func rightHalfFrame(in visibleFrame: CGRect) -> CGRect {
+        halfFrame(in: visibleFrame, horizontalAnchor: .trailingEdge)
+    }
+
+    private func halfFrame(
+        in visibleFrame: CGRect,
+        horizontalAnchor: WindowActionPreview.AxisAnchor
+    ) -> CGRect {
         let splitX = visibleFrame.minX + floor(visibleFrame.width / 2)
+        let minX = horizontalAnchor == .leadingEdge ? visibleFrame.minX : splitX
+        let maxX = horizontalAnchor == .leadingEdge ? splitX : visibleFrame.maxX
+
         return CGRect(
-            x: splitX,
+            x: minX,
             y: visibleFrame.minY,
-            width: visibleFrame.maxX - splitX,
+            width: maxX - minX,
             height: visibleFrame.height
         ).integral
     }
@@ -478,22 +495,20 @@ private extension WindowAction {
     var prefersOuterEdgeAnchoringWhenConstrained: Bool {
         switch self {
         case .topLeftQuarter, .topRightQuarter, .bottomLeftQuarter, .bottomRightQuarter:
-            return true
-        case .leftHalf,
-             .rightHalf,
-             .maximize,
-             .center,
-             .minimize,
-             .closeWindow,
-             .closeTab,
-             .quitApplication,
-             .cycleSameAppWindowsForward,
-             .cycleSameAppWindowsBackward,
-             .toggleFullScreen,
-             .exitFullScreen,
-             .moveToNextDisplay,
-             .moveToPreviousDisplay:
-            return false
+            true
+        default:
+            false
+        }
+    }
+}
+
+private extension DisplayMoveDirection {
+    var indexOffset: Int {
+        switch self {
+        case .next:
+            1
+        case .previous:
+            -1
         }
     }
 }
