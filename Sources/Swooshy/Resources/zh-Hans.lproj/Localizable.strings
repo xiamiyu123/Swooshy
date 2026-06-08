@@ -101,7 +101,7 @@
 "guide.page.shortcuts.bullet6" = "实验性显示器移动：启用显示器移动动作后，可使用 Control + Option + Command + N（配合 Shift 反向）。";
 "guide.page.shortcuts.bullet7" = "打开设置后，你可以按自己的习惯重新录制所有快捷键和手势动作。";
 "guide.page.interaction.title" = "交互风格：选择触发时机";
-"guide.page.interaction.message" = "Swooshy 支持两种完全不同的手势交互方式。请选择最符合你直觉的一种，你也可以稍后在“高级设置”中更改。";
+"guide.page.interaction.message" = "Swooshy 支持两种完全不同的手势交互方式。请选择最符合你直觉的一种，你也可以稍后在“设置 > 手势”中更改。";
 "guide.page.interaction.immediate.title" = "立即触发";
 "guide.page.interaction.immediate.description" = "手势划动到位后立刻执行动作。反应速度最快，操作干脆利落。";
 "guide.page.interaction.on_release.title" = "松手后触发";

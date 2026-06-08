@@ -116,6 +116,7 @@ struct WelcomeGuideContent {
         let message: String
         let bullets: [String]
         let imageName: String?
+        let showsPermissionStatus: Bool
     }
 
     let windowTitle: String
@@ -179,7 +180,8 @@ struct WelcomeGuideContent {
                 title: localized("\(localizationKey).title"),
                 message: localized("\(localizationKey).message"),
                 bullets: (0..<bulletCount).map { localized("\(localizationKey).bullet\($0 + 1)") },
-                imageName: imageName
+                imageName: imageName,
+                showsPermissionStatus: false
             )
         }
 
@@ -190,7 +192,8 @@ struct WelcomeGuideContent {
                 title: localized("welcome.title"),
                 message: localized("welcome.message"),
                 bullets: [],
-                imageName: nil
+                imageName: nil,
+                showsPermissionStatus: true
             ),
             guidePage(
                 id: 1,
@@ -296,6 +299,15 @@ final class WelcomeGuideViewModel: ObservableObject {
             guard settingsStore.executeGestureOnRelease != newValue else { return }
             objectWillChange.send()
             settingsStore.executeGestureOnRelease = newValue
+        }
+    }
+
+    var gestureHUDStyle: GestureHUDStyle {
+        get { settingsStore.gestureHUDStyle }
+        set {
+            guard settingsStore.gestureHUDStyle != newValue else { return }
+            objectWillChange.send()
+            settingsStore.gestureHUDStyle = newValue
         }
     }
 
@@ -416,6 +428,22 @@ final class WelcomeGuideViewModel: ObservableObject {
     func localized(_ key: String) -> String {
         settingsStore.localized(key)
     }
+
+    func title(for gestureHUDStyle: GestureHUDStyle) -> String {
+        gestureHUDStyle.title(preferredLanguages: settingsStore.preferredLanguages)
+    }
+
+    var gesturePreviewItems: [GestureHUDPreviewItem] {
+        [DockGestureKind.pinchIn, .swipeUp].map { gesture in
+            GestureHUDPreviewItem(
+                style: gestureHUDStyle,
+                gesture: gesture,
+                gestureTitle: gesture.title(preferredLanguages: settingsStore.preferredLanguages),
+                actionTitle: settingsStore.dockGestureAction(for: gesture)
+                    .title(preferredLanguages: settingsStore.preferredLanguages)
+            )
+        }
+    }
 }
 
 private struct WelcomeGuideView: View {
@@ -489,7 +517,9 @@ private struct WelcomeGuideView: View {
                 stepRow(index: 3, text: viewModel.nextActionTitle)
             }
 
-            permissionStatus
+            if viewModel.currentPage.showsPermissionStatus {
+                permissionStatus
+            }
             permissionTroubleshootingNotice
             launchAtLoginSection
 
@@ -528,8 +558,47 @@ private struct WelcomeGuideView: View {
             }
             .frame(maxWidth: .infinity)
 
+            hudStyleSection
+
             Spacer(minLength: 0)
         }
+    }
+
+    private var hudStyleSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(viewModel.localized("settings.gesture_hud.style.label"))
+                .font(.headline)
+
+            Picker(
+                viewModel.localized("settings.gesture_hud.style.label"),
+                selection: Binding(
+                    get: { viewModel.gestureHUDStyle },
+                    set: { viewModel.gestureHUDStyle = $0 }
+                )
+            ) {
+                ForEach(GestureHUDStyle.allCases) { style in
+                    Text(viewModel.title(for: style)).tag(style)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Text(viewModel.localized("settings.gesture_hud.footer"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            GestureHUDPreviewStrip(items: viewModel.gesturePreviewItems)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func experimentalContent(page: WelcomeGuideContent.Page) -> some View {
@@ -629,7 +698,7 @@ private struct WelcomeGuideView: View {
                     }
                 }
 
-                if page.id == 6 {
+                if page.showsPermissionStatus {
                     permissionStatus
                 }
             }

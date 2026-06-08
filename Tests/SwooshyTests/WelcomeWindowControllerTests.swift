@@ -54,6 +54,46 @@ struct WelcomeWindowControllerTests {
     }
 
     @Test
+    func welcomeGuideOnlyShowsPermissionStatusOnWelcomePage() {
+        let store = makeSettingsStore()
+        let content = WelcomeGuideContent.make(settingsStore: store)
+
+        let pagesShowingPermission = content.pages
+            .filter { $0.showsPermissionStatus }
+            .map(\.id)
+
+        #expect(pagesShowingPermission == [0])
+    }
+
+    @Test
+    func welcomeGuideHUDStyleOptionUsesSettingsStore() {
+        let store = makeSettingsStore()
+        let viewModel = makeViewModel(settingsStore: store)
+
+        viewModel.gestureHUDStyle = .minimal
+
+        #expect(store.gestureHUDStyle == .minimal)
+        #expect(viewModel.gestureHUDStyle == .minimal)
+    }
+
+    @Test
+    func welcomeGuideHUDPreviewItemsFollowSelectedStyleAndGestureActions() {
+        let store = makeSettingsStore()
+        let viewModel = makeViewModel(settingsStore: store)
+
+        viewModel.gestureHUDStyle = .classic
+
+        let items = viewModel.gesturePreviewItems
+
+        #expect(items.map(\.style) == [.classic, .classic])
+        #expect(items.map(\.gesture) == [.pinchIn, .swipeUp])
+        #expect(items.map(\.actionTitle) == [
+            DockGestureAction.quitApplication.title(preferredLanguages: store.preferredLanguages),
+            DockGestureAction.restoreWindow.title(preferredLanguages: store.preferredLanguages),
+        ])
+    }
+
+    @Test
     func welcomeGuideExperimentalOptionsUseSameGateAsSettings() {
         let store = makeSettingsStore()
         let viewModel = makeViewModel(settingsStore: store)

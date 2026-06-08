@@ -101,7 +101,7 @@
 "guide.page.shortcuts.bullet6" = "Experimental display moves: after enabling display move actions, use Control + Option + Command + N (hold Shift to reverse).";
 "guide.page.shortcuts.bullet7" = "After opening the settings, you can re-record all shortcuts and gesture actions according to your own habits.";
 "guide.page.interaction.title" = "Interaction Style: When to Trigger";
-"guide.page.interaction.message" = "Swooshy supports two different gesture interaction styles. Choose the one that feels most intuitive to you; you can also change this later in 'Advanced Settings'.";
+"guide.page.interaction.message" = "Swooshy supports two different gesture interaction styles. Choose the one that feels most intuitive to you; you can also change this later in Settings > Gestures.";
 "guide.page.interaction.immediate.title" = "Trigger Immediately";
 "guide.page.interaction.immediate.description" = "Action performs as soon as the gesture threshold is met. Fast, direct, and responsive.";
 "guide.page.interaction.on_release.title" = "Trigger on Release";

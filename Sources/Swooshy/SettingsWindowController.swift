@@ -527,7 +527,7 @@ private struct SettingsPickerOption<Value: Hashable>: Identifiable {
     var id: Value { value }
 }
 
-private struct GestureHUDPreviewItem: Identifiable, Equatable {
+struct GestureHUDPreviewItem: Identifiable, Equatable {
     let style: GestureHUDStyle
     let gesture: DockGestureKind
     let gestureTitle: String
@@ -1151,7 +1151,7 @@ private struct TitleBarGestureMappingsSection: View {
     }
 }
 
-private struct GestureHUDPreviewStrip: View {
+struct GestureHUDPreviewStrip: View {
     let items: [GestureHUDPreviewItem]
 
     var body: some View {
