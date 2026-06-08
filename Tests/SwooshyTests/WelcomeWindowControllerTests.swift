@@ -40,6 +40,7 @@ struct WelcomeWindowControllerTests {
         #expect(cornerSnapPage.bullets.count == 3)
         #expect(cornerSnapPage.message.contains("title bar or Dock"))
         #expect(cornerSnapPage.bullets[0].contains("0.2 seconds"))
+        #expect(cornerSnapPage.visual == .cornerSnapGesturePreview)
         #expect(shortcutsPage.bullets.count == 7)
         #expect(shortcutsPage.bullets[5].contains("Experimental display moves"))
         #expect(experimentalPage.bullets.count == 5)

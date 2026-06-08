@@ -90,6 +90,9 @@
 "guide.page.corner_snap.bullet1" = "双指长按 0.2 秒后拖向角落，即可进入角落贴靠模式。";
 "guide.page.corner_snap.bullet2" = "在角落贴靠模式下向屏幕边缘滑动，可以将应用停靠在屏幕四角。";
 "guide.page.corner_snap.bullet3" = "触发所需时长也可以稍后在“高级设置”里修改。";
+"guide.page.corner_snap.preview.hover" = "悬停标题栏或 Dock";
+"guide.page.corner_snap.preview.hold" = "双指长按 0.2 秒";
+"guide.page.corner_snap.preview.drag" = "拖向想要的角落";
 
 "guide.page.shortcuts.title" = "自定义设置与全局快捷键";
 "guide.page.shortcuts.message" = "如果你更习惯键盘，Swooshy 也提供了全局快捷键；所有手势映射和快捷键都可以在“设置…”里录制和修改。";

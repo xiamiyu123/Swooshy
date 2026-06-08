@@ -90,6 +90,9 @@
 "guide.page.corner_snap.bullet1" = "Two-finger long press for 0.2 seconds, then drag toward a corner to enter corner snap mode.";
 "guide.page.corner_snap.bullet2" = "While corner snap mode is active, sliding toward a screen edge lets you dock the app into one of the four corners.";
 "guide.page.corner_snap.bullet3" = "You can change the required hold duration later in Settings under Advanced Settings.";
+"guide.page.corner_snap.preview.hover" = "Hover title bar or Dock";
+"guide.page.corner_snap.preview.hold" = "Two-finger hold for 0.2s";
+"guide.page.corner_snap.preview.drag" = "Drag toward a corner";
 
 "guide.page.shortcuts.title" = "Customization and Global Hotkeys";
 "guide.page.shortcuts.message" = "If you prefer the keyboard, Swooshy also includes global shortcuts. Every gesture mapping and hotkey can be recorded and changed from Settings.";

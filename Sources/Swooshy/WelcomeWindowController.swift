@@ -110,12 +110,18 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
 @MainActor
 struct WelcomeGuideContent {
     struct Page: Identifiable, Equatable {
+        enum Visual: Equatable {
+            case none
+            case image(String)
+            case cornerSnapGesturePreview
+        }
+
         let id: Int
         let kind: WelcomeGuideViewModel.PageKind
         let title: String
         let message: String
         let bullets: [String]
-        let imageName: String?
+        let visual: Visual
         let showsPermissionStatus: Bool
     }
 
@@ -171,7 +177,7 @@ struct WelcomeGuideContent {
             kind: WelcomeGuideViewModel.PageKind,
             key: String,
             bulletCount: Int = 0,
-            imageName: String? = nil
+            visual: Page.Visual = .none
         ) -> Page {
             let localizationKey = "guide.page.\(key)"
             return Page(
@@ -180,7 +186,7 @@ struct WelcomeGuideContent {
                 title: localized("\(localizationKey).title"),
                 message: localized("\(localizationKey).message"),
                 bullets: (0..<bulletCount).map { localized("\(localizationKey).bullet\($0 + 1)") },
-                imageName: imageName,
+                visual: visual,
                 showsPermissionStatus: false
             )
         }
@@ -192,7 +198,7 @@ struct WelcomeGuideContent {
                 title: localized("welcome.title"),
                 message: localized("welcome.message"),
                 bullets: [],
-                imageName: nil,
+                visual: .none,
                 showsPermissionStatus: true
             ),
             guidePage(
@@ -200,42 +206,42 @@ struct WelcomeGuideContent {
                 kind: .tutorial,
                 key: "dock_switch",
                 bulletCount: 2,
-                imageName: "step1"
+                visual: .image("step1")
             ),
             guidePage(
                 id: 2,
                 kind: .tutorial,
                 key: "dock_visibility",
                 bulletCount: 2,
-                imageName: "step4"
+                visual: .image("step4")
             ),
             guidePage(
                 id: 3,
                 kind: .tutorial,
                 key: "dock_quit",
                 bulletCount: 3,
-                imageName: "step5"
+                visual: .image("step5")
             ),
             guidePage(
                 id: 4,
                 kind: .tutorial,
                 key: "titlebar_vertical",
                 bulletCount: 3,
-                imageName: "step2"
+                visual: .image("step2")
             ),
             guidePage(
                 id: 5,
                 kind: .tutorial,
                 key: "titlebar_horizontal",
                 bulletCount: 3,
-                imageName: "step3"
+                visual: .image("step3")
             ),
             guidePage(
                 id: 6,
                 kind: .tutorial,
                 key: "corner_snap",
                 bulletCount: 3,
-                imageName: "corner-snap-mode"
+                visual: .cornerSnapGesturePreview
             ),
             guidePage(
                 id: 7,
@@ -688,8 +694,13 @@ private struct WelcomeGuideView: View {
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let imageName = page.imageName {
+                switch page.visual {
+                case .cornerSnapGesturePreview:
+                    CornerSnapGesturePreviewCard(localized: viewModel.localized)
+                case .image(let imageName):
                     GuideImageCard(imageName: imageName)
+                case .none:
+                    EmptyView()
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -880,34 +891,239 @@ private struct GuideImageCard: View {
     var body: some View {
         Group {
             if let image = guideImage(named: imageName) {
+                let displaySize = fittedSize(for: image)
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: maxImageWidth, maxHeight: maxImageHeight)
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
+                    .frame(width: displaySize.width, height: displaySize.height)
             } else {
                 Text(imageName)
                     .foregroundStyle(.secondary)
                     .frame(width: maxImageWidth, height: 180)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                    )
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func fittedSize(for image: NSImage) -> CGSize {
+        let imageSize = image.size
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return CGSize(width: maxImageWidth, height: 180)
+        }
+
+        let scale = min(maxImageWidth / imageSize.width, maxImageHeight / imageSize.height)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
+}
+
+private struct CornerSnapGesturePreviewCard: View {
+    let localized: (String) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color.black.opacity(0.08))
+
+                windowPreview
+                dockPreview
+                gesturePath
+                cornerTargets
+                instructionBadge
+            }
+            .frame(width: 420, height: 240)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            )
+
+            HStack(spacing: 10) {
+                previewLegendItem(index: 1, text: localized("guide.page.corner_snap.preview.hover"))
+                previewLegendItem(index: 2, text: localized("guide.page.corner_snap.preview.hold"))
+                previewLegendItem(index: 3, text: localized("guide.page.corner_snap.preview.drag"))
+            }
+            .frame(width: 420, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var windowPreview: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 7) {
+                Circle().fill(.red.opacity(0.85)).frame(width: 7, height: 7)
+                Circle().fill(.yellow.opacity(0.9)).frame(width: 7, height: 7)
+                Circle().fill(.green.opacity(0.85)).frame(width: 7, height: 7)
+
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.primary.opacity(0.13))
+                    .frame(width: 150, height: 8)
+                    .padding(.leading, 6)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background(Color(red: 0.92, green: 0.95, blue: 0.99))
+
+            VStack(alignment: .leading, spacing: 8) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.black.opacity(0.14))
+                    .frame(width: 180, height: 12)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.black.opacity(0.08))
+                    .frame(width: 250, height: 10)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.black.opacity(0.08))
+                    .frame(width: 220, height: 10)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color.white)
+        }
+        .frame(width: 300, height: 166)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 18, x: 0, y: 10)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.black.opacity(0.72))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .offset(x: -34, y: -20)
+    }
+
+    private var dockPreview: some View {
+        HStack(spacing: 10) {
+            ForEach(0..<5, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(index == 2 ? Color.white.opacity(0.24) : Color.white.opacity(0.13))
+                    .frame(width: 28, height: 28)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        Image(systemName: index == 2 ? "cursorarrow.motionlines" : "app.dashed")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(index == 2 ? 0.92 : 0.54))
                     )
             }
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(10)
+        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .offset(x: 72, y: 78)
+    }
+
+    private var gesturePath: some View {
+        ZStack {
+            Path { path in
+                path.move(to: CGPoint(x: 210, y: 34))
+                path.addQuadCurve(to: CGPoint(x: 316, y: 44), control: CGPoint(x: 258, y: 18))
+            }
+            .stroke(
+                Color.white.opacity(0.82),
+                style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round, dash: [8, 8])
+            )
+
+            Image(systemName: "arrow.up.right")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.9))
+                .position(x: 320, y: 42)
+
+            HStack(spacing: 8) {
+                touchDot
+                touchDot
+            }
+            .position(x: 210, y: 34)
+
+            Text("0.2s")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color.black.opacity(0.5), in: Capsule())
+                .position(x: 210, y: 58)
+        }
+    }
+
+    private var cornerTargets: some View {
+        ZStack {
+            ForEach(Array(cornerTargetOffsets.enumerated()), id: \.offset) { _, offset in
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.white.opacity(0.38), style: StrokeStyle(lineWidth: 2, dash: [5, 5]))
+                    .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(width: 74, height: 54)
+                    .offset(x: offset.x, y: offset.y)
+            }
+        }
+    }
+
+    private var cornerTargetOffsets: [CGPoint] {
+        [
+            CGPoint(x: 134, y: -78),
+            CGPoint(x: 134, y: 78),
+            CGPoint(x: -134, y: -78),
+            CGPoint(x: -134, y: 78),
+        ]
+    }
+
+    private var instructionBadge: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(localized("guide.page.corner_snap.preview.hold"), systemImage: "hand.point.up.left.fill")
+            Label(localized("guide.page.corner_snap.preview.drag"), systemImage: "arrow.up.right")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(Color.white.opacity(0.88))
+        .padding(10)
+        .background(Color.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.09), lineWidth: 1)
+        )
+        .offset(x: 88, y: -16)
+    }
+
+    private var touchDot: some View {
+        Circle()
+            .fill(Color.white.opacity(0.92))
+            .frame(width: 16, height: 16)
+            .overlay(
+                Circle()
+                    .stroke(Color.black.opacity(0.25), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.28), radius: 5)
+    }
+
+    private func previewLegendItem(index: Int, text: String) -> some View {
+        HStack(spacing: 6) {
+            Text("\(index)")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 16, height: 16)
+                .background(Circle().fill(Color.primary.opacity(0.72)))
+
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
     }
 }
 
@@ -945,7 +1161,7 @@ private func guideImage(named name: String) -> NSImage? {
 @MainActor
 private final class GuideImageCache {
     static let shared = GuideImageCache()
-    private static let supportedExtensions = ["gif", "jpg", "jpeg", "png"]
+    private static let supportedExtensions = ["jpg", "jpeg", "png"]
 
     private var cache: [String: NSImage] = [:]
 
