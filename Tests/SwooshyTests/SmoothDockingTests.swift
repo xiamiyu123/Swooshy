@@ -8,6 +8,72 @@ struct SmoothDockingTests {
     private let desktopFrame = CGRect(x: 0, y: 85, width: 1408, height: 766)
 
     @Test
+    func smoothDockingSupportStaysLimitedToLayoutActions() {
+        for action in WindowAction.gestureCases {
+            #expect(action.supportsSmoothDocking == action.supportsSnapPreview)
+        }
+    }
+
+    @Test
+    func smoothDockingIdealFramesMatchLayoutEngineTargets() {
+        let layoutEngine = WindowLayoutEngine()
+
+        for action in WindowAction.gestureCases where action.supportsSmoothDocking {
+            let targetFrame = layoutEngine.targetFrame(
+                for: action,
+                currentWindowFrame: desktopFrame.integral,
+                currentVisibleFrame: desktopFrame.integral
+            )
+            let plan = resolver.plan(
+                for: action,
+                in: desktopFrame,
+                sizeConstraints: SmoothDockingSizeConstraints()
+            )
+
+            #expect(plan.idealFrame == targetFrame)
+            #expect(plan.frame == targetFrame)
+        }
+    }
+
+    @Test
+    func smoothDockingSizeConstraintsMergeTightensObservedBounds() {
+        let base = SmoothDockingSizeConstraints(
+            minimumWidth: 520,
+            maximumWidth: 1200,
+            minimumHeight: 480,
+            maximumHeight: nil
+        )
+        let observed = SmoothDockingSizeConstraints(
+            minimumWidth: 560,
+            maximumWidth: 900,
+            minimumHeight: nil,
+            maximumHeight: 700
+        )
+
+        #expect(
+            base.merged(with: observed) == SmoothDockingSizeConstraints(
+                minimumWidth: 560,
+                maximumWidth: 900,
+                minimumHeight: 480,
+                maximumHeight: 700
+            )
+        )
+    }
+
+    @Test
+    func smoothDockingSizeConstraintsNormalizeConflictingBounds() {
+        let base = SmoothDockingSizeConstraints(minimumWidth: 900)
+        let observed = SmoothDockingSizeConstraints(maximumWidth: 560)
+
+        #expect(
+            base.merged(with: observed) == SmoothDockingSizeConstraints(
+                minimumWidth: 900,
+                maximumWidth: 900
+            )
+        )
+    }
+
+    @Test
     func topLeftQuarterAnchorsConstrainedWindowToDesktopTopLeft() {
         let plan = resolver.plan(
             for: .topLeftQuarter,

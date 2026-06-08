@@ -22,9 +22,9 @@ struct LaunchOptionsTests {
             ]
         )
 
-        #expect(options.clearCache == true)
-        #expect(options.resetUserConfiguration == true)
-        #expect(options.previewHotKeyRegistrationFailure == true)
+        #expect(options.clearCache)
+        #expect(options.resetUserConfiguration)
+        #expect(options.previewHotKeyRegistrationFailure)
     }
 
     @Test
@@ -33,33 +33,18 @@ struct LaunchOptionsTests {
         let settingsStore = SettingsStore(userDefaults: defaults)
         settingsStore.debugLoggingEnabled = true
 
-        let constraintStore = ObservedWindowConstraintStore(
-            userDefaults: defaults,
-            autosaveInterval: 0
+        recordObservedConstraint(
+            in: defaults,
+            minimumWidth: 860,
+            minimumHeight: 520
         )
-        constraintStore.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 860,
-                maximumWidth: nil,
-                minimumHeight: 520,
-                maximumHeight: nil
-            ),
-            horizontalAnchor: .leadingEdge,
-            verticalAnchor: .leadingEdge,
-            action: .leftHalf,
-            for: "com.example.app"
-        )
-        constraintStore.flushPersistedConstraints()
 
-        LaunchOptions(arguments: [LaunchOptions.clearCacheArgument]).apply(userDefaults: defaults)
+        applyLaunchOption(LaunchOptions.clearCacheArgument, to: defaults)
 
         let reloadedSettings = SettingsStore(userDefaults: defaults)
-        let reloadedConstraints = ObservedWindowConstraintStore(
-            userDefaults: defaults,
-            autosaveInterval: 0
-        )
+        let reloadedConstraints = makeConstraintStore(userDefaults: defaults)
 
-        #expect(reloadedSettings.debugLoggingEnabled == true)
+        #expect(reloadedSettings.debugLoggingEnabled)
         #expect(reloadedConstraints.observation(for: "com.example.app", action: .leftHalf) == nil)
     }
 
@@ -70,34 +55,15 @@ struct LaunchOptionsTests {
         settingsStore.debugLoggingEnabled = true
         settingsStore.smartPinchExitFullScreenEnabled = false
 
-        let constraintStore = ObservedWindowConstraintStore(
-            userDefaults: defaults,
-            autosaveInterval: 0
-        )
-        constraintStore.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 860,
-                maximumWidth: nil,
-                minimumHeight: nil,
-                maximumHeight: nil
-            ),
-            horizontalAnchor: .leadingEdge,
-            verticalAnchor: .leadingEdge,
-            action: .leftHalf,
-            for: "com.example.app"
-        )
-        constraintStore.flushPersistedConstraints()
+        recordObservedConstraint(in: defaults, minimumWidth: 860)
 
-        LaunchOptions(arguments: [LaunchOptions.resetUserConfigurationArgument]).apply(userDefaults: defaults)
+        applyLaunchOption(LaunchOptions.resetUserConfigurationArgument, to: defaults)
 
         let reloadedSettings = SettingsStore(userDefaults: defaults)
-        let reloadedConstraints = ObservedWindowConstraintStore(
-            userDefaults: defaults,
-            autosaveInterval: 0
-        )
+        let reloadedConstraints = makeConstraintStore(userDefaults: defaults)
 
-        #expect(reloadedSettings.debugLoggingEnabled == false)
-        #expect(reloadedSettings.smartPinchExitFullScreenEnabled == true)
+        #expect(!reloadedSettings.debugLoggingEnabled)
+        #expect(reloadedSettings.smartPinchExitFullScreenEnabled)
         #expect(reloadedConstraints.observation(for: "com.example.app", action: .leftHalf) == nil)
     }
 
@@ -109,11 +75,45 @@ struct LaunchOptionsTests {
         settingsStore.experimentalDisplayMoveActionsEnabled = true
         settingsStore.smartBrowserTabCloseEnabled = true
 
-        LaunchOptions(arguments: [LaunchOptions.resetUserConfigurationArgument]).apply(userDefaults: defaults)
+        applyLaunchOption(LaunchOptions.resetUserConfigurationArgument, to: defaults)
 
         let reloadedSettings = SettingsStore(userDefaults: defaults)
-        #expect(reloadedSettings.experimentalBrowserTabCloseEnabled == true)
-        #expect(reloadedSettings.experimentalDisplayMoveActionsEnabled == true)
-        #expect(reloadedSettings.smartBrowserTabCloseEnabled == false)
+        #expect(reloadedSettings.experimentalBrowserTabCloseEnabled)
+        #expect(reloadedSettings.experimentalDisplayMoveActionsEnabled)
+        #expect(!reloadedSettings.smartBrowserTabCloseEnabled)
+    }
+
+    private func recordObservedConstraint(
+        in defaults: UserDefaults,
+        minimumWidth: CGFloat? = nil,
+        maximumWidth: CGFloat? = nil,
+        minimumHeight: CGFloat? = nil,
+        maximumHeight: CGFloat? = nil
+    ) {
+        let constraintStore = makeConstraintStore(userDefaults: defaults)
+        constraintStore.record(
+            sizeBounds: WindowActionPreview.SizeBounds(
+                minimumWidth: minimumWidth,
+                maximumWidth: maximumWidth,
+                minimumHeight: minimumHeight,
+                maximumHeight: maximumHeight
+            ),
+            horizontalAnchor: .leadingEdge,
+            verticalAnchor: .leadingEdge,
+            action: .leftHalf,
+            for: "com.example.app"
+        )
+        constraintStore.flushPersistedConstraints()
+    }
+
+    private func makeConstraintStore(userDefaults: UserDefaults) -> ObservedWindowConstraintStore {
+        ObservedWindowConstraintStore(
+            userDefaults: userDefaults,
+            autosaveInterval: 0
+        )
+    }
+
+    private func applyLaunchOption(_ argument: String, to defaults: UserDefaults) {
+        LaunchOptions(arguments: [argument]).apply(userDefaults: defaults)
     }
 }

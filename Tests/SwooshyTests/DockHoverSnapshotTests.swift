@@ -17,15 +17,31 @@ struct DockHoverSnapshotTests {
         return .application(appIdentity, source: .dockAppItem(DockItemHandle()))
     }
 
+    private func candidate(
+        dockItemName: String,
+        processIdentifier: pid_t,
+        x: CGFloat
+    ) -> DockHoverCandidate {
+        DockHoverCandidate(
+            target: target(
+                dockItemName: dockItemName,
+                processIdentifier: processIdentifier
+            ),
+            frame: CGRect(x: x, y: 0, width: 32, height: 32)
+        )
+    }
+
     @Test
     func hoveredCandidateReturnsMatchingDockItem() {
-        let finder = DockHoverCandidate(
-            target: target(dockItemName: "Finder", processIdentifier: 100),
-            frame: CGRect(x: 0, y: 0, width: 32, height: 32)
+        let finder = candidate(
+            dockItemName: "Finder",
+            processIdentifier: 100,
+            x: 0
         )
-        let safari = DockHoverCandidate(
-            target: target(dockItemName: "Safari", processIdentifier: 101),
-            frame: CGRect(x: 40, y: 0, width: 32, height: 32)
+        let safari = candidate(
+            dockItemName: "Safari",
+            processIdentifier: 101,
+            x: 40
         )
         let snapshot = DockHoverSnapshot(candidates: [finder, safari])
 
@@ -37,28 +53,34 @@ struct DockHoverSnapshotTests {
     func approximateDockRegionUsesCandidateBounds() {
         let snapshot = DockHoverSnapshot(
             candidates: [
-                DockHoverCandidate(
-                    target: target(dockItemName: "Finder", processIdentifier: 100),
-                    frame: CGRect(x: 0, y: 0, width: 32, height: 32)
+                candidate(
+                    dockItemName: "Finder",
+                    processIdentifier: 100,
+                    x: 0
                 ),
-                DockHoverCandidate(
-                    target: target(dockItemName: "Safari", processIdentifier: 101),
-                    frame: CGRect(x: 48, y: 0, width: 32, height: 32)
+                candidate(
+                    dockItemName: "Safari",
+                    processIdentifier: 101,
+                    x: 48
                 ),
             ]
         )
 
-        #expect(snapshot.containsApproximateDockRegion(CGPoint(x: 12, y: 12)))
-        #expect(snapshot.containsApproximateDockRegion(CGPoint(x: 60, y: 12)))
-        #expect(snapshot.containsApproximateDockRegion(CGPoint(x: 40, y: 12)))
-        #expect(snapshot.containsApproximateDockRegion(CGPoint(x: 120, y: 12)) == false)
+        let pointsInsideRegion = [
+            CGPoint(x: 12, y: 12),
+            CGPoint(x: 60, y: 12),
+            CGPoint(x: 40, y: 12),
+        ]
+
+        #expect(pointsInsideRegion.allSatisfy { snapshot.containsApproximateDockRegion($0) })
+        #expect(!snapshot.containsApproximateDockRegion(CGPoint(x: 120, y: 12)))
     }
 
     @Test
     func emptySnapshotDoesNotReportDockRegionOrHits() {
         let snapshot = DockHoverSnapshot(candidates: [])
 
-        #expect(snapshot.containsApproximateDockRegion(CGPoint(x: 1, y: 1)) == false)
+        #expect(!snapshot.containsApproximateDockRegion(CGPoint(x: 1, y: 1)))
         #expect(snapshot.hoveredCandidate(at: CGPoint(x: 1, y: 1)) == nil)
     }
 
@@ -72,19 +94,20 @@ struct DockHoverSnapshotTests {
         let refreshedAt = Date(timeIntervalSinceReferenceDate: 100)
         let expiresAt = refreshedAt.addingTimeInterval(policy.candidateTTL)
 
-        #expect(policy.shouldPreheat(now: refreshedAt, candidateExpiresAt: expiresAt) == false)
-        #expect(
-            policy.shouldPreheat(
-                now: refreshedAt.addingTimeInterval(0.16),
-                candidateExpiresAt: expiresAt
-            ) == false
-        )
-        #expect(
-            policy.shouldPreheat(
-                now: refreshedAt.addingTimeInterval(0.18),
-                candidateExpiresAt: expiresAt
+        let cases: [(elapsed: TimeInterval, shouldPreheat: Bool)] = [
+            (0, false),
+            (0.16, false),
+            (0.18, true),
+        ]
+
+        for (elapsed, shouldPreheat) in cases {
+            #expect(
+                policy.shouldPreheat(
+                    now: refreshedAt.addingTimeInterval(elapsed),
+                    candidateExpiresAt: expiresAt
+                ) == shouldPreheat
             )
-        )
+        }
     }
 
     @Test

@@ -7,75 +7,32 @@ import Testing
 @MainActor
 struct MinimizedDockLedgerTests {
     private final class FakeDockBindingStore: DockMinimizedWindowBindingManaging {
-        var eligibleSnapshots: [WindowRecordSnapshot]
+        var orderedIdentities: [WindowIdentity]
         var snapshotsByIdentity: [WindowIdentity: WindowRecordSnapshot]
 
         init(eligibleSnapshots: [WindowRecordSnapshot]) {
-            self.eligibleSnapshots = eligibleSnapshots
+            self.orderedIdentities = eligibleSnapshots.map(\.identity)
             self.snapshotsByIdentity = Dictionary(
                 uniqueKeysWithValues: eligibleSnapshots.map { ($0.identity, $0) }
             )
         }
 
         func minimizedWindowSnapshotsEligibleForDockBinding() -> [WindowRecordSnapshot] {
-            eligibleSnapshots.filter { $0.boundDockMinimizedHandle == nil }
+            orderedIdentities.compactMap { snapshotsByIdentity[$0] }
+                .filter { $0.boundDockMinimizedHandle == nil }
         }
 
         func bindDockMinimizedHandle(_ handle: DockMinimizedItemHandle, to windowIdentity: WindowIdentity) {
-            guard var snapshot = snapshotsByIdentity[windowIdentity] else {
+            guard let snapshot = snapshotsByIdentity[windowIdentity] else {
                 return
             }
 
-            snapshot = WindowRecordSnapshot(
-                identity: snapshot.identity,
-                appIdentity: snapshot.appIdentity,
-                ownerProcessIdentifier: snapshot.ownerProcessIdentifier,
-                title: snapshot.title,
-                frame: snapshot.frame,
-                isMinimized: snapshot.isMinimized,
-                isFocused: snapshot.isFocused,
-                isMain: snapshot.isMain,
-                lastMinimizedAt: snapshot.lastMinimizedAt,
-                boundDockMinimizedHandle: handle
-            )
-            snapshotsByIdentity[windowIdentity] = snapshot
-            eligibleSnapshots = eligibleSnapshots.map { $0.identity == windowIdentity ? snapshot : $0 }
+            snapshotsByIdentity[windowIdentity] = snapshot.withBoundDockMinimizedHandle(handle)
         }
 
         func unbindDockMinimizedHandle(_ handle: DockMinimizedItemHandle) {
             for (identity, snapshot) in snapshotsByIdentity where snapshot.boundDockMinimizedHandle == handle {
-                let updatedSnapshot = WindowRecordSnapshot(
-                    identity: snapshot.identity,
-                    appIdentity: snapshot.appIdentity,
-                    ownerProcessIdentifier: snapshot.ownerProcessIdentifier,
-                    title: snapshot.title,
-                    frame: snapshot.frame,
-                    isMinimized: snapshot.isMinimized,
-                    isFocused: snapshot.isFocused,
-                    isMain: snapshot.isMain,
-                    lastMinimizedAt: snapshot.lastMinimizedAt,
-                    boundDockMinimizedHandle: nil
-                )
-                snapshotsByIdentity[identity] = updatedSnapshot
-            }
-
-            eligibleSnapshots = eligibleSnapshots.map { snapshot in
-                guard snapshot.boundDockMinimizedHandle == handle else {
-                    return snapshot
-                }
-
-                return WindowRecordSnapshot(
-                    identity: snapshot.identity,
-                    appIdentity: snapshot.appIdentity,
-                    ownerProcessIdentifier: snapshot.ownerProcessIdentifier,
-                    title: snapshot.title,
-                    frame: snapshot.frame,
-                    isMinimized: snapshot.isMinimized,
-                    isFocused: snapshot.isFocused,
-                    isMain: snapshot.isMain,
-                    lastMinimizedAt: snapshot.lastMinimizedAt,
-                    boundDockMinimizedHandle: nil
-                )
+                snapshotsByIdentity[identity] = snapshot.withBoundDockMinimizedHandle(nil)
             }
         }
 
@@ -136,13 +93,13 @@ struct MinimizedDockLedgerTests {
                     name: "Finder",
                     processIdentifier: 100,
                     windowIdentity: firstWindow,
-                    lastMinimizedAt: Date(timeIntervalSinceReferenceDate: 10)
+                    lastMinimizedAt: minimizedAt(10)
                 ),
                 snapshot(
                     name: "Safari",
                     processIdentifier: 101,
                     windowIdentity: secondWindow,
-                    lastMinimizedAt: Date(timeIntervalSinceReferenceDate: 11)
+                    lastMinimizedAt: minimizedAt(11)
                 ),
             ]
         )
@@ -157,19 +114,8 @@ struct MinimizedDockLedgerTests {
         let firstTarget = try #require(ledger.target(for: firstHandle, registry: store))
         let secondTarget = try #require(ledger.target(for: secondHandle, registry: store))
 
-        if case .window(let resolvedWindowIdentity, _, let source) = firstTarget {
-            #expect(resolvedWindowIdentity == firstWindow)
-            #expect(source == .dockMinimizedItem(firstHandle))
-        } else {
-            Issue.record("expected first minimized Dock item to resolve to a window target")
-        }
-
-        if case .window(let resolvedWindowIdentity, _, let source) = secondTarget {
-            #expect(resolvedWindowIdentity == secondWindow)
-            #expect(source == .dockMinimizedItem(secondHandle))
-        } else {
-            Issue.record("expected second minimized Dock item to resolve to a window target")
-        }
+        expectWindowTarget(firstTarget, identity: firstWindow, handle: firstHandle)
+        expectWindowTarget(secondTarget, identity: secondWindow, handle: secondHandle)
     }
 
     @Test
@@ -194,7 +140,7 @@ struct MinimizedDockLedgerTests {
                     name: "Ghostty",
                     processIdentifier: 102,
                     windowIdentity: windowIdentity,
-                    lastMinimizedAt: Date(timeIntervalSinceReferenceDate: 20)
+                    lastMinimizedAt: minimizedAt(20)
                 ),
             ]
         )
@@ -207,5 +153,23 @@ struct MinimizedDockLedgerTests {
         ledger.reconcile(with: [], registry: store)
 
         #expect(store.windowSnapshot(for: windowIdentity)?.boundDockMinimizedHandle == nil)
+    }
+
+    private func expectWindowTarget(
+        _ target: InteractionTarget,
+        identity: WindowIdentity,
+        handle: DockMinimizedItemHandle
+    ) {
+        guard case .window(let resolvedWindowIdentity, _, let source) = target else {
+            Issue.record("expected minimized Dock item to resolve to a window target")
+            return
+        }
+
+        #expect(resolvedWindowIdentity == identity)
+        #expect(source == .dockMinimizedItem(handle))
+    }
+
+    private func minimizedAt(_ seconds: TimeInterval) -> Date {
+        Date(timeIntervalSinceReferenceDate: seconds)
     }
 }

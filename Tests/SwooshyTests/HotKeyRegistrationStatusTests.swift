@@ -5,22 +5,17 @@ import Testing
 
 @MainActor
 struct HotKeyRegistrationStatusTests {
+    private let displayMoveActions: Set<WindowAction> = [.moveToNextDisplay, .moveToPreviousDisplay]
+
     @Test
     func recordsFailedRegistrationsAndClearsAfterSuccessfulResync() async {
-        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let settingsStore = SettingsStore(userDefaults: defaults)
+        let settingsStore = makeSettingsStore()
         let registrationStatusStore = HotKeyRegistrationStatusStore()
         let registrar = FakeHotKeyRegistrar(failingActions: [.maximize])
-        let controller = GlobalHotKeyController(
-            windowActionRunner: NoOpWindowActionRunner(),
-            alertPresenter: NoOpAlertPresenter(),
+        let controller = makeController(
             settingsStore: settingsStore,
             registrationStatusStore: registrationStatusStore,
-            hotKeyRegistrar: registrar,
-            eventHandling: FakeHotKeyEventHandling()
+            hotKeyRegistrar: registrar
         )
         defer {
             controller.shutdown()
@@ -33,9 +28,7 @@ struct HotKeyRegistrationStatusTests {
         registrar.failingActions = []
         settingsStore.updateHotKeyKey(.d, for: .maximize)
 
-        for _ in 0 ..< 3 {
-            await Task.yield()
-        }
+        await yieldForPendingMainActorWork()
 
         #expect(registrationStatusStore.failure(for: .maximize) == nil)
         #expect(registrationStatusStore.failures.isEmpty)
@@ -43,19 +36,12 @@ struct HotKeyRegistrationStatusTests {
 
     @Test
     func disablingGlobalHotKeysClearsRegistrationFailures() async {
-        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let settingsStore = SettingsStore(userDefaults: defaults)
+        let settingsStore = makeSettingsStore()
         let registrationStatusStore = HotKeyRegistrationStatusStore()
-        let controller = GlobalHotKeyController(
-            windowActionRunner: NoOpWindowActionRunner(),
-            alertPresenter: NoOpAlertPresenter(),
+        let controller = makeController(
             settingsStore: settingsStore,
             registrationStatusStore: registrationStatusStore,
-            hotKeyRegistrar: FakeHotKeyRegistrar(failingActions: [.center]),
-            eventHandling: FakeHotKeyEventHandling()
+            hotKeyRegistrar: FakeHotKeyRegistrar(failingActions: [.center])
         )
         defer {
             controller.shutdown()
@@ -65,21 +51,15 @@ struct HotKeyRegistrationStatusTests {
 
         settingsStore.hotKeysEnabled = false
 
-        for _ in 0 ..< 3 {
-            await Task.yield()
-        }
+        await yieldForPendingMainActorWork()
 
         #expect(registrationStatusStore.failures.isEmpty)
-        #expect(registrationStatusStore.handlerUnavailable == false)
+        #expect(!registrationStatusStore.handlerUnavailable)
     }
 
     @Test
     func rowFactoryAttachesFailuresOnlyToAffectedActions() {
-        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let settingsStore = SettingsStore(userDefaults: defaults)
+        let settingsStore = makeSettingsStore()
         let registrationStatusStore = HotKeyRegistrationStatusStore()
         let centerBinding = settingsStore.hotKeyBinding(for: .center)
         registrationStatusStore.recordFailure(
@@ -90,83 +70,68 @@ struct HotKeyRegistrationStatusTests {
             )
         )
 
+        #expect(registrationStatusStore.issueKind(for: .center) == .registrationFailed)
+        #expect(registrationStatusStore.issueKind(for: .leftHalf) == nil)
+
         let rows = HotKeySettingsRowFactory.rows(
             settingsStore: settingsStore,
             registrationStatusStore: registrationStatusStore
         )
 
-        #expect(rows.first { $0.action == .center }?.registrationFailure?.binding == centerBinding)
-        #expect(rows.first { $0.action == .leftHalf }?.registrationFailure == nil)
-        #expect(rows.contains { $0.action == .moveToNextDisplay } == false)
-        #expect(rows.contains { $0.action == .moveToPreviousDisplay } == false)
+        #expect(row(.center, in: rows)?.registrationFailure?.binding == centerBinding)
+        #expect(row(.leftHalf, in: rows)?.registrationFailure == nil)
+        for action in displayMoveActions {
+            #expect(row(action, in: rows) == nil)
+        }
     }
 
     @Test
     func rowFactoryShowsDisplayMoveActionsOnlyWhenExperimentalModeIsEnabled() {
-        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let settingsStore = SettingsStore(userDefaults: defaults)
+        let settingsStore = makeSettingsStore()
         let registrationStatusStore = HotKeyRegistrationStatusStore()
-
-        #expect(
-            HotKeySettingsRowFactory.rows(
-                settingsStore: settingsStore,
-                registrationStatusStore: registrationStatusStore
-            )
-            .contains { $0.action == .moveToNextDisplay } == false
+        let hiddenRows = HotKeySettingsRowFactory.rows(
+            settingsStore: settingsStore,
+            registrationStatusStore: registrationStatusStore
         )
+
+        for action in displayMoveActions {
+            #expect(row(action, in: hiddenRows) == nil)
+        }
 
         settingsStore.experimentalDisplayMoveActionsEnabled = true
-
-        #expect(
-            HotKeySettingsRowFactory.rows(
-                settingsStore: settingsStore,
-                registrationStatusStore: registrationStatusStore
-            )
-            .contains { $0.action == .moveToNextDisplay }
+        let visibleRows = HotKeySettingsRowFactory.rows(
+            settingsStore: settingsStore,
+            registrationStatusStore: registrationStatusStore
         )
+
+        for action in displayMoveActions {
+            #expect(row(action, in: visibleRows) != nil)
+        }
     }
 
     @Test
     func defaultRegistrationSkipsDisplayMoveHotKeys() {
-        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let settingsStore = SettingsStore(userDefaults: defaults)
+        let settingsStore = makeSettingsStore()
         let registrar = FakeHotKeyRegistrar()
-        let controller = GlobalHotKeyController(
-            windowActionRunner: NoOpWindowActionRunner(),
-            alertPresenter: NoOpAlertPresenter(),
+        let controller = makeController(
             settingsStore: settingsStore,
-            hotKeyRegistrar: registrar,
-            eventHandling: FakeHotKeyEventHandling()
+            hotKeyRegistrar: registrar
         )
         defer {
             controller.shutdown()
         }
 
-        #expect(registrar.registeredActions.contains(.moveToNextDisplay) == false)
-        #expect(registrar.registeredActions.contains(.moveToPreviousDisplay) == false)
+        #expect(Set(registrar.registeredActions).isDisjoint(with: displayMoveActions))
         #expect(registrar.registeredActions.contains(.leftHalf))
     }
 
     @Test
     func enablingDisplayMoveExperimentalModeRegistersDisplayMoveHotKeys() async {
-        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let settingsStore = SettingsStore(userDefaults: defaults)
+        let settingsStore = makeSettingsStore()
         let registrar = FakeHotKeyRegistrar()
-        let controller = GlobalHotKeyController(
-            windowActionRunner: NoOpWindowActionRunner(),
-            alertPresenter: NoOpAlertPresenter(),
+        let controller = makeController(
             settingsStore: settingsStore,
-            hotKeyRegistrar: registrar,
-            eventHandling: FakeHotKeyEventHandling()
+            hotKeyRegistrar: registrar
         )
         defer {
             controller.shutdown()
@@ -175,19 +140,16 @@ struct HotKeyRegistrationStatusTests {
         registrar.registeredActions.removeAll()
         settingsStore.experimentalDisplayMoveActionsEnabled = true
 
-        for _ in 0 ..< 3 {
-            await Task.yield()
-        }
+        await yieldForPendingMainActorWork()
 
-        #expect(registrar.registeredActions.contains(.moveToNextDisplay))
-        #expect(registrar.registeredActions.contains(.moveToPreviousDisplay))
+        #expect(Set(registrar.registeredActions).isSuperset(of: displayMoveActions))
     }
 
     @Test
     func handlerUnavailableMarksEveryActionAsAffected() {
         let registrationStatusStore = HotKeyRegistrationStatusStore()
 
-        #expect(registrationStatusStore.hasIssue == false)
+        #expect(!registrationStatusStore.hasIssue)
         #expect(registrationStatusStore.issueKind(for: .leftHalf) == nil)
 
         registrationStatusStore.markHandlerUnavailable()
@@ -195,6 +157,35 @@ struct HotKeyRegistrationStatusTests {
         #expect(registrationStatusStore.hasIssue)
         #expect(registrationStatusStore.issueKind(for: .leftHalf) == .handlerUnavailable)
         #expect(registrationStatusStore.issueKind(for: .quitApplication) == .handlerUnavailable)
+    }
+
+    private func makeSettingsStore() -> SettingsStore {
+        let suiteName = "Swooshy.HotKeyRegistrationStatusTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return SettingsStore(userDefaults: defaults)
+    }
+
+    private func makeController(
+        settingsStore: SettingsStore,
+        registrationStatusStore: HotKeyRegistrationStatusStore = HotKeyRegistrationStatusStore(),
+        hotKeyRegistrar: FakeHotKeyRegistrar
+    ) -> GlobalHotKeyController {
+        GlobalHotKeyController(
+            windowActionRunner: NoOpWindowActionRunner(),
+            alertPresenter: NoOpAlertPresenter(),
+            settingsStore: settingsStore,
+            registrationStatusStore: registrationStatusStore,
+            hotKeyRegistrar: hotKeyRegistrar,
+            eventHandling: FakeHotKeyEventHandling()
+        )
+    }
+
+    private func row(
+        _ action: WindowAction,
+        in rows: [HotKeyRowModel]
+    ) -> HotKeyRowModel? {
+        rows.first { $0.action == action }
     }
 }
 

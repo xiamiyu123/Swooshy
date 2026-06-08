@@ -5,99 +5,94 @@ import Testing
 struct WindowLayoutEngineTests {
     private let engine = WindowLayoutEngine()
     private let visibleFrame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    private let defaultWindowFrame = CGRect(x: 100, y: 100, width: 800, height: 600)
+
+    private func targetFrame(for action: WindowAction) -> CGRect {
+        engine.targetFrame(
+            for: action,
+            currentWindowFrame: defaultWindowFrame,
+            currentVisibleFrame: visibleFrame
+        )
+    }
+
+    private func observation(
+        minimumWidth: CGFloat? = nil,
+        maximumWidth: CGFloat? = nil,
+        minimumHeight: CGFloat? = nil,
+        maximumHeight: CGFloat? = nil,
+        horizontalAnchor: WindowActionPreview.AxisAnchor,
+        verticalAnchor: WindowActionPreview.AxisAnchor
+    ) -> WindowActionPreview.Observation {
+        WindowActionPreview.Observation(
+            sizeBounds: WindowActionPreview.SizeBounds(
+                minimumWidth: minimumWidth,
+                maximumWidth: maximumWidth,
+                minimumHeight: minimumHeight,
+                maximumHeight: maximumHeight
+            ),
+            horizontalAnchor: horizontalAnchor,
+            verticalAnchor: verticalAnchor
+        )
+    }
 
     @Test
     func leftHalfUsesLeftSideOfVisibleFrame() {
-        let frame = engine.targetFrame(
-            for: .leftHalf,
-            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
-            currentVisibleFrame: visibleFrame
-        )
+        let frame = targetFrame(for: .leftHalf)
 
         #expect(frame == CGRect(x: 0, y: 0, width: 720, height: 900))
     }
 
     @Test
     func rightHalfUsesRightSideOfVisibleFrame() {
-        let frame = engine.targetFrame(
-            for: .rightHalf,
-            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
-            currentVisibleFrame: visibleFrame
-        )
+        let frame = targetFrame(for: .rightHalf)
 
         #expect(frame == CGRect(x: 720, y: 0, width: 720, height: 900))
     }
 
     @Test
     func maximizeUsesEntireVisibleFrame() {
-        let frame = engine.targetFrame(
-            for: .maximize,
-            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
-            currentVisibleFrame: visibleFrame
-        )
+        let frame = targetFrame(for: .maximize)
 
         #expect(frame == visibleFrame)
     }
 
     @Test
     func centerUsesEntireVisibleFrame() {
-        let frame = engine.targetFrame(
-            for: .center,
-            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
-            currentVisibleFrame: visibleFrame
-        )
+        let frame = targetFrame(for: .center)
 
         #expect(frame == visibleFrame)
     }
 
     @Test
     func topLeftQuarterUsesTopLeftAreaOfVisibleFrame() {
-        let frame = engine.targetFrame(
-            for: .topLeftQuarter,
-            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
-            currentVisibleFrame: visibleFrame
-        )
+        let frame = targetFrame(for: .topLeftQuarter)
 
         #expect(frame == CGRect(x: 0, y: 450, width: 720, height: 450))
     }
 
     @Test
     func topRightQuarterUsesTopRightAreaOfVisibleFrame() {
-        let frame = engine.targetFrame(
-            for: .topRightQuarter,
-            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
-            currentVisibleFrame: visibleFrame
-        )
+        let frame = targetFrame(for: .topRightQuarter)
 
         #expect(frame == CGRect(x: 720, y: 450, width: 720, height: 450))
     }
 
     @Test
     func bottomLeftQuarterUsesBottomLeftAreaOfVisibleFrame() {
-        let frame = engine.targetFrame(
-            for: .bottomLeftQuarter,
-            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
-            currentVisibleFrame: visibleFrame
-        )
+        let frame = targetFrame(for: .bottomLeftQuarter)
 
         #expect(frame == CGRect(x: 0, y: 0, width: 720, height: 450))
     }
 
     @Test
     func bottomRightQuarterUsesBottomRightAreaOfVisibleFrame() {
-        let frame = engine.targetFrame(
-            for: .bottomRightQuarter,
-            currentWindowFrame: CGRect(x: 100, y: 100, width: 800, height: 600),
-            currentVisibleFrame: visibleFrame
-        )
+        let frame = targetFrame(for: .bottomRightQuarter)
 
         #expect(frame == CGRect(x: 720, y: 0, width: 720, height: 450))
     }
 
     @Test
     func nonLayoutActionsPreserveCurrentFrame() {
-        let currentWindowFrame = CGRect(x: 100, y: 100, width: 800, height: 600)
-
         for action in [
             WindowAction.minimize,
             .closeWindow,
@@ -109,13 +104,9 @@ struct WindowLayoutEngineTests {
             .moveToNextDisplay,
             .moveToPreviousDisplay,
         ] {
-            let frame = engine.targetFrame(
-                for: action,
-                currentWindowFrame: currentWindowFrame,
-                currentVisibleFrame: visibleFrame
-            )
+            let frame = targetFrame(for: action)
 
-            #expect(frame == currentWindowFrame)
+            #expect(frame == defaultWindowFrame)
         }
     }
 
@@ -149,6 +140,25 @@ struct WindowLayoutEngineTests {
         )
 
         #expect(frame == CGRect(x: 220, y: 122, width: 640, height: 401))
+    }
+
+    @Test
+    func displayMoveUsesPreferredPointToResolveCurrentDisplay() throws {
+        let leftVisibleFrame = CGRect(x: 0, y: 0, width: 1440, height: 860)
+        let rightVisibleFrame = CGRect(x: 1440, y: 0, width: 1280, height: 800)
+        let currentWindowFrame = CGRect(x: 1320, y: 100, width: 640, height: 400)
+        let preferredPoint = CGPoint(x: 100, y: 120)
+
+        let frame = try #require(
+            engine.displayMoveTargetFrame(
+                direction: .next,
+                currentWindowFrame: currentWindowFrame,
+                preferredPoint: preferredPoint,
+                screenFrames: [rightVisibleFrame, leftVisibleFrame]
+            )
+        )
+
+        #expect(frame == CGRect(x: 2080, y: 79, width: 640, height: 401))
     }
 
     @Test
@@ -232,13 +242,8 @@ struct WindowLayoutEngineTests {
         let preview = engine.preview(
             for: .leftHalf,
             targetFrame: targetFrame,
-            observation: WindowActionPreview.Observation(
-                sizeBounds: WindowActionPreview.SizeBounds(
-                    minimumWidth: 860,
-                    maximumWidth: nil,
-                    minimumHeight: nil,
-                    maximumHeight: nil
-                ),
+            observation: observation(
+                minimumWidth: 860,
                 horizontalAnchor: .leadingEdge,
                 verticalAnchor: .leadingEdge
             )
@@ -255,13 +260,8 @@ struct WindowLayoutEngineTests {
         let preview = engine.preview(
             for: .rightHalf,
             targetFrame: targetFrame,
-            observation: WindowActionPreview.Observation(
-                sizeBounds: WindowActionPreview.SizeBounds(
-                    minimumWidth: 860,
-                    maximumWidth: nil,
-                    minimumHeight: nil,
-                    maximumHeight: nil
-                ),
+            observation: observation(
+                minimumWidth: 860,
                 horizontalAnchor: .trailingEdge,
                 verticalAnchor: .leadingEdge
             )
@@ -277,13 +277,8 @@ struct WindowLayoutEngineTests {
         let preview = engine.preview(
             for: .rightHalf,
             targetFrame: targetFrame,
-            observation: WindowActionPreview.Observation(
-                sizeBounds: WindowActionPreview.SizeBounds(
-                    minimumWidth: 860,
-                    maximumWidth: nil,
-                    minimumHeight: nil,
-                    maximumHeight: nil
-                ),
+            observation: observation(
+                minimumWidth: 860,
                 horizontalAnchor: .leadingEdge,
                 verticalAnchor: .leadingEdge
             )
@@ -299,13 +294,9 @@ struct WindowLayoutEngineTests {
         let preview = engine.preview(
             for: .maximize,
             targetFrame: targetFrame,
-            observation: WindowActionPreview.Observation(
-                sizeBounds: WindowActionPreview.SizeBounds(
-                    minimumWidth: nil,
-                    maximumWidth: 1200,
-                    minimumHeight: nil,
-                    maximumHeight: 800
-                ),
+            observation: observation(
+                maximumWidth: 1200,
+                maximumHeight: 800,
                 horizontalAnchor: .centered,
                 verticalAnchor: .centered
             )
@@ -336,13 +327,9 @@ struct WindowLayoutEngineTests {
         let preview = engine.preview(
             for: .topLeftQuarter,
             targetFrame: targetFrame,
-            observation: WindowActionPreview.Observation(
-                sizeBounds: WindowActionPreview.SizeBounds(
-                    minimumWidth: 860,
-                    maximumWidth: nil,
-                    minimumHeight: 520,
-                    maximumHeight: nil
-                ),
+            observation: observation(
+                minimumWidth: 860,
+                minimumHeight: 520,
                 horizontalAnchor: .leadingEdge,
                 verticalAnchor: .trailingEdge
             )
@@ -359,13 +346,9 @@ struct WindowLayoutEngineTests {
         let preview = engine.preview(
             for: .topRightQuarter,
             targetFrame: targetFrame,
-            observation: WindowActionPreview.Observation(
-                sizeBounds: WindowActionPreview.SizeBounds(
-                    minimumWidth: nil,
-                    maximumWidth: 560,
-                    minimumHeight: 672,
-                    maximumHeight: nil
-                ),
+            observation: observation(
+                maximumWidth: 560,
+                minimumHeight: 672,
                 horizontalAnchor: .leadingEdge,
                 verticalAnchor: .trailingEdge
             )

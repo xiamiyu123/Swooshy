@@ -6,38 +6,26 @@ import Testing
 struct CloseGestureConfirmationPolicyTests {
     @Test
     func legacyBrowserWindowCloseConfirmationOnlyAppliesToTitleBarWindowClose() {
-        let browserWindow = InteractionTarget.window(
-            WindowIdentity(),
-            app: makeAppIdentity(
-                name: "Safari",
-                bundleIdentifier: "com.apple.Safari"
-            ),
-            source: .titleBar
-        )
+        let browserWindow = makeWindow(name: "Safari", bundleIdentifier: "com.apple.Safari")
 
         #expect(
-            CloseGestureConfirmationPolicy.confirmationActionForTitleBarGesture(
-                gesture: .pinchIn,
+            titleBarConfirmationAction(
                 action: .closeWindow,
                 application: browserWindow,
-                legacyBrowserWindowCloseConfirmationEnabled: true,
-                closeAndQuitConfirmationEnabled: false
+                legacyBrowserWindowCloseConfirmationEnabled: true
             ) == .closeWindow
         )
 
         #expect(
-            CloseGestureConfirmationPolicy.confirmationActionForTitleBarGesture(
-                gesture: .pinchIn,
+            titleBarConfirmationAction(
                 action: .quitApplication,
                 application: browserWindow,
-                legacyBrowserWindowCloseConfirmationEnabled: true,
-                closeAndQuitConfirmationEnabled: false
+                legacyBrowserWindowCloseConfirmationEnabled: true
             ) == nil
         )
 
         #expect(
-            CloseGestureConfirmationPolicy.confirmationActionForDockGesture(
-                gesture: .pinchIn,
+            dockConfirmationAction(
                 action: .quitApplication,
                 closeAndQuitConfirmationEnabled: false
             ) == nil
@@ -46,37 +34,26 @@ struct CloseGestureConfirmationPolicyTests {
 
     @Test
     func closeAndQuitConfirmationAppliesToDockAndTitleBarPinchGestures() {
-        let appWindow = InteractionTarget.window(
-            WindowIdentity(),
-            app: makeAppIdentity(
-                name: "Calendar",
-                bundleIdentifier: "com.apple.iCal"
-            ),
-            source: .titleBar
-        )
+        let appWindow = makeWindow(name: "Calendar", bundleIdentifier: "com.apple.iCal")
 
         #expect(
-            CloseGestureConfirmationPolicy.confirmationActionForDockGesture(
-                gesture: .pinchIn,
+            dockConfirmationAction(
                 action: .quitApplication,
                 closeAndQuitConfirmationEnabled: true
             ) == .quitApplication
         )
 
         #expect(
-            CloseGestureConfirmationPolicy.confirmationActionForDockGesture(
-                gesture: .pinchIn,
+            dockConfirmationAction(
                 action: .closeWindow,
                 closeAndQuitConfirmationEnabled: true
             ) == .closeWindow
         )
 
         #expect(
-            CloseGestureConfirmationPolicy.confirmationActionForTitleBarGesture(
-                gesture: .pinchIn,
+            titleBarConfirmationAction(
                 action: .quitApplication,
                 application: appWindow,
-                legacyBrowserWindowCloseConfirmationEnabled: false,
                 closeAndQuitConfirmationEnabled: true
             ) == .quitApplication
         )
@@ -84,17 +61,10 @@ struct CloseGestureConfirmationPolicyTests {
 
     @Test
     func confirmationSkipsNonPinchGestures() {
-        let appWindow = InteractionTarget.window(
-            WindowIdentity(),
-            app: makeAppIdentity(
-                name: "Safari",
-                bundleIdentifier: "com.apple.Safari"
-            ),
-            source: .titleBar
-        )
+        let appWindow = makeWindow(name: "Safari", bundleIdentifier: "com.apple.Safari")
 
         #expect(
-            CloseGestureConfirmationPolicy.confirmationActionForDockGesture(
+            dockConfirmationAction(
                 gesture: .swipeDown,
                 action: .closeWindow,
                 closeAndQuitConfirmationEnabled: true
@@ -102,7 +72,7 @@ struct CloseGestureConfirmationPolicyTests {
         )
 
         #expect(
-            CloseGestureConfirmationPolicy.confirmationActionForTitleBarGesture(
+            titleBarConfirmationAction(
                 gesture: .swipeDown,
                 action: .closeWindow,
                 application: appWindow,
@@ -112,12 +82,44 @@ struct CloseGestureConfirmationPolicyTests {
         )
     }
 
-    private func makeAppIdentity(name: String, bundleIdentifier: String) -> AppIdentity {
-        AppIdentity(
-            bundleURL: URL(fileURLWithPath: "/Applications/\(name).app"),
-            bundleIdentifier: bundleIdentifier,
-            processIdentifier: 100,
-            localizedName: name
-        )!
+    private func dockConfirmationAction(
+        gesture: DockGestureKind = .pinchIn,
+        action: DockGestureAction,
+        closeAndQuitConfirmationEnabled: Bool = false
+    ) -> CloseGestureConfirmationAction? {
+        CloseGestureConfirmationPolicy.confirmationActionForDockGesture(
+            gesture: gesture,
+            action: action,
+            closeAndQuitConfirmationEnabled: closeAndQuitConfirmationEnabled
+        )
+    }
+
+    private func titleBarConfirmationAction(
+        gesture: DockGestureKind = .pinchIn,
+        action: WindowAction,
+        application: InteractionTarget,
+        legacyBrowserWindowCloseConfirmationEnabled: Bool = false,
+        closeAndQuitConfirmationEnabled: Bool = false
+    ) -> CloseGestureConfirmationAction? {
+        CloseGestureConfirmationPolicy.confirmationActionForTitleBarGesture(
+            gesture: gesture,
+            action: action,
+            application: application,
+            legacyBrowserWindowCloseConfirmationEnabled: legacyBrowserWindowCloseConfirmationEnabled,
+            closeAndQuitConfirmationEnabled: closeAndQuitConfirmationEnabled
+        )
+    }
+
+    private func makeWindow(name: String, bundleIdentifier: String) -> InteractionTarget {
+        .window(
+            WindowIdentity(),
+            app: AppIdentity(
+                bundleURL: URL(fileURLWithPath: "/Applications/\(name).app"),
+                bundleIdentifier: bundleIdentifier,
+                processIdentifier: 100,
+                localizedName: name
+            )!,
+            source: .titleBar
+        )
     }
 }

@@ -17,12 +17,75 @@ struct DockSwipeGestureRecognizerTests {
         }
 
         func runAll() {
-            while operations.isEmpty == false {
+            while !operations.isEmpty {
                 let operation = operations.removeFirst()
                 MainActor.assumeIsolated {
                     operation()
                 }
             }
+        }
+    }
+
+    private final class MultitouchMonitorFixture {
+        private let scheduler: DeferredDrainScheduler
+        private let monitor: MultitouchInputMonitor
+        private(set) var deliveredFrames: [TrackpadTouchFrame] = []
+
+        init() {
+            let scheduler = DeferredDrainScheduler()
+            self.scheduler = scheduler
+            monitor = MultitouchInputMonitor(scheduleDrain: { operation in
+                scheduler.schedule(operation)
+            })
+            monitor.onFrame = { [weak self] frame in
+                self?.deliveredFrames.append(frame)
+            }
+        }
+
+        var scheduledCount: Int {
+            scheduler.scheduledCount
+        }
+
+        func runScheduledFrames() {
+            scheduler.runAll()
+        }
+
+        func stop() {
+            monitor.stop()
+        }
+
+        func receiveZeroTouchPayload(timestamp: Double) {
+            monitor.receiveCallbackPayload(
+                fingers: nil,
+                fingerCount: 0,
+                timestamp: timestamp
+            )
+        }
+
+        func receiveTwoFingerPayload(
+            firstIdentifier: Int = 1,
+            firstPosition: CGPoint,
+            secondIdentifier: Int = 2,
+            secondPosition: CGPoint,
+            timestamp: Double
+        ) {
+            withUnsafeTemporaryAllocation(of: SwooshyMTFinger.self, capacity: 2) { buffer in
+                buffer.initialize(repeating: SwooshyMTFinger())
+                buffer[0].identifier = Int32(firstIdentifier)
+                buffer[1].identifier = Int32(secondIdentifier)
+                buffer[0].normalized.position = multitouchPoint(firstPosition)
+                buffer[1].normalized.position = multitouchPoint(secondPosition)
+
+                monitor.receiveCallbackPayload(
+                    fingers: buffer.baseAddress,
+                    fingerCount: 2,
+                    timestamp: timestamp
+                )
+            }
+        }
+
+        private func multitouchPoint(_ point: CGPoint) -> SwooshyMTPoint {
+            SwooshyMTPoint(x: Float(point.x), y: Float(point.y))
         }
     }
 
@@ -33,19 +96,52 @@ struct DockSwipeGestureRecognizerTests {
 
     private func target(
         dockItemName: String,
-        resolvedApplicationName: String? = nil,
         processIdentifier: pid_t = 42,
-        bundleIdentifier: String? = nil,
-        aliases: [String] = []
+        bundleIdentifier: String? = nil
     ) -> InteractionTarget {
         let appIdentity = AppIdentity(
-            bundleURL: URL(fileURLWithPath: "/Applications/\((resolvedApplicationName ?? dockItemName)).app"),
+            bundleURL: URL(fileURLWithPath: "/Applications/\(dockItemName).app"),
             bundleIdentifier: bundleIdentifier,
             processIdentifier: processIdentifier,
-            localizedName: resolvedApplicationName ?? dockItemName
+            localizedName: dockItemName
         )!
-        _ = aliases
         return .application(appIdentity, source: .dockAppItem(DockItemHandle()))
+    }
+
+    private func touchFrame(
+        _ touches: (identifier: Int, position: CGPoint)...,
+        timestamp: TimeInterval
+    ) -> TrackpadTouchFrame {
+        TrackpadTouchFrame(
+            touches: touches.map {
+                TrackpadTouchSample(identifier: $0.identifier, position: $0.position)
+            },
+            timestamp: timestamp
+        )
+    }
+
+    private func oneFingerFrame(
+        _ point: CGPoint,
+        identifier: Int = 1,
+        timestamp: TimeInterval
+    ) -> TrackpadTouchFrame {
+        touchFrame((identifier: identifier, position: point), timestamp: timestamp)
+    }
+
+    private func noTouchFrame(timestamp: TimeInterval) -> TrackpadTouchFrame {
+        TrackpadTouchFrame(touches: [], timestamp: timestamp)
+    }
+
+    private func twoFingerFrame(
+        _ firstPoint: CGPoint,
+        _ secondPoint: CGPoint,
+        timestamp: TimeInterval
+    ) -> TrackpadTouchFrame {
+        touchFrame(
+            (identifier: 1, position: firstPoint),
+            (identifier: 2, position: secondPoint),
+            timestamp: timestamp
+        )
     }
 
     @Test
@@ -54,16 +150,13 @@ struct DockSwipeGestureRecognizerTests {
         let finder = target(
             dockItemName: "Finder",
             processIdentifier: 100,
-            bundleIdentifier: "com.apple.finder",
-            aliases: ["Finder", "com.apple.finder"]
+            bundleIdentifier: "com.apple.finder"
         )
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.7, y: 0.5)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.85, y: 0.5)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.7, y: 0.5),
+                CGPoint(x: 0.85, y: 0.5),
                 timestamp: 0
             ),
             hoveredApplication: finder
@@ -71,11 +164,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.5, y: 0.51)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.65, y: 0.49)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.5, y: 0.51),
+                    CGPoint(x: 0.65, y: 0.49),
                     timestamp: 0.1
                 ),
                 hoveredApplication: finder
@@ -89,16 +180,13 @@ struct DockSwipeGestureRecognizerTests {
         let arc = target(
             dockItemName: "Arc",
             processIdentifier: 103,
-            bundleIdentifier: "company.thebrowser.Browser",
-            aliases: ["Arc", "company.thebrowser.Browser"]
+            bundleIdentifier: "company.thebrowser.Browser"
         )
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.2, y: 0.45)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.35, y: 0.45)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.2, y: 0.45),
+                CGPoint(x: 0.35, y: 0.45),
                 timestamp: 0
             ),
             hoveredApplication: arc
@@ -106,11 +194,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.37, y: 0.44)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.52, y: 0.46)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.37, y: 0.44),
+                    CGPoint(x: 0.52, y: 0.46),
                     timestamp: 0.1
                 ),
                 hoveredApplication: arc
@@ -124,17 +210,14 @@ struct DockSwipeGestureRecognizerTests {
         let finder = target(
             dockItemName: "Finder",
             processIdentifier: 100,
-            bundleIdentifier: "com.apple.finder",
-            aliases: ["Finder", "com.apple.finder"]
+            bundleIdentifier: "com.apple.finder"
         )
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.7)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.6, y: 0.7)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.4, y: 0.7),
+                    CGPoint(x: 0.6, y: 0.7),
                     timestamp: 0
                 ),
                 hoveredApplication: finder
@@ -143,11 +226,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.42, y: 0.55)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.62, y: 0.54)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.42, y: 0.55),
+                    CGPoint(x: 0.62, y: 0.54),
                     timestamp: 0.1
                 ),
                 hoveredApplication: finder
@@ -161,16 +242,13 @@ struct DockSwipeGestureRecognizerTests {
         let ghostty = target(
             dockItemName: "Ghostty",
             processIdentifier: 101,
-            bundleIdentifier: "com.mitchellh.ghostty",
-            aliases: ["Ghostty", "com.mitchellh.ghostty"]
+            bundleIdentifier: "com.mitchellh.ghostty"
         )
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.35, y: 0.35)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.35)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.35, y: 0.35),
+                CGPoint(x: 0.55, y: 0.35),
                 timestamp: 0
             ),
             hoveredApplication: ghostty
@@ -178,11 +256,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.36, y: 0.5)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.56, y: 0.52)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.36, y: 0.5),
+                    CGPoint(x: 0.56, y: 0.52),
                     timestamp: 0.1
                 ),
                 hoveredApplication: ghostty
@@ -196,16 +272,13 @@ struct DockSwipeGestureRecognizerTests {
         let preview = target(
             dockItemName: "Preview",
             processIdentifier: 102,
-            bundleIdentifier: "com.apple.Preview",
-            aliases: ["Preview", "com.apple.Preview"]
+            bundleIdentifier: "com.apple.Preview"
         )
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.2, y: 0.5)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.8, y: 0.5)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.2, y: 0.5),
+                CGPoint(x: 0.8, y: 0.5),
                 timestamp: 0
             ),
             hoveredApplication: preview
@@ -213,11 +286,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.36, y: 0.5)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.64, y: 0.5)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.36, y: 0.5),
+                    CGPoint(x: 0.64, y: 0.5),
                     timestamp: 0.1
                 ),
                 hoveredApplication: preview
@@ -231,11 +302,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.5, y: 0.4)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.4, y: 0.4),
+                    CGPoint(x: 0.5, y: 0.4),
                     timestamp: 0
                 ),
                 hoveredApplication: nil
@@ -249,11 +318,9 @@ struct DockSwipeGestureRecognizerTests {
         let finder = target(dockItemName: "Finder")
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.4, y: 0.4),
+                CGPoint(x: 0.6, y: 0.4),
                 timestamp: 0
             ),
             hoveredApplication: finder
@@ -261,11 +328,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.52, y: 0.55)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.72, y: 0.53)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.52, y: 0.55),
+                    CGPoint(x: 0.72, y: 0.53),
                     timestamp: 0.1
                 ),
                 hoveredApplication: finder
@@ -281,25 +346,18 @@ struct DockSwipeGestureRecognizerTests {
         #expect(recognizer.requiresHoveredApplication)
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.3, y: 0.3)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.5, y: 0.3)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.3, y: 0.3),
+                CGPoint(x: 0.5, y: 0.3),
                 timestamp: 0
             ),
             hoveredApplication: finder
         )
 
-        #expect(recognizer.requiresHoveredApplication == false)
+        #expect(!recognizer.requiresHoveredApplication)
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.35, y: 0.35)),
-                ],
-                timestamp: 0.1
-            ),
+            frame: oneFingerFrame(CGPoint(x: 0.35, y: 0.35), timestamp: 0.1),
             hoveredApplication: nil
         )
 
@@ -310,18 +368,14 @@ struct DockSwipeGestureRecognizerTests {
     func predictedEventMatchesSwipeWithoutMutatingRecognizerState() {
         var recognizer = DockGestureRecognizer()
         let finder = target(dockItemName: "Finder")
-        let startFrame = TrackpadTouchFrame(
-            touches: [
-                TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.3, y: 0.3)),
-                TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.5, y: 0.3)),
-            ],
+        let startFrame = twoFingerFrame(
+            CGPoint(x: 0.3, y: 0.3),
+            CGPoint(x: 0.5, y: 0.3),
             timestamp: 0
         )
-        let swipeFrame = TrackpadTouchFrame(
-            touches: [
-                TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.45, y: 0.31)),
-                TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.65, y: 0.3)),
-            ],
+        let swipeFrame = twoFingerFrame(
+            CGPoint(x: 0.45, y: 0.31),
+            CGPoint(x: 0.65, y: 0.3),
             timestamp: 0.1
         )
 
@@ -347,11 +401,9 @@ struct DockSwipeGestureRecognizerTests {
         let finder = target(dockItemName: "Finder")
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.3, y: 0.3)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.5, y: 0.3)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.3, y: 0.3),
+                CGPoint(x: 0.5, y: 0.3),
                 timestamp: 0
             ),
             hoveredApplication: finder
@@ -359,11 +411,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.predictedEvent(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.32, y: 0.31)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.52, y: 0.31)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.32, y: 0.31),
+                    CGPoint(x: 0.52, y: 0.31),
                     timestamp: 0.1
                 ),
                 hoveredApplication: nil
@@ -378,11 +428,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.4, y: 0.4),
+                    CGPoint(x: 0.55, y: 0.4),
                     timestamp: 0
                 ),
                 hoveredApplication: finder
@@ -390,11 +438,9 @@ struct DockSwipeGestureRecognizerTests {
         )
 
         let event = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.402, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.552, y: 0.402)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.402, y: 0.4),
+                CGPoint(x: 0.552, y: 0.402),
                 timestamp: 1.6
             ),
             hoveredApplication: finder
@@ -419,23 +465,18 @@ struct DockSwipeGestureRecognizerTests {
         #expect(recognizer.requiresHoveredApplication)
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.4, y: 0.4),
+                CGPoint(x: 0.55, y: 0.4),
                 timestamp: 0
             ),
             hoveredApplication: finder
         )
 
-        #expect(recognizer.requiresHoveredApplication == false)
+        #expect(!recognizer.requiresHoveredApplication)
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [],
-                timestamp: 0.2
-            ),
+            frame: noTouchFrame(timestamp: 0.2),
             hoveredApplication: nil
         )
 
@@ -448,22 +489,18 @@ struct DockSwipeGestureRecognizerTests {
         let finder = target(dockItemName: "Finder")
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.4, y: 0.4),
+                CGPoint(x: 0.55, y: 0.4),
                 timestamp: 0
             ),
             hoveredApplication: finder
         )
 
         let event = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.47, y: 0.41)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.62, y: 0.41)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.47, y: 0.41),
+                CGPoint(x: 0.62, y: 0.41),
                 timestamp: 1.55
             ),
             hoveredApplication: finder
@@ -484,11 +521,9 @@ struct DockSwipeGestureRecognizerTests {
         let finder = target(dockItemName: "Finder")
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.4, y: 0.4),
+                CGPoint(x: 0.55, y: 0.4),
                 timestamp: 0
             ),
             hoveredApplication: finder
@@ -496,11 +531,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.46, y: 0.4)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.61, y: 0.4)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.46, y: 0.4),
+                    CGPoint(x: 0.61, y: 0.4),
                     timestamp: 0.1
                 ),
                 hoveredApplication: finder
@@ -509,11 +542,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.462, y: 0.4)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.612, y: 0.401)),
-                    ],
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.462, y: 0.4),
+                    CGPoint(x: 0.612, y: 0.401),
                     timestamp: 1.7
                 ),
                 hoveredApplication: finder
@@ -531,32 +562,26 @@ struct DockSwipeGestureRecognizerTests {
         let finder = target(dockItemName: "Finder")
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.4, y: 0.4),
+                CGPoint(x: 0.55, y: 0.4),
                 timestamp: 0
             ),
             hoveredApplication: finder
         )
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.402, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.552, y: 0.402)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.402, y: 0.4),
+                CGPoint(x: 0.552, y: 0.402),
                 timestamp: 1.6
             ),
             hoveredApplication: finder
         )
 
         let event = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.34, y: 0.48)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.49, y: 0.5)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.34, y: 0.48),
+                CGPoint(x: 0.49, y: 0.5),
                 timestamp: 1.7
             ),
             hoveredApplication: finder
@@ -607,34 +632,27 @@ struct DockSwipeGestureRecognizerTests {
 
     @Test
     func cornerDragTransitionUsesCurrentCornerAsReference() {
-        #expect(
-            cornerDragTransitionAction(
-                from: .topRightQuarter,
-                forTouchTranslation: CGPoint(x: 0.01, y: -0.09),
-                threshold: 0.06
-            ) == .bottomRightQuarter
-        )
-        #expect(
-            cornerDragTransitionAction(
-                from: .bottomRightQuarter,
-                forTouchTranslation: CGPoint(x: -0.08, y: 0.02),
-                threshold: 0.06
-            ) == .bottomLeftQuarter
-        )
-        #expect(
-            cornerDragTransitionAction(
-                from: .bottomLeftQuarter,
-                forTouchTranslation: CGPoint(x: 0.02, y: 0.1),
-                threshold: 0.06
-            ) == .topLeftQuarter
-        )
-        #expect(
-            cornerDragTransitionAction(
-                from: .topLeftQuarter,
-                forTouchTranslation: CGPoint(x: 0.03, y: 0.01),
-                threshold: 0.06
-            ) == .topLeftQuarter
-        )
+        let cases: [(action: WindowAction, translation: CGPoint, expected: WindowAction)] = [
+            (.topLeftQuarter, CGPoint(x: 0.08, y: 0.02), .topRightQuarter),
+            (.bottomLeftQuarter, CGPoint(x: 0.08, y: 0.02), .bottomRightQuarter),
+            (.topRightQuarter, CGPoint(x: -0.08, y: 0.02), .topLeftQuarter),
+            (.bottomRightQuarter, CGPoint(x: -0.08, y: 0.02), .bottomLeftQuarter),
+            (.bottomLeftQuarter, CGPoint(x: 0.02, y: 0.1), .topLeftQuarter),
+            (.bottomRightQuarter, CGPoint(x: 0.02, y: 0.1), .topRightQuarter),
+            (.topLeftQuarter, CGPoint(x: 0.01, y: -0.09), .bottomLeftQuarter),
+            (.topRightQuarter, CGPoint(x: 0.01, y: -0.09), .bottomRightQuarter),
+            (.topLeftQuarter, CGPoint(x: 0.03, y: 0.01), .topLeftQuarter),
+        ]
+
+        for (action, translation, expected) in cases {
+            #expect(
+                cornerDragTransitionAction(
+                    from: action,
+                    forTouchTranslation: translation,
+                    threshold: 0.06
+                ) == expected
+            )
+        }
     }
 
     @Test
@@ -643,21 +661,17 @@ struct DockSwipeGestureRecognizerTests {
         let finder = target(dockItemName: "Finder")
 
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.4, y: 0.4),
+                CGPoint(x: 0.55, y: 0.4),
                 timestamp: 0
             ),
             hoveredApplication: finder
         )
         _ = recognizer.process(
-            frame: TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.55, y: 0.4)),
-                ],
+            frame: twoFingerFrame(
+                CGPoint(x: 0.4, y: 0.4),
+                CGPoint(x: 0.55, y: 0.4),
                 timestamp: 1.6
             ),
             hoveredApplication: finder
@@ -665,14 +679,11 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             recognizer.process(
-                frame: TrackpadTouchFrame(
-                    touches: [],
-                    timestamp: 1.7
-                ),
+                frame: noTouchFrame(timestamp: 1.7),
                 hoveredApplication: nil
             ) == .ended(application: finder)
         )
-        #expect(recognizer.isActive == false)
+        #expect(!recognizer.isActive)
     }
 
     @Test
@@ -681,11 +692,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             tracker.consume(
-                TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
-                    ],
+                touchFrame(
+                    (identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                    (identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
                     timestamp: 0
                 )
             ) == .none
@@ -693,11 +702,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             tracker.consume(
-                TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 7, position: CGPoint(x: 0.45, y: 0.45)),
-                        TrackpadTouchSample(identifier: 8, position: CGPoint(x: 0.65, y: 0.45)),
-                    ],
+                touchFrame(
+                    (identifier: 7, position: CGPoint(x: 0.45, y: 0.45)),
+                    (identifier: 8, position: CGPoint(x: 0.65, y: 0.45)),
                     timestamp: 0.2
                 )
             ) == .restarted(previousIdentifiers: [1, 2], currentIdentifiers: [7, 8])
@@ -710,11 +717,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             tracker.consume(
-                TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                        TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
-                    ],
+                touchFrame(
+                    (identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                    (identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
                     timestamp: 0
                 )
             ) == .none
@@ -722,11 +727,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             tracker.consume(
-                TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.45, y: 0.45)),
-                        TrackpadTouchSample(identifier: 8, position: CGPoint(x: 0.65, y: 0.45)),
-                    ],
+                touchFrame(
+                    (identifier: 1, position: CGPoint(x: 0.45, y: 0.45)),
+                    (identifier: 8, position: CGPoint(x: 0.65, y: 0.45)),
                     timestamp: 0.2
                 )
             ) == .restarted(previousIdentifiers: [1, 2], currentIdentifiers: [1, 8])
@@ -738,21 +741,17 @@ struct DockSwipeGestureRecognizerTests {
         var tracker = TwoFingerTouchSequenceTracker()
 
         _ = tracker.consume(
-            TrackpadTouchFrame(
-                touches: [
-                    TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
-                    TrackpadTouchSample(identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
-                ],
+            touchFrame(
+                (identifier: 1, position: CGPoint(x: 0.4, y: 0.4)),
+                (identifier: 2, position: CGPoint(x: 0.6, y: 0.4)),
                 timestamp: 0
             )
         )
 
         #expect(
             tracker.consume(
-                TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 1, position: CGPoint(x: 0.42, y: 0.42)),
-                    ],
+                touchFrame(
+                    (identifier: 1, position: CGPoint(x: 0.42, y: 0.42)),
                     timestamp: 0.1
                 )
             ) == .none
@@ -760,11 +759,9 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(
             tracker.consume(
-                TrackpadTouchFrame(
-                    touches: [
-                        TrackpadTouchSample(identifier: 7, position: CGPoint(x: 0.45, y: 0.45)),
-                        TrackpadTouchSample(identifier: 8, position: CGPoint(x: 0.65, y: 0.45)),
-                    ],
+                touchFrame(
+                    (identifier: 7, position: CGPoint(x: 0.45, y: 0.45)),
+                    (identifier: 8, position: CGPoint(x: 0.65, y: 0.45)),
                     timestamp: 0.2
                 )
             ) == .none
@@ -815,37 +812,31 @@ struct DockSwipeGestureRecognizerTests {
                 hasActiveCornerDragApplication: false
             )
         )
-        #expect(
-            gestureHoverLookupRequired(
-                gesturesEnabled: true,
-                standardRecognizerRequiresHoveredApplication: false,
-                cornerDragEnabled: true,
-                cornerDragRecognizerRequiresHoveredApplication: false,
-                hasActiveCornerDragApplication: false
-            ) == false
-        )
+        #expect(!gestureHoverLookupRequired(
+            gesturesEnabled: true,
+            standardRecognizerRequiresHoveredApplication: false,
+            cornerDragEnabled: true,
+            cornerDragRecognizerRequiresHoveredApplication: false,
+            hasActiveCornerDragApplication: false
+        ))
     }
 
     @Test
     func gestureHoverLookupSkipsWorkWhenCornerDragSessionIsAlreadyActive() {
-        #expect(
-            gestureHoverLookupRequired(
-                gesturesEnabled: true,
-                standardRecognizerRequiresHoveredApplication: true,
-                cornerDragEnabled: true,
-                cornerDragRecognizerRequiresHoveredApplication: true,
-                hasActiveCornerDragApplication: true
-            ) == false
-        )
-        #expect(
-            gestureHoverLookupRequired(
-                gesturesEnabled: false,
-                standardRecognizerRequiresHoveredApplication: true,
-                cornerDragEnabled: true,
-                cornerDragRecognizerRequiresHoveredApplication: true,
-                hasActiveCornerDragApplication: false
-            ) == false
-        )
+        #expect(!gestureHoverLookupRequired(
+            gesturesEnabled: true,
+            standardRecognizerRequiresHoveredApplication: true,
+            cornerDragEnabled: true,
+            cornerDragRecognizerRequiresHoveredApplication: true,
+            hasActiveCornerDragApplication: true
+        ))
+        #expect(!gestureHoverLookupRequired(
+            gesturesEnabled: false,
+            standardRecognizerRequiresHoveredApplication: true,
+            cornerDragEnabled: true,
+            cornerDragRecognizerRequiresHoveredApplication: true,
+            hasActiveCornerDragApplication: false
+        ))
     }
 
     @Test
@@ -863,151 +854,94 @@ struct DockSwipeGestureRecognizerTests {
     @MainActor
     @Test
     func multitouchMonitorDeliversZeroTouchFramesWhenCallbackPayloadIsNil() {
-        let scheduler = DeferredDrainScheduler()
-        let monitor = MultitouchInputMonitor(scheduleDrain: { operation in
-            scheduler.schedule(operation)
-        })
-        var deliveredFrames: [TrackpadTouchFrame] = []
-        monitor.onFrame = { deliveredFrames.append($0) }
+        let fixture = MultitouchMonitorFixture()
 
-        monitor.receiveCallbackPayload(
-            fingers: nil,
-            fingerCount: 0,
-            timestamp: 1.25
-        )
-        monitor.receiveCallbackPayload(
-            fingers: nil,
-            fingerCount: 0,
-            timestamp: 1.5
-        )
+        fixture.receiveZeroTouchPayload(timestamp: 1.25)
+        fixture.receiveZeroTouchPayload(timestamp: 1.5)
 
-        scheduler.runAll()
+        fixture.runScheduledFrames()
 
-        #expect(deliveredFrames.count == 1)
-        #expect(deliveredFrames.first?.touches == [])
-        #expect(deliveredFrames.first?.timestamp == 1.25)
+        #expect(fixture.deliveredFrames.count == 1)
+        #expect(fixture.deliveredFrames.first?.touches == [])
+        #expect(fixture.deliveredFrames.first?.timestamp == 1.25)
     }
 
     @MainActor
     @Test
     func multitouchMonitorCoalescesBurstCallbacksIntoOneScheduledDrain() {
-        let scheduler = DeferredDrainScheduler()
-        let monitor = MultitouchInputMonitor(scheduleDrain: { operation in
-            scheduler.schedule(operation)
-        })
-        var deliveredFrames: [TrackpadTouchFrame] = []
-        monitor.onFrame = { deliveredFrames.append($0) }
+        let fixture = MultitouchMonitorFixture()
 
-        withUnsafeTemporaryAllocation(of: SwooshyMTFinger.self, capacity: 2) { buffer in
-            buffer.initialize(repeating: SwooshyMTFinger())
-            buffer[0].identifier = 1
-            buffer[1].identifier = 2
+        fixture.receiveTwoFingerPayload(
+            firstPosition: CGPoint(x: 0.20, y: 0.30),
+            secondPosition: CGPoint(x: 0.40, y: 0.50),
+            timestamp: 1.0
+        )
+        fixture.receiveTwoFingerPayload(
+            firstPosition: CGPoint(x: 0.60, y: 0.70),
+            secondPosition: CGPoint(x: 0.80, y: 0.90),
+            timestamp: 2.0
+        )
 
-            buffer[0].normalized.position = SwooshyMTPoint(x: 0.20, y: 0.30)
-            buffer[1].normalized.position = SwooshyMTPoint(x: 0.40, y: 0.50)
-            monitor.receiveCallbackPayload(
-                fingers: buffer.baseAddress,
-                fingerCount: 2,
-                timestamp: 1.0
-            )
+        #expect(fixture.scheduledCount == 1)
+        #expect(fixture.deliveredFrames.isEmpty)
 
-            buffer[0].normalized.position = SwooshyMTPoint(x: 0.60, y: 0.70)
-            buffer[1].normalized.position = SwooshyMTPoint(x: 0.80, y: 0.90)
-            monitor.receiveCallbackPayload(
-                fingers: buffer.baseAddress,
-                fingerCount: 2,
-                timestamp: 2.0
-            )
-        }
+        fixture.runScheduledFrames()
 
-        #expect(scheduler.scheduledCount == 1)
-        #expect(deliveredFrames.isEmpty)
-
-        scheduler.runAll()
-
-        #expect(deliveredFrames.count == 1)
-        #expect(deliveredFrames.first?.timestamp == 2.0)
-        #expect(deliveredFrames.first?.touches.count == 2)
-        expect(deliveredFrames.first?.touches[0].position ?? .zero, approximatelyEquals: CGPoint(x: 0.60, y: 0.70))
-        expect(deliveredFrames.first?.touches[1].position ?? .zero, approximatelyEquals: CGPoint(x: 0.80, y: 0.90))
+        #expect(fixture.deliveredFrames.count == 1)
+        #expect(fixture.deliveredFrames.first?.timestamp == 2.0)
+        #expect(fixture.deliveredFrames.first?.touches.count == 2)
+        expect(
+            fixture.deliveredFrames.first?.touches[0].position ?? .zero,
+            approximatelyEquals: CGPoint(x: 0.60, y: 0.70)
+        )
+        expect(
+            fixture.deliveredFrames.first?.touches[1].position ?? .zero,
+            approximatelyEquals: CGPoint(x: 0.80, y: 0.90)
+        )
     }
 
     @MainActor
     @Test
     func multitouchMonitorPreservesReleaseTransitionBeforeImmediateRetrigger() {
-        let scheduler = DeferredDrainScheduler()
-        let monitor = MultitouchInputMonitor(scheduleDrain: { operation in
-            scheduler.schedule(operation)
-        })
-        var deliveredFrames: [TrackpadTouchFrame] = []
-        monitor.onFrame = { deliveredFrames.append($0) }
+        let fixture = MultitouchMonitorFixture()
 
-        withUnsafeTemporaryAllocation(of: SwooshyMTFinger.self, capacity: 2) { buffer in
-            buffer.initialize(repeating: SwooshyMTFinger())
-            buffer[0].identifier = 1
-            buffer[1].identifier = 2
+        fixture.receiveTwoFingerPayload(
+            firstPosition: CGPoint(x: 0.20, y: 0.30),
+            secondPosition: CGPoint(x: 0.40, y: 0.50),
+            timestamp: 1.0
+        )
+        fixture.receiveZeroTouchPayload(timestamp: 1.1)
+        fixture.receiveTwoFingerPayload(
+            firstIdentifier: 7,
+            firstPosition: CGPoint(x: 0.60, y: 0.70),
+            secondIdentifier: 8,
+            secondPosition: CGPoint(x: 0.80, y: 0.90),
+            timestamp: 1.2
+        )
 
-            buffer[0].normalized.position = SwooshyMTPoint(x: 0.20, y: 0.30)
-            buffer[1].normalized.position = SwooshyMTPoint(x: 0.40, y: 0.50)
-            monitor.receiveCallbackPayload(
-                fingers: buffer.baseAddress,
-                fingerCount: 2,
-                timestamp: 1.0
-            )
+        fixture.runScheduledFrames()
 
-            monitor.receiveCallbackPayload(
-                fingers: nil,
-                fingerCount: 0,
-                timestamp: 1.1
-            )
-
-            buffer[0].identifier = 7
-            buffer[1].identifier = 8
-            buffer[0].normalized.position = SwooshyMTPoint(x: 0.60, y: 0.70)
-            buffer[1].normalized.position = SwooshyMTPoint(x: 0.80, y: 0.90)
-            monitor.receiveCallbackPayload(
-                fingers: buffer.baseAddress,
-                fingerCount: 2,
-                timestamp: 1.2
-            )
-        }
-
-        scheduler.runAll()
-
-        #expect(deliveredFrames.count == 3)
-        #expect(deliveredFrames.map(\.touches.count) == [2, 0, 2])
-        #expect(deliveredFrames.map(\.timestamp) == [1.0, 1.1, 1.2])
+        #expect(fixture.deliveredFrames.count == 3)
+        #expect(fixture.deliveredFrames.map(\.touches.count) == [2, 0, 2])
+        #expect(fixture.deliveredFrames.map(\.timestamp) == [1.0, 1.1, 1.2])
     }
 
     @MainActor
     @Test
     func multitouchMonitorDropsPendingFramesAfterStop() {
-        let scheduler = DeferredDrainScheduler()
-        let monitor = MultitouchInputMonitor(scheduleDrain: { operation in
-            scheduler.schedule(operation)
-        })
-        var deliveredFrames: [TrackpadTouchFrame] = []
-        monitor.onFrame = { deliveredFrames.append($0) }
+        let fixture = MultitouchMonitorFixture()
 
-        withUnsafeTemporaryAllocation(of: SwooshyMTFinger.self, capacity: 2) { buffer in
-            buffer.initialize(repeating: SwooshyMTFinger())
-            buffer[0].identifier = 1
-            buffer[1].identifier = 2
-            buffer[0].normalized.position = SwooshyMTPoint(x: 0.15, y: 0.25)
-            buffer[1].normalized.position = SwooshyMTPoint(x: 0.35, y: 0.45)
+        fixture.receiveTwoFingerPayload(
+            firstPosition: CGPoint(x: 0.15, y: 0.25),
+            secondPosition: CGPoint(x: 0.35, y: 0.45),
+            timestamp: 3.0
+        )
 
-            monitor.receiveCallbackPayload(
-                fingers: buffer.baseAddress,
-                fingerCount: 2,
-                timestamp: 3.0
-            )
-        }
+        #expect(fixture.scheduledCount == 1)
 
-        #expect(scheduler.scheduledCount == 1)
+        fixture.stop()
+        fixture.runScheduledFrames()
 
-        monitor.stop()
-        scheduler.runAll()
-
-        #expect(deliveredFrames.isEmpty)
+        #expect(fixture.deliveredFrames.isEmpty)
     }
 }

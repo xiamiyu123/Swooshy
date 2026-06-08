@@ -16,10 +16,7 @@ private final class NotificationRecorder: @unchecked Sendable {
 struct SettingsStoreTests {
     @Test
     func persistsLanguageAndHotKeyPreferences() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.languageOverride = .simplifiedChinese
         store.hotKeysEnabled = false
@@ -44,46 +41,40 @@ struct SettingsStoreTests {
         let reloadedStore = SettingsStore(userDefaults: defaults)
 
         #expect(reloadedStore.languageOverride == .simplifiedChinese)
-        #expect(reloadedStore.hotKeysEnabled == false)
+        #expect(!reloadedStore.hotKeysEnabled)
         #expect(reloadedStore.statusItemIcon == .windowGrid)
-        #expect(reloadedStore.dockGesturesEnabled == false)
-        #expect(reloadedStore.titleBarGesturesEnabled == false)
-        #expect(reloadedStore.dockCornerDragSnapEnabled == false)
-        #expect(reloadedStore.titleBarCornerDragSnapEnabled == false)
-        #expect(reloadedStore.collapseStatusItemWindowActions == true)
-        #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
-        #expect(reloadedStore.experimentalBrowserTabCloseEnabled == true)
-        #expect(reloadedStore.experimentalDisplayMoveActionsEnabled == true)
-        #expect(reloadedStore.smartBrowserTabCloseEnabled == true)
-        #expect(reloadedStore.closeAndQuitConfirmationEnabled == true)
+        #expect(!reloadedStore.dockGesturesEnabled)
+        #expect(!reloadedStore.titleBarGesturesEnabled)
+        #expect(!reloadedStore.dockCornerDragSnapEnabled)
+        #expect(!reloadedStore.titleBarCornerDragSnapEnabled)
+        #expect(reloadedStore.collapseStatusItemWindowActions)
+        #expect(reloadedStore.titleBarOverlayProtectionEnabled)
+        #expect(reloadedStore.experimentalBrowserTabCloseEnabled)
+        #expect(reloadedStore.experimentalDisplayMoveActionsEnabled)
+        #expect(reloadedStore.smartBrowserTabCloseEnabled)
+        #expect(reloadedStore.closeAndQuitConfirmationEnabled)
         #expect(reloadedStore.titleBarTriggerHeight == 42)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == 0.9)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .closeWindow)
-        #expect(reloadedStore.dockGestureIsEnabled(for: .pinchIn) == false)
+        #expect(!reloadedStore.dockGestureIsEnabled(for: .pinchIn))
         #expect(reloadedStore.titleBarGestureAction(for: .swipeLeft) == .maximize)
-        #expect(reloadedStore.titleBarGestureIsEnabled(for: .swipeLeft) == false)
+        #expect(!reloadedStore.titleBarGestureIsEnabled(for: .swipeLeft))
     }
 
     @Test
     func persistsDebugLoggingPreference() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.debugLoggingEnabled = true
 
         let reloadedStore = SettingsStore(userDefaults: defaults)
 
-        #expect(reloadedStore.debugLoggingEnabled == true)
+        #expect(reloadedStore.debugLoggingEnabled)
     }
 
     @Test
     func persistsCustomHotKeyBinding() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.updateHotKeyKey(.w, for: .maximize)
         store.updateHotKeyModifiers(.commandShift, for: .maximize)
@@ -97,11 +88,7 @@ struct SettingsStoreTests {
 
     @Test
     func swapsConflictingBindingsToKeepShortcutsUnique() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         let originalLeft = store.hotKeyBinding(for: .leftHalf)
         let originalCenter = store.hotKeyBinding(for: .center)
 
@@ -119,10 +106,7 @@ struct SettingsStoreTests {
 
     @Test
     func swapsConflictingShortcutWhenUpdatedActionUsesFallbackBinding() throws {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let legacyBindings = HotKeyBindings.defaults.filter { $0.action != .toggleFullScreen }
         defaults.set(try JSONEncoder().encode(legacyBindings), forKey: "settings.hotKeyBindings")
 
@@ -146,37 +130,27 @@ struct SettingsStoreTests {
 
     @Test
     func systemLanguageUsesCurrentPreferredLanguages() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
-        #expect(store.preferredLanguages.isEmpty == false)
+        let store = makeSettingsStore()
+        #expect(!store.preferredLanguages.isEmpty)
     }
 
     @Test
     func welcomeGuideFlagIsConsumedOnlyOnceAndPersists() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
-        #expect(store.hasSeenWelcomeGuide == false)
-        #expect(store.consumeWelcomeGuidePresentationFlag() == true)
-        #expect(store.hasSeenWelcomeGuide == true)
-        #expect(store.consumeWelcomeGuidePresentationFlag() == false)
+        #expect(!store.hasSeenWelcomeGuide)
+        #expect(store.consumeWelcomeGuidePresentationFlag())
+        #expect(store.hasSeenWelcomeGuide)
+        #expect(!store.consumeWelcomeGuidePresentationFlag())
 
         let reloadedStore = SettingsStore(userDefaults: defaults)
-        #expect(reloadedStore.hasSeenWelcomeGuide == true)
-        #expect(reloadedStore.consumeWelcomeGuidePresentationFlag() == false)
+        #expect(reloadedStore.hasSeenWelcomeGuide)
+        #expect(!reloadedStore.consumeWelcomeGuidePresentationFlag())
     }
 
     @Test
     func resetPersistedConfigurationClearsStoredValues() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.languageOverride = .simplifiedChinese
         store.hotKeysEnabled = false
@@ -200,108 +174,76 @@ struct SettingsStoreTests {
         let reloadedStore = SettingsStore(userDefaults: defaults)
 
         #expect(reloadedStore.languageOverride == .system)
-        #expect(reloadedStore.hotKeysEnabled == true)
-        #expect(reloadedStore.dockGesturesEnabled == true)
-        #expect(reloadedStore.titleBarGesturesEnabled == true)
-        #expect(reloadedStore.dockCornerDragSnapEnabled == true)
-        #expect(reloadedStore.titleBarCornerDragSnapEnabled == true)
-        #expect(reloadedStore.collapseStatusItemWindowActions == true)
-        #expect(reloadedStore.titleBarOverlayProtectionEnabled == true)
-        #expect(reloadedStore.smartPinchExitFullScreenEnabled == true)
-        #expect(reloadedStore.smartBrowserTabCloseEnabled == false)
-        #expect(reloadedStore.closeAndQuitConfirmationEnabled == false)
+        #expect(reloadedStore.hotKeysEnabled)
+        #expect(reloadedStore.dockGesturesEnabled)
+        #expect(reloadedStore.titleBarGesturesEnabled)
+        #expect(reloadedStore.dockCornerDragSnapEnabled)
+        #expect(reloadedStore.titleBarCornerDragSnapEnabled)
+        #expect(reloadedStore.collapseStatusItemWindowActions)
+        #expect(reloadedStore.titleBarOverlayProtectionEnabled)
+        #expect(reloadedStore.smartPinchExitFullScreenEnabled)
+        #expect(!reloadedStore.smartBrowserTabCloseEnabled)
+        #expect(!reloadedStore.closeAndQuitConfirmationEnabled)
         #expect(reloadedStore.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
         #expect(reloadedStore.statusItemIcon == .gale)
-        #expect(reloadedStore.debugLoggingEnabled == false)
-        #expect(reloadedStore.hasSeenWelcomeGuide == false)
+        #expect(!reloadedStore.debugLoggingEnabled)
+        #expect(!reloadedStore.hasSeenWelcomeGuide)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .quitApplication)
     }
 
     @Test
     func titleBarOverlayProtectionDefaultsToEnabled() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        let store = makeSettingsStore()
 
-        let store = SettingsStore(userDefaults: defaults)
-
-        #expect(store.titleBarOverlayProtectionEnabled == true)
+        #expect(store.titleBarOverlayProtectionEnabled)
     }
 
     @Test
     func titleBarTriggerHeightDefaultsToStandardHeight() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
 
         #expect(store.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
     }
 
     @Test
     func titleBarCornerDragHoldDurationDefaultsToQuickActivation() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
 
         #expect(store.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
     }
 
     @Test
     func cornerDragSnapDefaultsToEnabledForDockAndTitleBar() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        let store = makeSettingsStore()
 
-        let store = SettingsStore(userDefaults: defaults)
-
-        #expect(store.dockCornerDragSnapEnabled == true)
-        #expect(store.titleBarCornerDragSnapEnabled == true)
+        #expect(store.dockCornerDragSnapEnabled)
+        #expect(store.titleBarCornerDragSnapEnabled)
     }
 
     @Test
     func statusItemWindowActionsCollapseByDefault() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        let store = makeSettingsStore()
 
-        let store = SettingsStore(userDefaults: defaults)
-
-        #expect(store.collapseStatusItemWindowActions == true)
+        #expect(store.collapseStatusItemWindowActions)
     }
 
     @Test
     func pinchGestureUsesQuitApplicationByDefault() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         #expect(store.dockGestureAction(for: .pinchIn) == .quitApplication)
     }
 
     @Test
     func horizontalDockGesturesUseWindowCyclingByDefault() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         #expect(store.dockGestureAction(for: .swipeLeft) == .cycleWindowsForward)
         #expect(store.dockGestureAction(for: .swipeRight) == .cycleWindowsBackward)
     }
 
     @Test
     func titleBarGesturesUseExpectedActionsByDefault() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         #expect(store.titleBarGestureAction(for: .swipeLeft) == .leftHalf)
         #expect(store.titleBarGestureAction(for: .swipeRight) == .rightHalf)
         #expect(store.titleBarGestureAction(for: .swipeDown) == .minimize)
@@ -311,10 +253,7 @@ struct SettingsStoreTests {
 
     @Test
     func persistsGestureOnlyExitMaximizeActions() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.updateDockGestureAction(.exitFullScreenWindow, for: .pinchOut)
         store.updateTitleBarGestureAction(.exitFullScreen, for: .pinchOut)
@@ -327,10 +266,7 @@ struct SettingsStoreTests {
 
     @Test
     func persistsDockGestureDisplayMoveActions() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.experimentalDisplayMoveActionsEnabled = true
         store.updateDockGestureAction(.moveWindowToNextDisplay, for: .swipeUp)
@@ -346,39 +282,27 @@ struct SettingsStoreTests {
 
     @Test
     func displayMoveActionsAreHiddenUntilExperimentalModeIsEnabled() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        let store = makeSettingsStore()
+        let displayMoveWindowActions: Set<WindowAction> = [.moveToNextDisplay, .moveToPreviousDisplay]
+        let displayMoveDockActions: Set<DockGestureAction> = [.moveWindowToNextDisplay, .moveWindowToPreviousDisplay]
 
-        let store = SettingsStore(userDefaults: defaults)
-
-        #expect(store.experimentalDisplayMoveActionsEnabled == false)
-        #expect(store.availableWindowActions.contains(.moveToNextDisplay) == false)
-        #expect(store.availableWindowActions.contains(.moveToPreviousDisplay) == false)
-        #expect(store.availableWindowGestureActions.contains(.moveToNextDisplay) == false)
-        #expect(store.availableWindowGestureActions.contains(.moveToPreviousDisplay) == false)
-        #expect(store.availableDockGestureActions.contains(.moveWindowToNextDisplay) == false)
-        #expect(store.availableDockGestureActions.contains(.moveWindowToPreviousDisplay) == false)
+        #expect(!store.experimentalDisplayMoveActionsEnabled)
+        #expect(displayMoveWindowActions.isDisjoint(with: store.availableWindowActions))
+        #expect(displayMoveWindowActions.isDisjoint(with: store.availableWindowGestureActions))
+        #expect(displayMoveDockActions.isDisjoint(with: store.availableDockGestureActions))
         #expect(store.availableWindowActions.contains(.leftHalf))
         #expect(store.availableDockGestureActions.contains(.minimizeWindow))
 
         store.experimentalDisplayMoveActionsEnabled = true
 
-        #expect(store.availableWindowActions.contains(.moveToNextDisplay))
-        #expect(store.availableWindowActions.contains(.moveToPreviousDisplay))
-        #expect(store.availableWindowGestureActions.contains(.moveToNextDisplay))
-        #expect(store.availableWindowGestureActions.contains(.moveToPreviousDisplay))
-        #expect(store.availableDockGestureActions.contains(.moveWindowToNextDisplay))
-        #expect(store.availableDockGestureActions.contains(.moveWindowToPreviousDisplay))
+        #expect(Set(store.availableWindowActions).isSuperset(of: displayMoveWindowActions))
+        #expect(Set(store.availableWindowGestureActions).isSuperset(of: displayMoveWindowActions))
+        #expect(Set(store.availableDockGestureActions).isSuperset(of: displayMoveDockActions))
     }
 
     @Test
     func savedDisplayMoveGestureActionsFallBackWhileExperimentalModeIsDisabled() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         store.experimentalDisplayMoveActionsEnabled = true
         store.updateDockGestureAction(.moveWindowToNextDisplay, for: .swipeUp)
         store.updateTitleBarGestureAction(.moveToPreviousDisplay, for: .swipeDown)
@@ -398,11 +322,7 @@ struct SettingsStoreTests {
 
     @Test
     func assigningDisplayMoveGestureActionsRequiresExperimentalMode() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         store.updateDockGestureAction(.moveWindowToNextDisplay, for: .swipeUp)
         store.updateTitleBarGestureAction(.moveToPreviousDisplay, for: .swipeDown)
 
@@ -412,10 +332,7 @@ struct SettingsStoreTests {
 
     @Test
     func legacyGestureBindingsWithoutEnabledFlagsStillDecode() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let legacyDockData = Data("""
         [
           {"gesture":"swipeLeft","action":"closeWindow"},
@@ -434,18 +351,31 @@ struct SettingsStoreTests {
         let store = SettingsStore(userDefaults: defaults)
 
         #expect(store.dockGestureAction(for: .swipeLeft) == .closeWindow)
-        #expect(store.dockGestureIsEnabled(for: .swipeLeft) == true)
+        #expect(store.dockGestureIsEnabled(for: .swipeLeft))
         #expect(store.titleBarGestureAction(for: .swipeLeft) == .maximize)
-        #expect(store.titleBarGestureIsEnabled(for: .swipeLeft) == true)
+        #expect(store.titleBarGestureIsEnabled(for: .swipeLeft))
+    }
+
+    @Test
+    func corruptPersistedBindingsFallBackToDefaultsAndAreCleared() {
+        let defaults = makeUserDefaults()
+        defaults.set(Data("{".utf8), forKey: "settings.hotKeyBindings")
+        defaults.set(Data("{".utf8), forKey: "settings.dockGestureBindings")
+        defaults.set(Data("{".utf8), forKey: "settings.titleBarGestureBindings")
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.hotKeyBindings == HotKeyBindings.defaults)
+        #expect(store.dockGestureBindings == DockGestureBindings.defaults)
+        #expect(store.titleBarGestureBindings == TitleBarGestureBindings.defaults)
+        #expect(defaults.data(forKey: "settings.hotKeyBindings") == nil)
+        #expect(defaults.data(forKey: "settings.dockGestureBindings") == nil)
+        #expect(defaults.data(forKey: "settings.titleBarGestureBindings") == nil)
     }
 
     @Test
     func backwardWindowCyclingHotkeyHasDefaultBinding() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         let binding = store.hotKeyBinding(for: .cycleSameAppWindowsBackward)
 
         #expect(binding.key == .grave)
@@ -454,10 +384,7 @@ struct SettingsStoreTests {
 
     @Test
     func resetPersistedConfigurationPreservesExperimentalBrowserTabCloseOptIn() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.experimentalBrowserTabCloseEnabled = true
         store.experimentalDisplayMoveActionsEnabled = true
@@ -466,18 +393,14 @@ struct SettingsStoreTests {
         SettingsStore.resetPersistedConfiguration(in: defaults)
         let reloadedStore = SettingsStore(userDefaults: defaults)
 
-        #expect(reloadedStore.experimentalBrowserTabCloseEnabled == true)
-        #expect(reloadedStore.experimentalDisplayMoveActionsEnabled == true)
-        #expect(reloadedStore.smartBrowserTabCloseEnabled == false)
+        #expect(reloadedStore.experimentalBrowserTabCloseEnabled)
+        #expect(reloadedStore.experimentalDisplayMoveActionsEnabled)
+        #expect(!reloadedStore.smartBrowserTabCloseEnabled)
     }
 
     @Test
     func resetAdvancedSettingsRestoresBrowserTabCloseDefaults() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         store.experimentalBrowserTabCloseEnabled = true
         store.experimentalDisplayMoveActionsEnabled = true
         store.smartBrowserTabCloseEnabled = true
@@ -493,13 +416,13 @@ struct SettingsStoreTests {
 
         store.resetAdvancedSettingsToDefaults()
 
-        #expect(store.experimentalBrowserTabCloseEnabled == false)
-        #expect(store.experimentalDisplayMoveActionsEnabled == false)
-        #expect(store.smartBrowserTabCloseEnabled == false)
-        #expect(store.titleBarOverlayProtectionEnabled == true)
-        #expect(store.smartPinchExitFullScreenEnabled == true)
-        #expect(store.closeAndQuitConfirmationEnabled == false)
-        #expect(store.reverseCancelEnabled == true)
+        #expect(!store.experimentalBrowserTabCloseEnabled)
+        #expect(!store.experimentalDisplayMoveActionsEnabled)
+        #expect(!store.smartBrowserTabCloseEnabled)
+        #expect(store.titleBarOverlayProtectionEnabled)
+        #expect(store.smartPinchExitFullScreenEnabled)
+        #expect(!store.closeAndQuitConfirmationEnabled)
+        #expect(store.reverseCancelEnabled)
         #expect(store.reverseCancelSensitivity == 0.5)
         #expect(store.swipeSensitivity == 0.5)
         #expect(store.pinchSensitivity == 0.5)
@@ -508,10 +431,34 @@ struct SettingsStoreTests {
     }
 
     @Test
+    func sensitivitySettingsClampPersistedAndAssignedValues() {
+        let defaults = makeUserDefaults()
+        defaults.set(-0.25, forKey: "settings.reverseCancelSensitivity")
+        defaults.set(1.25, forKey: "settings.swipeSensitivity")
+        defaults.set(1.5, forKey: "settings.pinchSensitivity")
+
+        let store = SettingsStore(userDefaults: defaults)
+        #expect(store.reverseCancelSensitivity == 0)
+        #expect(store.swipeSensitivity == 1)
+        #expect(store.pinchSensitivity == 1)
+
+        store.reverseCancelSensitivity = 2
+        store.swipeSensitivity = -1
+        store.pinchSensitivity = 0.35
+
+        #expect(store.reverseCancelSensitivity == 1)
+        #expect(store.swipeSensitivity == 0)
+        #expect(store.pinchSensitivity == 0.35)
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.reverseCancelSensitivity == 1)
+        #expect(reloadedStore.swipeSensitivity == 0)
+        #expect(reloadedStore.pinchSensitivity == 0.35)
+    }
+
+    @Test
     func titleBarTriggerHeightClampsPersistedAndAssignedValues() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        let defaults = makeUserDefaults()
         defaults.set(
             SettingsStore.maximumTitleBarTriggerHeight + 10,
             forKey: "settings.titleBarTriggerHeight"
@@ -529,9 +476,7 @@ struct SettingsStoreTests {
 
     @Test
     func titleBarCornerDragHoldDurationClampsPersistedAndAssignedValues() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        let defaults = makeUserDefaults()
         defaults.set(
             SettingsStore.minimumTitleBarCornerDragHoldDuration - 0.1,
             forKey: "settings.titleBarCornerDragHoldDuration"
@@ -549,95 +494,54 @@ struct SettingsStoreTests {
 
     @Test
     func disablingExperimentalBrowserTabCloseDisablesSmartModeAndCoalescesNotification() async {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
-        let store = SettingsStore(userDefaults: defaults)
+        let store = makeSettingsStore()
         store.experimentalBrowserTabCloseEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.pinchCloseConfirmationEnabled = true
 
-        let recorder = NotificationRecorder()
-        let token = NotificationCenter.default.addObserver(
-            forName: .settingsDidChange,
-            object: store,
-            queue: .main
-        ) { notification in
-            recorder.record(notification)
-        }
-        defer {
-            NotificationCenter.default.removeObserver(token)
+        let recorder = await recordSettingsChanges(from: store) {
+            store.experimentalBrowserTabCloseEnabled = false
         }
 
-        store.experimentalBrowserTabCloseEnabled = false
-
-        for _ in 0 ..< 3 {
-            await Task.yield()
-        }
-
-        #expect(store.experimentalBrowserTabCloseEnabled == false)
-        #expect(store.smartBrowserTabCloseEnabled == false)
-        #expect(store.pinchCloseConfirmationEnabled == false)
+        #expect(!store.experimentalBrowserTabCloseEnabled)
+        #expect(!store.smartBrowserTabCloseEnabled)
+        #expect(!store.pinchCloseConfirmationEnabled)
         #expect(recorder.count == 1)
         #expect(recorder.categories == [.advancedGestureBehavior])
     }
 
     @Test
     func togglingDisplayMoveExperimentalModeInvalidatesHiddenEntrypoints() async {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        let store = makeSettingsStore()
 
-        let store = SettingsStore(userDefaults: defaults)
-        let recorder = NotificationRecorder()
-        let token = NotificationCenter.default.addObserver(
-            forName: .settingsDidChange,
-            object: store,
-            queue: .main
-        ) { notification in
-            recorder.record(notification)
-        }
-        defer {
-            NotificationCenter.default.removeObserver(token)
-        }
-
-        store.experimentalDisplayMoveActionsEnabled = true
-
-        for _ in 0 ..< 3 {
-            await Task.yield()
+        let recorder = await recordSettingsChanges(from: store) {
+            store.experimentalDisplayMoveActionsEnabled = true
         }
 
         #expect(recorder.count == 1)
-        #expect(recorder.categories.contains(.hotKeys))
-        #expect(recorder.categories.contains(.gestureMonitoring))
-        #expect(recorder.categories.contains(.statusMenu))
-        #expect(recorder.categories.contains(.gestureHUD))
-        #expect(recorder.categories.contains(.advancedGestureBehavior))
+        #expect(
+            recorder.categories.isSuperset(
+                of: [.hotKeys, .gestureMonitoring, .statusMenu, .gestureHUD, .advancedGestureBehavior]
+            )
+        )
     }
 
     @Test
     func browserTabCloseDependentOptionsRequireExperimentalMode() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.smartBrowserTabCloseEnabled = true
         store.pinchCloseConfirmationEnabled = true
 
-        #expect(store.smartBrowserTabCloseEnabled == false)
-        #expect(store.pinchCloseConfirmationEnabled == false)
-        #expect(defaults.bool(forKey: "settings.smartBrowserTabCloseEnabled") == false)
-        #expect(defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled") == false)
+        #expect(!store.smartBrowserTabCloseEnabled)
+        #expect(!store.pinchCloseConfirmationEnabled)
+        #expect(!defaults.bool(forKey: "settings.smartBrowserTabCloseEnabled"))
+        #expect(!defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled"))
     }
 
     @Test
     func disablingExperimentalBrowserTabCloseClearsTabCloseGestureActions() {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-
+        let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.experimentalBrowserTabCloseEnabled = true
         store.updateDockGestureAction(.closeTab, for: .swipeUp)
@@ -648,9 +552,9 @@ struct SettingsStoreTests {
         store.experimentalBrowserTabCloseEnabled = false
 
         #expect(store.dockGestureAction(for: .swipeUp) == .restoreWindow)
-        #expect(store.dockGestureIsEnabled(for: .swipeUp) == false)
+        #expect(!store.dockGestureIsEnabled(for: .swipeUp))
         #expect(store.titleBarGestureAction(for: .pinchOut) == .toggleFullScreen)
-        #expect(store.titleBarGestureIsEnabled(for: .pinchOut) == false)
+        #expect(!store.titleBarGestureIsEnabled(for: .pinchOut))
 
         let reloadedStore = SettingsStore(userDefaults: defaults)
         #expect(reloadedStore.dockGestureAction(for: .swipeUp) == .restoreWindow)
@@ -658,11 +562,25 @@ struct SettingsStoreTests {
     }
 
     @Test
-    func launchSanitizesPersistedTabCloseGestureActionsWhenExperimentalModeIsDisabled() throws {
-        let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+    func disablingExperimentalBrowserTabCloseWithMappedActionsInvalidatesGestureEntrypoints() async {
+        let store = makeSettingsStore()
+        store.experimentalBrowserTabCloseEnabled = true
+        store.updateDockGestureAction(.closeTab, for: .swipeUp)
+        store.updateTitleBarGestureAction(.closeTab, for: .pinchOut)
 
+        let recorder = await recordSettingsChanges(from: store) {
+            store.experimentalBrowserTabCloseEnabled = false
+        }
+
+        #expect(recorder.count == 1)
+        #expect(
+            recorder.categories.isSuperset(of: [.gestureMonitoring, .gestureHUD, .advancedGestureBehavior])
+        )
+    }
+
+    @Test
+    func launchSanitizesPersistedTabCloseGestureActionsWhenExperimentalModeIsDisabled() throws {
+        let defaults = makeUserDefaults()
         let dockBindings = [
             DockGestureBinding(gesture: .swipeUp, isEnabled: false, action: .closeTab),
         ]
@@ -677,12 +595,12 @@ struct SettingsStoreTests {
 
         let store = SettingsStore(userDefaults: defaults)
 
-        #expect(store.smartBrowserTabCloseEnabled == false)
-        #expect(store.pinchCloseConfirmationEnabled == false)
+        #expect(!store.smartBrowserTabCloseEnabled)
+        #expect(!store.pinchCloseConfirmationEnabled)
         #expect(store.dockGestureAction(for: .swipeUp) == .restoreWindow)
-        #expect(store.dockGestureIsEnabled(for: .swipeUp) == false)
+        #expect(!store.dockGestureIsEnabled(for: .swipeUp))
         #expect(store.titleBarGestureAction(for: .pinchOut) == .toggleFullScreen)
-        #expect(store.titleBarGestureIsEnabled(for: .pinchOut) == false)
+        #expect(!store.titleBarGestureIsEnabled(for: .pinchOut))
 
         let persistedDockBindings = try JSONDecoder().decode(
             [DockGestureBinding].self,
@@ -697,17 +615,39 @@ struct SettingsStoreTests {
         #expect(persistedDockBindings.first?.isEnabled == false)
         #expect(persistedTitleBarBindings.first?.action == .toggleFullScreen)
         #expect(persistedTitleBarBindings.first?.isEnabled == false)
-        #expect(defaults.bool(forKey: "settings.smartBrowserTabCloseEnabled") == false)
-        #expect(defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled") == false)
+        #expect(!defaults.bool(forKey: "settings.smartBrowserTabCloseEnabled"))
+        #expect(!defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled"))
     }
 
     @Test
     func coalescesSynchronousSettingsChangeNotifications() async {
+        let store = makeSettingsStore()
+
+        let recorder = await recordSettingsChanges(from: store) {
+            store.hotKeysEnabled = false
+            store.dockGesturesEnabled = false
+            store.titleBarGesturesEnabled = false
+        }
+
+        #expect(recorder.count == 1)
+        #expect(recorder.categories.isSuperset(of: [.hotKeys, .gestureMonitoring]))
+    }
+
+    private func makeUserDefaults() -> UserDefaults {
         let suiteName = "Swooshy.SettingsStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
 
-        let store = SettingsStore(userDefaults: defaults)
+    private func makeSettingsStore() -> SettingsStore {
+        SettingsStore(userDefaults: makeUserDefaults())
+    }
+
+    private func recordSettingsChanges(
+        from store: SettingsStore,
+        perform updateSettings: () -> Void
+    ) async -> NotificationRecorder {
         let recorder = NotificationRecorder()
         let token = NotificationCenter.default.addObserver(
             forName: .settingsDidChange,
@@ -720,16 +660,8 @@ struct SettingsStoreTests {
             NotificationCenter.default.removeObserver(token)
         }
 
-        store.hotKeysEnabled = false
-        store.dockGesturesEnabled = false
-        store.titleBarGesturesEnabled = false
-
-        for _ in 0 ..< 3 {
-            await Task.yield()
-        }
-
-        #expect(recorder.count == 1)
-        #expect(recorder.categories.contains(.hotKeys))
-        #expect(recorder.categories.contains(.gestureMonitoring))
+        updateSettings()
+        await yieldForPendingMainActorWork()
+        return recorder
     }
 }

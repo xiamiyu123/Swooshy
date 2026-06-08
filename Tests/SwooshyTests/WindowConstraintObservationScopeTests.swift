@@ -4,15 +4,11 @@ import Testing
 struct WindowConstraintObservationScopeTests {
     @Test
     func storageKeyDiffersAcrossWindowSubroles() {
-        let dialogScope = WindowConstraintObservationScope(
-            applicationKey: "com.example.app",
-            role: "AXWindow",
+        let dialogScope = scope(
             subrole: "AXSystemDialog",
             title: nil
         )
-        let settingsScope = WindowConstraintObservationScope(
-            applicationKey: "com.example.app",
-            role: "AXWindow",
+        let settingsScope = scope(
             subrole: "AXStandardWindow",
             title: "设置"
         )
@@ -22,19 +18,27 @@ struct WindowConstraintObservationScopeTests {
 
     @Test
     func storageKeyCollapsesTitleWhitespaceAndCase() {
-        let lhs = WindowConstraintObservationScope(
-            applicationKey: "com.example.app",
-            role: "AXWindow",
+        let lhs = scope(
             subrole: "AXStandardWindow",
             title: "  Settings   Panel "
         )
-        let rhs = WindowConstraintObservationScope(
-            applicationKey: "com.example.app",
-            role: "AXWindow",
+        let rhs = scope(
             subrole: "AXStandardWindow",
             title: "settings panel"
         )
 
         #expect(lhs.storageKey == rhs.storageKey)
+    }
+
+    private func scope(
+        subrole: String?,
+        title: String?
+    ) -> WindowConstraintObservationScope {
+        WindowConstraintObservationScope(
+            applicationKey: "com.example.app",
+            role: "AXWindow",
+            subrole: subrole,
+            title: title
+        )
     }
 }

@@ -32,52 +32,59 @@ struct WindowActionTests {
 
     @Test
     func menuKeyEquivalentsRemainStableForShortcutActions() {
-        #expect(WindowAction.leftHalf.menuKeyEquivalent == "1")
-        #expect(WindowAction.rightHalf.menuKeyEquivalent == "2")
-        #expect(WindowAction.maximize.menuKeyEquivalent == "3")
-        #expect(WindowAction.center.menuKeyEquivalent == "4")
-        #expect(WindowAction.minimize.menuKeyEquivalent == "5")
-        #expect(WindowAction.closeWindow.menuKeyEquivalent == "6")
-        #expect(WindowAction.quitApplication.menuKeyEquivalent == "7")
-        #expect(WindowAction.cycleSameAppWindowsForward.menuKeyEquivalent == "8")
-        #expect(WindowAction.cycleSameAppWindowsBackward.menuKeyEquivalent == "9")
-        #expect(WindowAction.toggleFullScreen.menuKeyEquivalent == "0")
-        #expect(WindowAction.closeTab.menuKeyEquivalent.isEmpty)
-        #expect(WindowAction.exitFullScreen.menuKeyEquivalent.isEmpty)
-        #expect(WindowAction.moveToNextDisplay.menuKeyEquivalent.isEmpty)
-        #expect(WindowAction.moveToPreviousDisplay.menuKeyEquivalent.isEmpty)
+        let shortcuts: [WindowAction: String] = [
+            .leftHalf: "1",
+            .rightHalf: "2",
+            .maximize: "3",
+            .center: "4",
+            .minimize: "5",
+            .closeWindow: "6",
+            .quitApplication: "7",
+            .cycleSameAppWindowsForward: "8",
+            .cycleSameAppWindowsBackward: "9",
+            .toggleFullScreen: "0",
+        ]
+        let actionsWithoutShortcuts: [WindowAction] = [
+            .closeTab,
+            .exitFullScreen,
+            .moveToNextDisplay,
+            .moveToPreviousDisplay,
+        ]
+
+        #expect(shortcuts.allSatisfy { action, shortcut in action.menuKeyEquivalent == shortcut })
+        #expect(actionsWithoutShortcuts.allSatisfy { $0.menuKeyEquivalent.isEmpty })
     }
 
     @Test
     func areaPreviewAppliesToLayoutActionsThatResizeToTargetFrames() {
-        #expect(WindowAction.leftHalf.supportsSnapPreview)
-        #expect(WindowAction.rightHalf.supportsSnapPreview)
-        #expect(WindowAction.maximize.supportsSnapPreview)
-        #expect(WindowAction.center.supportsSnapPreview)
-        #expect(WindowAction.topLeftQuarter.supportsSnapPreview)
-        #expect(WindowAction.topRightQuarter.supportsSnapPreview)
-        #expect(WindowAction.bottomLeftQuarter.supportsSnapPreview)
-        #expect(WindowAction.bottomRightQuarter.supportsSnapPreview)
+        let previewActions: Set<WindowAction> = [
+            .leftHalf,
+            .rightHalf,
+            .maximize,
+            .center,
+            .topLeftQuarter,
+            .topRightQuarter,
+            .bottomLeftQuarter,
+            .bottomRightQuarter,
+        ]
 
-        for action in WindowAction.allCases where
-            action != .leftHalf &&
-            action != .rightHalf &&
-            action != .maximize &&
-            action != .center &&
-            action != .topLeftQuarter &&
-            action != .topRightQuarter &&
-            action != .bottomLeftQuarter &&
-            action != .bottomRightQuarter
-        {
-            #expect(action.supportsSnapPreview == false)
-        }
+        #expect(Set(WindowAction.allCases.filter(\.supportsSnapPreview)) == previewActions)
+        #expect(!WindowAction.exitFullScreen.supportsSnapPreview)
+    }
 
-        #expect(WindowAction.exitFullScreen.supportsSnapPreview == false)
+    @Test
+    func browserTabCloseReplacementOnlyAppliesToCloseAndQuitActions() {
+        let replacementActions: Set<WindowAction> = [
+            .closeWindow,
+            .quitApplication,
+        ]
+
+        #expect(Set(WindowAction.gestureCases.filter(\.supportsBrowserTabCloseReplacement)) == replacementActions)
     }
 
     @Test
     func gestureCasesIncludeGestureOnlyActionsWithoutAffectingShortcutActions() {
         #expect(WindowAction.gestureCases.contains(.exitFullScreen))
-        #expect(WindowAction.allCases.contains(.exitFullScreen) == false)
+        #expect(!WindowAction.allCases.contains(.exitFullScreen))
     }
 }

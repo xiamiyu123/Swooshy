@@ -14,58 +14,171 @@ struct LocalizationTests {
     }
 
     @Test
+    func explicitLocaleIdentifierNormalizesUnderscores() {
+        #expect(L10n.localization(for: "zh_Hans_CN") == "zh-hans")
+        expectStrings(localeIdentifier: "zh_Hans_CN", [
+            ("menu.permission.grant", "授予辅助功能权限"),
+        ])
+    }
+
+    @Test
     func englishStringsResolveFromModuleBundle() {
-        #expect(L10n.string("menu.permission.grant", localeIdentifier: "en") == "Grant Accessibility Access")
-        #expect(L10n.string("menu.window_actions", localeIdentifier: "en") == "Window Actions")
-        #expect(L10n.string("action.center", localeIdentifier: "en") == "Fill Entire Screen")
-        #expect(L10n.string("action.quit_application", localeIdentifier: "en") == "Quit Application")
-        #expect(L10n.string("action.restore_window", localeIdentifier: "en") == "Restore Minimized Window")
-        #expect(L10n.string("action.exit_full_screen", localeIdentifier: "en") == "Exit Full Screen Only")
-        #expect(L10n.string("action.cycle_same_app_windows_forward", localeIdentifier: "en") == "Cycle Same-App Windows Forward")
-        #expect(L10n.string("action.move_to_next_display", localeIdentifier: "en") == "Move to Next Display")
-        #expect(L10n.string("action.move_to_previous_display", localeIdentifier: "en") == "Move to Previous Display")
-        #expect(L10n.string("settings.status_item_icon.window_grid", localeIdentifier: "en") == "Window grid")
+        expectStrings(localeIdentifier: "en", [
+            ("menu.permission.grant", "Grant Accessibility Access"),
+            ("menu.window_actions", "Window Actions"),
+            ("action.center", "Fill Entire Screen"),
+            ("action.quit_application", "Quit Application"),
+            ("action.restore_window", "Restore Minimized Window"),
+            ("action.exit_full_screen", "Exit Full Screen Only"),
+            ("action.cycle_same_app_windows_forward", "Cycle Same-App Windows Forward"),
+            ("action.move_to_next_display", "Move to Next Display"),
+            ("action.move_to_previous_display", "Move to Previous Display"),
+            ("error.no_other_display", "No other display is available for this action."),
+            ("settings.status_item_icon.window_grid", "Window grid"),
+        ])
     }
 
     @Test
     func simplifiedChineseStringsResolveFromModuleBundle() {
-        #expect(L10n.string("menu.permission.grant", localeIdentifier: "zh-Hans") == "授予辅助功能权限")
-        #expect(L10n.string("menu.window_actions", localeIdentifier: "zh-Hans") == "窗口操作")
-        #expect(L10n.string("action.center", localeIdentifier: "zh-Hans") == "填充整个屏幕")
-        #expect(L10n.string("action.close_window", localeIdentifier: "zh-Hans") == "关闭窗口")
-        #expect(L10n.string("action.restore_window", localeIdentifier: "zh-Hans") == "恢复最小化窗口")
-        #expect(L10n.string("action.exit_full_screen", localeIdentifier: "zh-Hans") == "仅取消最大化")
-        #expect(L10n.string("action.cycle_same_app_windows_backward", localeIdentifier: "zh-Hans") == "向后切换当前应用窗口")
-        #expect(L10n.string("action.move_to_next_display", localeIdentifier: "zh-Hans") == "移动到下一台显示器")
-        #expect(L10n.string("action.move_to_previous_display", localeIdentifier: "zh-Hans") == "移动到上一台显示器")
-        #expect(L10n.string("settings.status_item_icon.window_grid", localeIdentifier: "zh-Hans") == "窗口网格")
+        expectStrings(localeIdentifier: "zh-Hans", [
+            ("menu.permission.grant", "授予辅助功能权限"),
+            ("menu.window_actions", "窗口操作"),
+            ("action.center", "填充整个屏幕"),
+            ("action.close_window", "关闭窗口"),
+            ("action.restore_window", "恢复最小化窗口"),
+            ("action.exit_full_screen", "仅取消最大化"),
+            ("action.cycle_same_app_windows_backward", "向后切换当前应用窗口"),
+            ("action.move_to_next_display", "移动到下一台显示器"),
+            ("action.move_to_previous_display", "移动到上一台显示器"),
+            ("error.no_other_display", "当前没有其他显示器可用于此操作。"),
+            ("settings.status_item_icon.window_grid", "窗口网格"),
+        ])
+    }
+
+    @Test
+    func appLanguageTitlesResolveFromModuleBundle() {
+        let cases: [(language: AppLanguage, english: String, simplifiedChinese: String)] = [
+            (.system, "Follow System", "跟随系统"),
+            (.english, "English", "English"),
+            (.simplifiedChinese, "Simplified Chinese", "简体中文"),
+        ]
+
+        for (language, english, simplifiedChinese) in cases {
+            #expect(language.title(localeIdentifier: "en") == english)
+            #expect(language.title(localeIdentifier: "zh-Hans") == simplifiedChinese)
+        }
+    }
+
+    @Test
+    func gestureHUDStyleTitlesResolveFromModuleBundle() {
+        let cases: [(style: GestureHUDStyle, english: String, simplifiedChinese: String)] = [
+            (.classic, "Detailed", "详细"),
+            (.elegant, "Elegant", "优雅"),
+            (.minimal, "Minimal", "极简"),
+        ]
+
+        for (style, english, simplifiedChinese) in cases {
+            #expect(style.title(localeIdentifier: "en") == english)
+            #expect(style.title(localeIdentifier: "zh-Hans") == simplifiedChinese)
+        }
     }
 
     @Test
     func localizableStringKeysAreUniquePerLocale() throws {
-        let packageRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let relativePaths = [
-            "Sources/Swooshy/Resources/en.lproj/Localizable.strings",
-            "Sources/Swooshy/Resources/zh-Hans.lproj/Localizable.strings",
-        ]
-
-        for relativePath in relativePaths {
+        for relativePath in localeResourcePaths {
             let fileURL = packageRoot.appending(path: relativePath)
             let keys = localizationKeys(
                 in: try String(contentsOf: fileURL, encoding: .utf8)
             )
             var seenKeys = Set<String>()
-            var duplicateKeys: [String] = []
-
-            for key in keys where seenKeys.insert(key).inserted == false {
-                duplicateKeys.append(key)
-            }
+            let duplicateKeys = keys.filter { !seenKeys.insert($0).inserted }
 
             #expect(duplicateKeys.isEmpty)
         }
+    }
+
+    @Test
+    func sourceLocalizedStringKeysExistInEveryLocale() throws {
+        let sourceKeys = try localizedSourceKeys(
+            in: packageRoot.appending(path: "Sources/Swooshy")
+        )
+
+        for relativePath in localeResourcePaths {
+            let fileURL = packageRoot.appending(path: relativePath)
+            let localeKeys = Set(
+                localizationKeys(in: try String(contentsOf: fileURL, encoding: .utf8))
+            )
+
+            let missingKeys = sourceKeys.subtracting(localeKeys).sorted()
+            #expect(missingKeys.isEmpty)
+        }
+    }
+
+    private var packageRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
+    private var localeResourcePaths: [String] {
+        [
+            "Sources/Swooshy/Resources/en.lproj/Localizable.strings",
+            "Sources/Swooshy/Resources/zh-Hans.lproj/Localizable.strings",
+        ]
+    }
+
+    private func expectStrings(localeIdentifier: String, _ strings: [(key: String, expected: String)]) {
+        for (key, expected) in strings {
+            #expect(L10n.string(key, localeIdentifier: localeIdentifier) == expected)
+        }
+    }
+
+    private func localizedSourceKeys(in sourcesURL: URL) throws -> Set<String> {
+        let fileManager = FileManager.default
+        let regularFileKey = URLResourceKey.isRegularFileKey
+        guard let enumerator = fileManager.enumerator(
+            at: sourcesURL,
+            includingPropertiesForKeys: [regularFileKey]
+        ) else {
+            throw CocoaError(
+                .fileReadUnknown,
+                userInfo: [NSFilePathErrorKey: sourcesURL.path]
+            )
+        }
+
+        let regexes = [
+            try NSRegularExpression(pattern: #"(?:localized|L10n\.string)\(\s*"([^"]+)""#),
+            try NSRegularExpression(pattern: #"localizationKey\s*=\s*"([^"]+)""#),
+            try NSRegularExpression(pattern: #"titleKey:\s*"([^"]+)""#),
+        ]
+        var keys = Set<String>()
+
+        for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+            let values = try fileURL.resourceValues(forKeys: [regularFileKey])
+            guard values.isRegularFile == true else { continue }
+
+            let contents = try String(contentsOf: fileURL, encoding: .utf8)
+            let range = NSRange(contents.startIndex ..< contents.endIndex, in: contents)
+
+            for regex in regexes {
+                for match in regex.matches(in: contents, range: range) {
+                    guard
+                        match.numberOfRanges > 1,
+                        let keyRange = Range(match.range(at: 1), in: contents)
+                    else {
+                        continue
+                    }
+
+                    let key = String(contents[keyRange])
+                    if !key.contains(#"\("#) {
+                        keys.insert(key)
+                    }
+                }
+            }
+        }
+
+        return keys
     }
 
     private func localizationKeys(in contents: String) -> [String] {

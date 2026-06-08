@@ -48,12 +48,11 @@ struct DebugLogTests {
 
         let archives = archivedLogURLs(in: directory)
         #expect(archives.count == 10)
-        #expect(archives.contains(expiredArchiveURL) == false)
+        #expect(!archives.contains(expiredArchiveURL))
 
         let remainingDates = try archives.map { try modificationDate(for: $0) }.compactMap { $0 }
-        let oldestRemaining = remainingDates.min()
-        #expect(oldestRemaining != nil)
-        #expect(oldestRemaining! >= now.addingTimeInterval(-(12 * 60 * 60)))
+        let oldestRemaining = try #require(remainingDates.min())
+        #expect(oldestRemaining >= now.addingTimeInterval(-(12 * 60 * 60)))
     }
 }
 

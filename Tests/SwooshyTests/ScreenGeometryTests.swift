@@ -3,13 +3,15 @@ import Testing
 @testable import Swooshy
 
 struct ScreenGeometryTests {
+    private let primaryScreenFrame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+
+    private var singleScreenGeometry: ScreenGeometry {
+        ScreenGeometry(screenFrames: [primaryScreenFrame])
+    }
+
     @Test
     func convertsSingleScreenAXFrameToAppKitCoordinates() {
-        let geometry = ScreenGeometry(
-            screenFrames: [CGRect(x: 0, y: 0, width: 1440, height: 900)]
-        )
-
-        let appKitFrame = geometry.appKitFrame(
+        let appKitFrame = singleScreenGeometry.appKitFrame(
             fromAXFrame: CGRect(x: 120, y: 90, width: 800, height: 600)
         )
 
@@ -18,11 +20,7 @@ struct ScreenGeometryTests {
 
     @Test
     func convertsSingleScreenAppKitFrameToAXCoordinates() {
-        let geometry = ScreenGeometry(
-            screenFrames: [CGRect(x: 0, y: 0, width: 1440, height: 900)]
-        )
-
-        let axFrame = geometry.axFrame(
+        let axFrame = singleScreenGeometry.axFrame(
             fromAppKitFrame: CGRect(x: 120, y: 210, width: 800, height: 600)
         )
 
@@ -33,7 +31,7 @@ struct ScreenGeometryTests {
     func convertsFramesUsingGlobalDesktopBoundsAcrossDisplays() {
         let geometry = ScreenGeometry(
             screenFrames: [
-                CGRect(x: 0, y: 0, width: 1440, height: 900),
+                primaryScreenFrame,
                 CGRect(x: 1440, y: 0, width: 1280, height: 800),
             ]
         )
@@ -50,7 +48,7 @@ struct ScreenGeometryTests {
     func convertsFramesRelativeToPrimaryScreenWhenDisplaySitsAboveMainScreen() {
         let geometry = ScreenGeometry(
             screenFrames: [
-                CGRect(x: 0, y: 0, width: 1440, height: 900),
+                primaryScreenFrame,
                 CGRect(x: 80, y: 900, width: 1280, height: 800),
             ]
         )
@@ -64,11 +62,7 @@ struct ScreenGeometryTests {
 
     @Test
     func convertsSingleScreenAppKitPointToAXCoordinates() {
-        let geometry = ScreenGeometry(
-            screenFrames: [CGRect(x: 0, y: 0, width: 1440, height: 900)]
-        )
-
-        let axPoint = geometry.axPoint(fromAppKitPoint: CGPoint(x: 120, y: 210))
+        let axPoint = singleScreenGeometry.axPoint(fromAppKitPoint: CGPoint(x: 120, y: 210))
 
         #expect(axPoint == CGPoint(x: 120, y: 690))
     }

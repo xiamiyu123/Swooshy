@@ -5,100 +5,68 @@ import Testing
 struct BrowserTabProbeTests {
     @Test
     func supportsMajorBrowsersAndVSCodeEditors() {
-        #expect(
-            BrowserTabProbe.supportsTabCloseHost(
-                bundleIdentifier: "com.apple.Safari",
-                localizedName: "Safari"
+        let supportedHosts: [(bundleIdentifier: String?, localizedName: String?)] = [
+            ("com.apple.Safari", "Safari"),
+            ("com.microsoft.VSCode", "Visual Studio Code"),
+            (nil, "Cursor"),
+            ("com.google.antigravity", "Antigravity"),
+        ]
+
+        for (bundleIdentifier, localizedName) in supportedHosts {
+            #expect(
+                BrowserTabProbe.supportsTabCloseHost(
+                    bundleIdentifier: bundleIdentifier,
+                    localizedName: localizedName
+                )
             )
-        )
-        #expect(
-            BrowserTabProbe.supportsTabCloseHost(
-                bundleIdentifier: "com.microsoft.VSCode",
-                localizedName: "Visual Studio Code"
-            )
-        )
-        #expect(
-            BrowserTabProbe.supportsTabCloseHost(
-                bundleIdentifier: nil,
-                localizedName: "Cursor"
-            )
-        )
-        #expect(
-            BrowserTabProbe.supportsTabCloseHost(
-                bundleIdentifier: "com.google.antigravity",
-                localizedName: "Antigravity"
-            )
-        )
+        }
     }
 
     @Test
     func rejectsUnsupportedApps() {
-        #expect(
-            BrowserTabProbe.supportsTabCloseHost(
-                bundleIdentifier: "com.apple.finder",
-                localizedName: "Finder"
-            ) == false
-        )
-        #expect(
-            BrowserTabProbe.supportsTabCloseHost(
-                bundleIdentifier: nil,
-                localizedName: "Preview"
-            ) == false
-        )
+        let unsupportedHosts: [(bundleIdentifier: String?, localizedName: String?)] = [
+            ("com.apple.finder", "Finder"),
+            (nil, "Preview"),
+        ]
+
+        for (bundleIdentifier, localizedName) in unsupportedHosts {
+            #expect(
+                !BrowserTabProbe.supportsTabCloseHost(
+                    bundleIdentifier: bundleIdentifier,
+                    localizedName: localizedName
+                )
+            )
+        }
     }
 
     @Test
     func rejectsPageContentTabsForGenericHosts() {
         let ancestry = [
-            BrowserTabProbe.TabAncestryNode(
-                role: "AXRadioButton",
-                subrole: "AXTabButton",
-                title: "",
-                matchedTabElement: true
-            ),
-            BrowserTabProbe.TabAncestryNode(
+            tabButton(),
+            node(
                 role: "AXGroup",
-                subrole: "AXTabPanel",
-                title: "",
-                matchedTabElement: false
+                subrole: "AXTabPanel"
             ),
-            BrowserTabProbe.TabAncestryNode(
+            node(
                 role: "AXGroup",
-                subrole: "AXLandmarkMain",
-                title: "",
-                matchedTabElement: false
+                subrole: "AXLandmarkMain"
             ),
-            BrowserTabProbe.TabAncestryNode(
-                role: "AXWebArea",
-                subrole: "",
-                title: "",
-                matchedTabElement: false
-            ),
+            node(role: "AXWebArea"),
         ]
 
         #expect(
-            BrowserTabProbe.acceptsMatchedTabAncestry(
+            !BrowserTabProbe.acceptsMatchedTabAncestry(
                 ancestry,
                 hostFamily: .generic
-            ) == false
+            )
         )
     }
 
     @Test
     func acceptsSafariStyleTabsForWebKitHosts() {
         let ancestry = [
-            BrowserTabProbe.TabAncestryNode(
-                role: "AXRadioButton",
-                subrole: "AXTabButton",
-                title: "",
-                matchedTabElement: true
-            ),
-            BrowserTabProbe.TabAncestryNode(
-                role: "AXGroup",
-                subrole: "",
-                title: "",
-                matchedTabElement: false
-            ),
+            tabButton(),
+            node(role: "AXGroup"),
         ]
 
         #expect(
@@ -112,18 +80,8 @@ struct BrowserTabProbeTests {
     @Test
     func acceptsChromiumTabsWithChromeContainers() {
         let ancestry = [
-            BrowserTabProbe.TabAncestryNode(
-                role: "AXRadioButton",
-                subrole: "AXTabButton",
-                title: "",
-                matchedTabElement: true
-            ),
-            BrowserTabProbe.TabAncestryNode(
-                role: "AXToolbar",
-                subrole: "",
-                title: "",
-                matchedTabElement: false
-            ),
+            tabButton(),
+            node(role: "AXToolbar"),
         ]
 
         #expect(
@@ -131,6 +89,64 @@ struct BrowserTabProbeTests {
                 ancestry,
                 hostFamily: .generic
             )
+        )
+    }
+
+    @Test
+    func tabAncestryVerdictDoesNotDependOnTitles() {
+        let untitledAncestry = [
+            node(
+                role: "AXTab",
+                title: "",
+                matchedTabElement: true
+            ),
+            node(
+                role: "AXToolbar",
+                title: ""
+            ),
+        ]
+        let titledAncestry = [
+            node(
+                role: "AXTab",
+                title: "Example",
+                matchedTabElement: true
+            ),
+            node(
+                role: "AXToolbar",
+                title: "Browser chrome"
+            ),
+        ]
+
+        #expect(
+            BrowserTabProbe.acceptsMatchedTabAncestry(
+                untitledAncestry,
+                hostFamily: .generic
+            ) == BrowserTabProbe.acceptsMatchedTabAncestry(
+                titledAncestry,
+                hostFamily: .generic
+            )
+        )
+    }
+
+    private func tabButton() -> BrowserTabProbe.TabAncestryNode {
+        node(
+            role: "AXRadioButton",
+            subrole: "AXTabButton",
+            matchedTabElement: true
+        )
+    }
+
+    private func node(
+        role: String,
+        subrole: String = "",
+        title: String = "",
+        matchedTabElement: Bool = false
+    ) -> BrowserTabProbe.TabAncestryNode {
+        BrowserTabProbe.TabAncestryNode(
+            role: role,
+            subrole: subrole,
+            title: title,
+            matchedTabElement: matchedTabElement
         )
     }
 }

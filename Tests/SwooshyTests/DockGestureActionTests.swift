@@ -30,10 +30,14 @@ struct DockGestureActionTests {
 
     @Test
     func dockGestureActionsIncludeDisplayMoveOptionsWithoutChangingDefaults() {
-        #expect(DockGestureAction.allCases.contains(.moveWindowToNextDisplay))
-        #expect(DockGestureAction.allCases.contains(.moveWindowToPreviousDisplay))
-        #expect(DockGestureBindings.defaults.contains { $0.action == .moveWindowToNextDisplay } == false)
-        #expect(DockGestureBindings.defaults.contains { $0.action == .moveWindowToPreviousDisplay } == false)
+        let displayMoveActions: Set<DockGestureAction> = [
+            .moveWindowToNextDisplay,
+            .moveWindowToPreviousDisplay,
+        ]
+        let defaultActions = Set(DockGestureBindings.defaults.map(\.action))
+
+        #expect(Set(DockGestureAction.allCases).isSuperset(of: displayMoveActions))
+        #expect(defaultActions.isDisjoint(with: displayMoveActions))
     }
 
     @Test
@@ -60,7 +64,7 @@ struct DockGestureActionTests {
     @Test
     func titleBarBindingReturnsNilForUnsupportedGestures() {
         let unsupportedGesture = DockGestureKind.allCases.first {
-            TitleBarGestureBindings.supportedGestures.contains($0) == false
+            !TitleBarGestureBindings.supportedGestures.contains($0)
         }
 
         if let unsupportedGesture {

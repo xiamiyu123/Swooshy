@@ -5,6 +5,26 @@ import Testing
 struct ConstrainedTargetFrameTests {
     private let engine = WindowLayoutEngine()
 
+    private func observation(
+        minimumWidth: CGFloat? = nil,
+        maximumWidth: CGFloat? = nil,
+        minimumHeight: CGFloat? = nil,
+        maximumHeight: CGFloat? = nil,
+        horizontalAnchor: WindowActionPreview.AxisAnchor,
+        verticalAnchor: WindowActionPreview.AxisAnchor
+    ) -> WindowActionPreview.Observation {
+        WindowActionPreview.Observation(
+            sizeBounds: .init(
+                minimumWidth: minimumWidth,
+                maximumWidth: maximumWidth,
+                minimumHeight: minimumHeight,
+                maximumHeight: maximumHeight
+            ),
+            horizontalAnchor: horizontalAnchor,
+            verticalAnchor: verticalAnchor
+        )
+    }
+
     @Test
     func constrainedTargetFrameReturnsTargetFrameWhenNoObservation() {
         let target = CGRect(x: 0, y: 0, width: 720, height: 900)
@@ -22,13 +42,8 @@ struct ConstrainedTargetFrameTests {
     func constrainedTargetFrameExpandsLeftHalfFromLeadingEdgeForMinimumWidth() {
         let target = CGRect(x: 0, y: 0, width: 720, height: 900)
 
-        let observation = WindowActionPreview.Observation(
-            sizeBounds: .init(
-                minimumWidth: 860,
-                maximumWidth: nil,
-                minimumHeight: nil,
-                maximumHeight: nil
-            ),
+        let observation = observation(
+            minimumWidth: 860,
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .leadingEdge
         )
@@ -46,13 +61,9 @@ struct ConstrainedTargetFrameTests {
     func constrainedTargetFrameShrinksMaximizeFromCenterForMaximumSize() {
         let target = CGRect(x: 0, y: 0, width: 1440, height: 900)
 
-        let observation = WindowActionPreview.Observation(
-            sizeBounds: .init(
-                minimumWidth: nil,
-                maximumWidth: 1200,
-                minimumHeight: nil,
-                maximumHeight: 800
-            ),
+        let observation = observation(
+            maximumWidth: 1200,
+            maximumHeight: 800,
             horizontalAnchor: .centered,
             verticalAnchor: .centered
         )
@@ -70,13 +81,9 @@ struct ConstrainedTargetFrameTests {
     func constrainedTargetFrameUsesActionVerticalAnchorForStrongMaxHeightInBottomLeftQuarter() {
         let target = CGRect(x: 0, y: 0, width: 704, height: 383)
 
-        let observation = WindowActionPreview.Observation(
-            sizeBounds: .init(
-                minimumWidth: nil,
-                maximumWidth: 182,
-                minimumHeight: nil,
-                maximumHeight: 40
-            ),
+        let observation = observation(
+            maximumWidth: 182,
+            maximumHeight: 40,
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .trailingEdge
         )
@@ -94,13 +101,9 @@ struct ConstrainedTargetFrameTests {
     func constrainedTargetFrameKeepsTopRightQuarterFlushWithOuterEdges() {
         let target = CGRect(x: 704, y: 468, width: 704, height: 383)
 
-        let observation = WindowActionPreview.Observation(
-            sizeBounds: .init(
-                minimumWidth: nil,
-                maximumWidth: 560,
-                minimumHeight: 672,
-                maximumHeight: nil
-            ),
+        let observation = observation(
+            maximumWidth: 560,
+            minimumHeight: 672,
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .trailingEdge
         )

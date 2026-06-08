@@ -1,9 +1,15 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import Swooshy
 
 @MainActor
 struct ObservedWindowConstraintStoreTests {
+    private let appKey = "com.example.app"
+    private let cachedAppKey = "com.example.cached"
+    private let dialogKey = "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
+    private let day: TimeInterval = 24 * 60 * 60
+
     private func makeDefaults() -> UserDefaults {
         let suiteName = "Swooshy.ObservedWindowConstraintStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -11,25 +17,53 @@ struct ObservedWindowConstraintStoreTests {
         return defaults
     }
 
+    private func makePersistedStore(
+        userDefaults: UserDefaults,
+        now: @escaping () -> Date
+    ) -> ObservedWindowConstraintStore {
+        ObservedWindowConstraintStore(
+            userDefaults: userDefaults,
+            now: now,
+            autosaveInterval: 0
+        )
+    }
+
+    private func makePersistedStore(now: @escaping () -> Date) -> ObservedWindowConstraintStore {
+        makePersistedStore(userDefaults: makeDefaults(), now: now)
+    }
+
+    private func sizeBounds(
+        minimumWidth: CGFloat? = nil,
+        maximumWidth: CGFloat? = nil,
+        minimumHeight: CGFloat? = nil,
+        maximumHeight: CGFloat? = nil
+    ) -> WindowActionPreview.SizeBounds {
+        WindowActionPreview.SizeBounds(
+            minimumWidth: minimumWidth,
+            maximumWidth: maximumWidth,
+            minimumHeight: minimumHeight,
+            maximumHeight: maximumHeight
+        )
+    }
+
+    private func testDate(_ seconds: TimeInterval) -> Date {
+        Date(timeIntervalSinceReferenceDate: seconds)
+    }
+
     @Test
     func sharedMaximumBoundsApplyAcrossActions() {
         let store = ObservedWindowConstraintStore()
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 1200,
-                minimumHeight: nil,
-                maximumHeight: 800
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 1200, maximumHeight: 800),
             horizontalAnchor: .centered,
             verticalAnchor: .centered,
             action: .maximize,
-            for: "com.example.app"
+            for: appKey
         )
 
         let observation = store.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .leftHalf
         )
 
@@ -42,52 +76,40 @@ struct ObservedWindowConstraintStoreTests {
     @Test
     func persistsConstraintsAcrossStoreInstances() {
         let defaults = makeDefaults()
-        let referenceDate = Date(timeIntervalSinceReferenceDate: 1_000_000)
-        let store = ObservedWindowConstraintStore(
+        let referenceDate = testDate(1_000_000)
+        let store = makePersistedStore(
             userDefaults: defaults,
-            now: { referenceDate },
-            autosaveInterval: 0
+            now: { referenceDate }
         )
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 1200,
-                minimumHeight: nil,
-                maximumHeight: 800
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 1200, maximumHeight: 800),
             horizontalAnchor: .centered,
             verticalAnchor: .centered,
             action: .maximize,
-            for: "com.example.app"
+            for: appKey
         )
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 860,
-                maximumWidth: nil,
-                minimumHeight: 520,
-                maximumHeight: nil
-            ),
+            sizeBounds: sizeBounds(minimumWidth: 860, minimumHeight: 520),
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .leadingEdge,
             action: .leftHalf,
-            for: "com.example.app"
+            for: appKey
         )
         store.flushPersistedConstraints()
 
-        let reloadedStore = ObservedWindowConstraintStore(
+        let reloadedStore = makePersistedStore(
             userDefaults: defaults,
-            now: { referenceDate },
-            autosaveInterval: 0
+            now: { referenceDate }
         )
 
         let leftObservation = reloadedStore.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .leftHalf
         )
         let rightObservation = reloadedStore.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .rightHalf
         )
 
@@ -108,37 +130,30 @@ struct ObservedWindowConstraintStoreTests {
     @Test
     func discardsPersistedConstraintsUnusedForMoreThanSevenDays() {
         let defaults = makeDefaults()
-        var currentDate = Date(timeIntervalSinceReferenceDate: 2_000_000)
+        var currentDate = testDate(2_000_000)
 
-        let store = ObservedWindowConstraintStore(
+        let store = makePersistedStore(
             userDefaults: defaults,
-            now: { currentDate },
-            autosaveInterval: 0
+            now: { currentDate }
         )
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 860,
-                maximumWidth: nil,
-                minimumHeight: nil,
-                maximumHeight: nil
-            ),
+            sizeBounds: sizeBounds(minimumWidth: 860),
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .leadingEdge,
             action: .leftHalf,
-            for: "com.example.app"
+            for: appKey
         )
         store.flushPersistedConstraints()
 
-        currentDate.addTimeInterval((8 * 24 * 60 * 60))
+        currentDate.addTimeInterval((8 * day))
 
-        let reloadedStore = ObservedWindowConstraintStore(
+        let reloadedStore = makePersistedStore(
             userDefaults: defaults,
-            now: { currentDate },
-            autosaveInterval: 0
+            now: { currentDate }
         )
 
         let observation = reloadedStore.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .leftHalf
         )
 
@@ -148,50 +163,42 @@ struct ObservedWindowConstraintStoreTests {
     @Test
     func touchingConstraintRefreshesSevenDayRetentionWindow() {
         let defaults = makeDefaults()
-        var currentDate = Date(timeIntervalSinceReferenceDate: 3_000_000)
+        var currentDate = testDate(3_000_000)
 
-        let store = ObservedWindowConstraintStore(
+        let store = makePersistedStore(
             userDefaults: defaults,
-            now: { currentDate },
-            autosaveInterval: 0
+            now: { currentDate }
         )
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 1200,
-                minimumHeight: nil,
-                maximumHeight: 800
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 1200, maximumHeight: 800),
             horizontalAnchor: .centered,
             verticalAnchor: .centered,
             action: .maximize,
-            for: "com.example.app"
+            for: appKey
         )
         store.flushPersistedConstraints()
 
-        currentDate.addTimeInterval(6 * 24 * 60 * 60)
+        currentDate.addTimeInterval(6 * day)
 
-        let refreshedStore = ObservedWindowConstraintStore(
+        let refreshedStore = makePersistedStore(
             userDefaults: defaults,
-            now: { currentDate },
-            autosaveInterval: 0
+            now: { currentDate }
         )
         let refreshedObservation = refreshedStore.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .maximize
         )
         #expect(refreshedObservation?.sizeBounds.maximumWidth == 1200)
         refreshedStore.flushPersistedConstraints()
 
-        currentDate.addTimeInterval(2 * 24 * 60 * 60)
+        currentDate.addTimeInterval(2 * day)
 
-        let survivingStore = ObservedWindowConstraintStore(
+        let survivingStore = makePersistedStore(
             userDefaults: defaults,
-            now: { currentDate },
-            autosaveInterval: 0
+            now: { currentDate }
         )
         let survivingObservation = survivingStore.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .maximize
         )
 
@@ -204,20 +211,15 @@ struct ObservedWindowConstraintStoreTests {
         let store = ObservedWindowConstraintStore()
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 860,
-                maximumWidth: nil,
-                minimumHeight: 520,
-                maximumHeight: nil
-            ),
+            sizeBounds: sizeBounds(minimumWidth: 860, minimumHeight: 520),
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .leadingEdge,
             action: .leftHalf,
-            for: "com.example.app"
+            for: appKey
         )
 
         let rightObservation = store.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .rightHalf
         )
 
@@ -232,33 +234,23 @@ struct ObservedWindowConstraintStoreTests {
         let store = ObservedWindowConstraintStore()
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 1200,
-                minimumHeight: nil,
-                maximumHeight: 800
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 1200, maximumHeight: 800),
             horizontalAnchor: .centered,
             verticalAnchor: .centered,
             action: .maximize,
-            for: "com.example.app"
+            for: appKey
         )
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 860,
-                maximumWidth: nil,
-                minimumHeight: nil,
-                maximumHeight: nil
-            ),
+            sizeBounds: sizeBounds(minimumWidth: 860),
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .leadingEdge,
             action: .leftHalf,
-            for: "com.example.app"
+            for: appKey
         )
 
         let observation = store.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .leftHalf
         )
 
@@ -274,20 +266,15 @@ struct ObservedWindowConstraintStoreTests {
         let store = ObservedWindowConstraintStore()
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 1200,
-                minimumHeight: nil,
-                maximumHeight: 800
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 1200, maximumHeight: 800),
             horizontalAnchor: .centered,
             verticalAnchor: .centered,
             action: .maximize,
-            for: "com.example.app"
+            for: appKey
         )
 
         let observation = store.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .rightHalf
         )
 
@@ -302,20 +289,15 @@ struct ObservedWindowConstraintStoreTests {
         let store = ObservedWindowConstraintStore()
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 860,
-                maximumWidth: nil,
-                minimumHeight: 520,
-                maximumHeight: nil
-            ),
+            sizeBounds: sizeBounds(minimumWidth: 860, minimumHeight: 520),
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .trailingEdge,
             action: .topLeftQuarter,
-            for: "com.example.app"
+            for: appKey
         )
 
         let observation = store.observation(
-            for: "com.example.app",
+            for: appKey,
             action: .bottomRightQuarter
         )
 
@@ -327,30 +309,21 @@ struct ObservedWindowConstraintStoreTests {
 
     @Test
     func discardsUnusedApplicationConstraintsAfterSevenDaysWithoutUse() {
-        var currentDate = Date(timeIntervalSinceReferenceDate: 4_000_000)
-        let store = ObservedWindowConstraintStore(
-            userDefaults: makeDefaults(),
-            now: { currentDate },
-            autosaveInterval: 0
-        )
+        var currentDate = testDate(4_000_000)
+        let store = makePersistedStore(now: { currentDate })
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 1200,
-                minimumHeight: nil,
-                maximumHeight: 800
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 1200, maximumHeight: 800),
             horizontalAnchor: .centered,
             verticalAnchor: .centered,
             action: .maximize,
-            for: "com.example.cached"
+            for: cachedAppKey
         )
 
-        currentDate.addTimeInterval(8 * 24 * 60 * 60)
+        currentDate.addTimeInterval(8 * day)
 
         let cachedObservation = store.observation(
-            for: "com.example.cached",
+            for: cachedAppKey,
             action: .maximize
         )
 
@@ -359,37 +332,28 @@ struct ObservedWindowConstraintStoreTests {
 
     @Test
     func usedApplicationConstraintsRemainAvailableInsideSevenDayWindow() {
-        var currentDate = Date(timeIntervalSinceReferenceDate: 5_000_000)
-        let store = ObservedWindowConstraintStore(
-            userDefaults: makeDefaults(),
-            now: { currentDate },
-            autosaveInterval: 0
-        )
+        var currentDate = testDate(5_000_000)
+        let store = makePersistedStore(now: { currentDate })
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 1200,
-                minimumHeight: nil,
-                maximumHeight: 800
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 1200, maximumHeight: 800),
             horizontalAnchor: .centered,
             verticalAnchor: .centered,
             action: .maximize,
-            for: "com.example.cached"
+            for: cachedAppKey
         )
 
-        currentDate.addTimeInterval(6 * 24 * 60 * 60)
+        currentDate.addTimeInterval(6 * day)
 
         let refreshedObservation = store.observation(
-            for: "com.example.cached",
+            for: cachedAppKey,
             action: .maximize
         )
 
         #expect(refreshedObservation?.sizeBounds.maximumWidth == 1200)
 
         let survivingObservation = store.observation(
-            for: "com.example.cached",
+            for: cachedAppKey,
             action: .maximize
         )
 
@@ -401,33 +365,23 @@ struct ObservedWindowConstraintStoreTests {
         let store = ObservedWindowConstraintStore()
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 182,
-                minimumHeight: nil,
-                maximumHeight: 40
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 182, maximumHeight: 40),
             horizontalAnchor: .trailingEdge,
             verticalAnchor: .trailingEdge,
             action: .topRightQuarter,
-            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
+            for: dialogKey
         )
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 560,
-                maximumWidth: nil,
-                minimumHeight: 672,
-                maximumHeight: nil
-            ),
+            sizeBounds: sizeBounds(minimumWidth: 560, minimumHeight: 672),
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .trailingEdge,
             action: .topRightQuarter,
-            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
+            for: dialogKey
         )
 
         let observation = store.observation(
-            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>",
+            for: dialogKey,
             action: .topRightQuarter
         )
 
@@ -442,33 +396,23 @@ struct ObservedWindowConstraintStoreTests {
         let store = ObservedWindowConstraintStore()
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: 560,
-                maximumWidth: nil,
-                minimumHeight: 672,
-                maximumHeight: nil
-            ),
+            sizeBounds: sizeBounds(minimumWidth: 560, minimumHeight: 672),
             horizontalAnchor: .leadingEdge,
             verticalAnchor: .trailingEdge,
             action: .topRightQuarter,
-            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
+            for: dialogKey
         )
 
         store.record(
-            sizeBounds: WindowActionPreview.SizeBounds(
-                minimumWidth: nil,
-                maximumWidth: 182,
-                minimumHeight: nil,
-                maximumHeight: 40
-            ),
+            sizeBounds: sizeBounds(maximumWidth: 182, maximumHeight: 40),
             horizontalAnchor: .trailingEdge,
             verticalAnchor: .trailingEdge,
             action: .topRightQuarter,
-            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>"
+            for: dialogKey
         )
 
         let observation = store.observation(
-            for: "com.example.app|role=AXWindow|subrole=AXSystemDialog|title=<untitled>",
+            for: dialogKey,
             action: .topRightQuarter
         )
 

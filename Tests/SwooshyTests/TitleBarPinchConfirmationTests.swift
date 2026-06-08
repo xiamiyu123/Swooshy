@@ -5,102 +5,100 @@ import Testing
 struct TitleBarPinchConfirmationTests {
     @Test
     func dockPinchConfirmationRequiresSameGestureActionAndTarget() {
-        let finder = InteractionTarget.application(
-            makeAppIdentity(name: "Finder"),
-            source: .dockAppItem(DockItemHandle())
-        )
-        let notes = InteractionTarget.application(
-            makeAppIdentity(name: "Notes"),
-            source: .dockAppItem(DockItemHandle())
-        )
+        let finder = dockAppTarget(name: "Finder")
+        let notes = dockAppTarget(name: "Notes")
 
         #expect(
-            dockPinchConfirmationMatches(
-                pendingGesture: .pinchIn,
-                pendingAction: .quitApplication,
-                pendingApplication: finder,
-                gesture: .pinchIn,
-                action: .quitApplication,
-                application: finder
-            )
+            matchesDockPinchConfirmation(pendingApplication: finder)
         )
-        #expect(
-            dockPinchConfirmationMatches(
-                pendingGesture: .pinchIn,
-                pendingAction: .quitApplication,
-                pendingApplication: finder,
-                gesture: .pinchOut,
-                action: .quitApplication,
-                application: finder
-            ) == false
-        )
-        #expect(
-            dockPinchConfirmationMatches(
-                pendingGesture: .pinchIn,
-                pendingAction: .quitApplication,
-                pendingApplication: finder,
-                gesture: .pinchIn,
-                action: .closeWindow,
-                application: finder
-            ) == false
-        )
-        #expect(
-            dockPinchConfirmationMatches(
-                pendingGesture: .pinchIn,
-                pendingAction: .quitApplication,
-                pendingApplication: finder,
-                gesture: .pinchIn,
-                action: .quitApplication,
-                application: notes
-            ) == false
-        )
+        #expect(!matchesDockPinchConfirmation(
+            pendingApplication: finder,
+            gesture: .pinchOut,
+        ))
+        #expect(!matchesDockPinchConfirmation(
+            pendingApplication: finder,
+            action: .closeWindow,
+        ))
+        #expect(!matchesDockPinchConfirmation(
+            pendingApplication: finder,
+            application: notes
+        ))
     }
 
     @Test
     func titleBarPinchConfirmationRequiresSameTarget() {
-        let app = makeAppIdentity(name: "Browser")
-        let firstWindow = InteractionTarget.window(WindowIdentity(), app: app, source: .titleBar)
-        let secondWindow = InteractionTarget.window(WindowIdentity(), app: app, source: .titleBar)
+        let firstWindow = titleBarWindowTarget(appName: "Browser")
+        let secondWindow = titleBarWindowTarget(appName: "Browser")
 
         #expect(
-            titleBarPinchConfirmationMatches(
-                pendingAction: .closeWindow,
-                pendingApplication: firstWindow,
-                pendingReplacesWithTabClose: false,
-                action: .closeWindow,
-                application: firstWindow,
-                replacesWithTabClose: false
-            )
+            matchesTitleBarPinchConfirmation(pendingApplication: firstWindow)
         )
-        #expect(
-            titleBarPinchConfirmationMatches(
-                pendingAction: .closeWindow,
-                pendingApplication: firstWindow,
-                pendingReplacesWithTabClose: false,
-                action: .closeWindow,
-                application: secondWindow,
-                replacesWithTabClose: false
-            ) == false
-        )
+        #expect(!matchesTitleBarPinchConfirmation(
+            pendingApplication: firstWindow,
+            application: secondWindow,
+        ))
     }
 
     @Test
     func titleBarPinchConfirmationRequiresSameTabCloseReplacementMode() {
-        let target = InteractionTarget.window(
+        let target = titleBarWindowTarget(appName: "Browser")
+
+        #expect(!matchesTitleBarPinchConfirmation(
+            pendingAction: .quitApplication,
+            pendingApplication: target,
+            pendingReplacesWithTabClose: true,
+            action: .quitApplication,
+        ))
+    }
+
+    private func dockAppTarget(name: String) -> InteractionTarget {
+        .application(
+            makeAppIdentity(name: name),
+            source: .dockAppItem(DockItemHandle())
+        )
+    }
+
+    private func titleBarWindowTarget(appName: String) -> InteractionTarget {
+        .window(
             WindowIdentity(),
-            app: makeAppIdentity(name: "Browser"),
+            app: makeAppIdentity(name: appName),
             source: .titleBar
         )
+    }
 
-        #expect(
-            titleBarPinchConfirmationMatches(
-                pendingAction: .quitApplication,
-                pendingApplication: target,
-                pendingReplacesWithTabClose: true,
-                action: .quitApplication,
-                application: target,
-                replacesWithTabClose: false
-            ) == false
+    private func matchesDockPinchConfirmation(
+        pendingGesture: DockGestureKind = .pinchIn,
+        pendingAction: DockGestureAction = .quitApplication,
+        pendingApplication: InteractionTarget,
+        gesture: DockGestureKind = .pinchIn,
+        action: DockGestureAction = .quitApplication,
+        application: InteractionTarget? = nil
+    ) -> Bool {
+        Swooshy.dockPinchConfirmationMatches(
+            pendingGesture: pendingGesture,
+            pendingAction: pendingAction,
+            pendingApplication: pendingApplication,
+            gesture: gesture,
+            action: action,
+            application: application ?? pendingApplication
+        )
+    }
+
+    private func matchesTitleBarPinchConfirmation(
+        pendingAction: WindowAction = .closeWindow,
+        pendingApplication: InteractionTarget,
+        pendingReplacesWithTabClose: Bool = false,
+        action: WindowAction = .closeWindow,
+        application: InteractionTarget? = nil,
+        replacesWithTabClose: Bool = false
+    ) -> Bool {
+        Swooshy.titleBarPinchConfirmationMatches(
+            pendingAction: pendingAction,
+            pendingApplication: pendingApplication,
+            pendingReplacesWithTabClose: pendingReplacesWithTabClose,
+            action: action,
+            application: application ?? pendingApplication,
+            replacesWithTabClose: replacesWithTabClose
         )
     }
 
