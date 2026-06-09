@@ -304,3 +304,7 @@ If Swooshy helps you, a GitHub star would mean a lot.
 
 This is a vibe-coded project. I used AI heavily during development, then
 tested, adjusted, and cleaned things up myself.
+
+## Acknowledgements
+
+Thanks to [LINUX DO](https://linux.do/).

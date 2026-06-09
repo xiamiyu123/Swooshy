@@ -265,3 +265,7 @@ Swooshy 受 Swish 的产品思路启发，但它是一个独立实现的开源�
 ## AI 生成披露
 
 这是一个 vibe-coded 项目。我在开发过程中大量使用了 AI，并随后进行人工测试、调整和清理。
+
+## 致谢
+
+感谢 [LINUX DO](https://linux.do/)。
