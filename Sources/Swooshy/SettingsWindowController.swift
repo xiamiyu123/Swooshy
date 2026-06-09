@@ -16,6 +16,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(
         settingsStore: SettingsStore,
         hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore = HotKeyRegistrationStatusStore(),
+        previewUpdateAvailable: Bool = false,
         showGestureTriggerRegions: @escaping (CGRect?) -> Void = { _ in },
         onPointerInsideChanged: @escaping (Bool) -> Void = { _ in }
     ) {
@@ -27,6 +28,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let rootView = SettingsView(
             settingsStore: settingsStore,
             hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore,
+            aboutPageModel: AboutPageModel(previewUpdateAvailable: previewUpdateAvailable),
             showGestureTriggerRegions: {
                 showGestureTriggerRegions(windowReference.window?.frame)
             },
@@ -92,6 +94,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func showShortcuts() {
         navigationState.selectedPage = .shortcuts
+        show()
+    }
+
+    func showAbout() {
+        navigationState.selectedPage = .about
         show()
     }
 
@@ -175,6 +182,7 @@ private final class WeakWindowReference {
 private struct SettingsView: View {
     @Bindable var settingsStore: SettingsStore
     @Bindable var hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore
+    let aboutPageModel: AboutPageModel
     let showGestureTriggerRegions: () -> Void
     @Bindable var navigationState: SettingsNavigationState
     @State private var launchAtLoginController = LaunchAtLoginController()
@@ -191,6 +199,7 @@ private struct SettingsView: View {
                 page: navigationState.selectedPage ?? .general,
                 settingsStore: settingsStore,
                 hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore,
+                aboutPageModel: aboutPageModel,
                 showGestureTriggerRegions: showGestureTriggerRegions,
                 launchAtLoginController: $launchAtLoginController
             )
@@ -216,6 +225,7 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
     case titleBarGestures
     case shortcuts
     case advanced
+    case about
 
     var id: Self { self }
 
@@ -233,6 +243,8 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
             "settings.section.shortcuts"
         case .advanced:
             "settings.section.advanced"
+        case .about:
+            "settings.section.about"
         }
     }
 
@@ -250,6 +262,8 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
             "command"
         case .advanced:
             "gearshape.2"
+        case .about:
+            "info.circle"
         }
     }
 
@@ -309,6 +323,7 @@ private struct SettingsDetailPage: View {
     let page: SettingsPage
     @Bindable var settingsStore: SettingsStore
     @Bindable var hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore
+    let aboutPageModel: AboutPageModel
     let showGestureTriggerRegions: () -> Void
     @Binding var launchAtLoginController: LaunchAtLoginController
 
@@ -342,6 +357,11 @@ private struct SettingsDetailPage: View {
                 )
             case .advanced:
                 AdvancedSettingsPage(settingsStore: settingsStore)
+            case .about:
+                AboutSettingsPage(
+                    settingsStore: settingsStore,
+                    model: aboutPageModel
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1015,6 +1035,253 @@ private struct AdvancedSettingsPage: View {
                 }
             }
         }
+    }
+}
+
+private struct AboutSettingsPage: View {
+    @Bindable var settingsStore: SettingsStore
+    let model: AboutPageModel
+    @State private var updateState = AboutUpdateState.manualCheck
+
+    var body: some View {
+        SettingsPageContainer {
+            SettingsCardSection(title: settingsStore.localized("settings.section.about")) {
+                HStack(alignment: .center, spacing: 14) {
+                    Image(nsImage: StatusItemIcon.gale.makeImage(accessibilityDescription: model.appName) ?? NSImage())
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 44, height: 44)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.appName)
+                            .font(.title3.weight(.semibold))
+
+                        Text(
+                            String(
+                                format: settingsStore.localized("settings.about.version_format"),
+                                model.versionText
+                            )
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+
+                AboutLinkButton(
+                    title: settingsStore.localized("settings.about.github.title"),
+                    subtitle: settingsStore.localized("settings.about.github.subtitle"),
+                    systemImage: "chevron.left.forwardslash.chevron.right",
+                    url: model.repositoryURL
+                )
+
+                AboutLinkButton(
+                    title: settingsStore.localized("settings.about.license.title"),
+                    subtitle: settingsStore.localized("settings.about.license.subtitle"),
+                    systemImage: "doc.text",
+                    url: model.licenseURL
+                )
+
+                AboutLinkButton(
+                    title: settingsStore.localized("settings.about.attribution.title"),
+                    subtitle: settingsStore.localized("settings.about.attribution.subtitle"),
+                    systemImage: "list.bullet.rectangle",
+                    url: model.attributionURL
+                )
+            }
+
+            SettingsCardSection(title: settingsStore.localized("settings.about.update.section")) {
+                AboutUpdateStatusView(
+                    model: model,
+                    updateState: updateState,
+                    localize: settingsStore.localized
+                ) {
+                    checkForUpdates()
+                }
+            }
+        }
+        .onAppear {
+            if model.updateState == .updateAvailable {
+                updateState = .updateAvailable
+            }
+        }
+    }
+
+    private func checkForUpdates() {
+        updateState = .checking
+        Task {
+            let nextState = await AboutUpdateChecker.checkLatestRelease(
+                currentVersion: model.currentVersion
+            )
+            await MainActor.run {
+                updateState = nextState
+            }
+        }
+    }
+}
+
+private struct AboutUpdateStatusView: View {
+    let model: AboutPageModel
+    let updateState: AboutUpdateState
+    let localize: (String) -> String
+    let checkForUpdates: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(iconColor)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    if updateState == .updateAvailable {
+                        NSWorkspace.shared.open(model.latestReleaseURL)
+                    } else {
+                        checkForUpdates()
+                    }
+                } label: {
+                    Label(buttonTitle, systemImage: buttonSystemImage)
+                }
+                .padding(.top, 4)
+                .disabled(updateState == .checking)
+
+                if updateState != .updateAvailable {
+                    Button {
+                        NSWorkspace.shared.open(model.latestReleaseURL)
+                    } label: {
+                        Label(localize("settings.about.open_releases.button"), systemImage: "arrow.up.right")
+                    }
+                    .buttonStyle(.link)
+                    .padding(.top, 2)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var title: String {
+        switch updateState {
+        case .manualCheck:
+            localize("settings.about.update.manual.title")
+        case .checking:
+            localize("settings.about.update.checking.title")
+        case .upToDate:
+            localize("settings.about.update.up_to_date.title")
+        case .updateAvailable:
+            localize("settings.about.update.available.title")
+        case .checkFailed:
+            localize("settings.about.update.failed.title")
+        }
+    }
+
+    private var message: String {
+        switch updateState {
+        case .manualCheck:
+            localize("settings.about.update.manual.message")
+        case .checking:
+            localize("settings.about.update.checking.message")
+        case .upToDate:
+            localize("settings.about.update.up_to_date.message")
+        case .updateAvailable:
+            localize("settings.about.update.available.message")
+        case .checkFailed:
+            localize("settings.about.update.failed.message")
+        }
+    }
+
+    private var systemImage: String {
+        switch updateState {
+        case .manualCheck:
+            "arrow.triangle.2.circlepath"
+        case .checking:
+            "clock.arrow.circlepath"
+        case .upToDate:
+            "checkmark.circle.fill"
+        case .updateAvailable:
+            "sparkles"
+        case .checkFailed:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch updateState {
+        case .manualCheck:
+            Color(nsColor: .controlAccentColor)
+        case .checking:
+            Color(nsColor: .controlAccentColor)
+        case .upToDate:
+            Color(nsColor: .systemGreen)
+        case .updateAvailable:
+            Color(nsColor: .systemGreen)
+        case .checkFailed:
+            Color(nsColor: .systemOrange)
+        }
+    }
+
+    private var buttonTitle: String {
+        switch updateState {
+        case .updateAvailable:
+            localize("settings.about.download_update.button")
+        case .checking:
+            localize("settings.about.checking_updates.button")
+        case .manualCheck, .upToDate, .checkFailed:
+            localize("settings.about.check_updates.button")
+        }
+    }
+
+    private var buttonSystemImage: String {
+        updateState == .updateAvailable ? "square.and.arrow.down" : "arrow.triangle.2.circlepath"
+    }
+}
+
+private struct AboutLinkButton: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let url: URL
+
+    var body: some View {
+        Button {
+            NSWorkspace.shared.open(url)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .help(url.absoluteString)
     }
 }
 

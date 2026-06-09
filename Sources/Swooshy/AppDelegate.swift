@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsWindowController = SettingsWindowController(
             settingsStore: settingsStore,
             hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore,
+            previewUpdateAvailable: launchOptions.previewUpdateAvailable,
             showGestureTriggerRegions: { [weak dockGestureController] settingsWindowFrame in
                 dockGestureController?.showGestureTriggerRegions(settingsWindowFrame: settingsWindowFrame)
             },
@@ -105,6 +106,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DebugLog.info(
                 DebugLog.app,
                 "Launch argument \(LaunchOptions.previewHotKeyRegistrationFailureArgument) detected; previewing hotkey registration failure style"
+            )
+        } else if launchOptions.previewUpdateAvailable {
+            settingsWindowController.showAbout()
+            DebugLog.info(
+                DebugLog.app,
+                "Launch argument \(LaunchOptions.previewUpdateAvailableArgument) detected; previewing update available style"
             )
         } else if settingsStore.consumeWelcomeGuidePresentationFlag() {
             welcomeWindowController.show()

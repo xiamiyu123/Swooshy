@@ -19,12 +19,14 @@ struct LaunchOptionsTests {
                 LaunchOptions.clearCacheArgument,
                 LaunchOptions.resetUserConfigurationArgument,
                 LaunchOptions.previewHotKeyRegistrationFailureArgument,
+                LaunchOptions.previewUpdateAvailableArgument,
             ]
         )
 
         #expect(options.clearCache)
         #expect(options.resetUserConfiguration)
         #expect(options.previewHotKeyRegistrationFailure)
+        #expect(options.previewUpdateAvailable)
     }
 
     @Test
