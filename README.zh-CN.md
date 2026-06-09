@@ -139,6 +139,20 @@ brew update
 brew install --cask swooshy
 ```
 
+如果 Homebrew 提示 `xiamiyu123/swooshy/swooshy` 来自未信任的 tap，请先信任这个 cask，再重新安装：
+
+```bash
+brew trust --cask xiamiyu123/swooshy/swooshy
+brew install --cask swooshy
+```
+
+后续通过 Homebrew 升级已安装版本时，请执行：
+
+```bash
+brew update
+brew upgrade --cask swooshy
+```
+
 安装完成后，可以直接从 Launchpad / Spotlight 启动 `Swooshy`，也可以执行：
 
 ```bash

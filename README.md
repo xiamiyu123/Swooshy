@@ -156,6 +156,20 @@ brew update
 brew install --cask swooshy
 ```
 
+If Homebrew reports that `xiamiyu123/swooshy/swooshy` is from an untrusted tap,
+trust this cask first, then install it again:
+
+```bash
+brew trust --cask xiamiyu123/swooshy/swooshy
+brew install --cask swooshy
+```
+
+To upgrade an existing Homebrew installation later, run:
+
+```bash
+brew update
+brew upgrade --cask swooshy
+```
 
 After installation, launch `Swooshy` from Launchpad or Spotlight, or run:
 
