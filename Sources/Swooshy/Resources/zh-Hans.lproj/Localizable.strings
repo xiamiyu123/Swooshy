@@ -147,6 +147,16 @@
 "settings.gesture_hud.style.classic" = "详细";
 "settings.gesture_hud.style.elegant" = "优雅";
 "settings.gesture_hud.style.minimal" = "极简";
+"settings.trigger_regions.title" = "触发区域";
+"settings.trigger_regions.description" = "显示 Swooshy 会监听手势的 Dock 项目和设置窗口标题栏区域。";
+"settings.trigger_regions.show" = "显示触发区域 3 秒";
+"settings.trigger_regions.footer" = "浮层不会抢焦点，也不会挡住点击。开始双指手势前，请先把指针移到高亮区域内。";
+"settings.trigger_regions.dock.title" = "Dock 手势区域";
+"settings.trigger_regions.dock.detail" = "每个高亮 Dock 项目都可以作为手势目标。";
+"settings.trigger_regions.title_bar.title" = "标题栏手势区域";
+"settings.trigger_regions.title_bar.detail" = "当前设置窗口顶部 %d px，对应标题栏触发高度。";
+"settings.trigger_regions.empty.title" = "没有找到触发区域";
+"settings.trigger_regions.empty.detail" = "请授予辅助功能权限，或打开一个普通应用窗口后再试。";
 "settings.dock_gestures.footer" = "这些映射只在指针悬停在 Dock 项目上时生效。";
 "settings.title_bar_gestures.footer" = "这些映射只在指针悬停在窗口标题栏上时生效。";
 "settings.dock_gestures.gesture.swipe_left" = "双指左滑";

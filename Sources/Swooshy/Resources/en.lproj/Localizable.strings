@@ -147,6 +147,16 @@
 "settings.gesture_hud.style.classic" = "Detailed";
 "settings.gesture_hud.style.elegant" = "Elegant";
 "settings.gesture_hud.style.minimal" = "Minimal";
+"settings.trigger_regions.title" = "Trigger Regions";
+"settings.trigger_regions.description" = "Show the Dock items and Settings title-bar area where Swooshy listens for gestures.";
+"settings.trigger_regions.show" = "Show trigger regions for 3 seconds";
+"settings.trigger_regions.footer" = "The overlay does not take focus or block clicks. Move the pointer into a highlighted area before starting a two-finger gesture.";
+"settings.trigger_regions.dock.title" = "Dock gesture area";
+"settings.trigger_regions.dock.detail" = "Each highlighted Dock item can be used as a gesture target.";
+"settings.trigger_regions.title_bar.title" = "Title-bar gesture area";
+"settings.trigger_regions.title_bar.detail" = "Top %d px of this Settings window, matching the title-bar trigger height.";
+"settings.trigger_regions.empty.title" = "No trigger region found";
+"settings.trigger_regions.empty.detail" = "Grant Accessibility access or open a normal app window, then try again.";
 "settings.dock_gestures.footer" = "These mappings apply when the pointer is over a Dock item.";
 "settings.title_bar_gestures.footer" = "These mappings apply when the pointer is over a window's title bar.";
 "settings.dock_gestures.gesture.swipe_left" = "Two-finger swipe left";

@@ -5,6 +5,7 @@ import Foundation
 @MainActor
 protocol DockTargetResolving: AnyObject {
     func clearCache()
+    func currentDockTriggerRegions() -> [CGRect]
     func hoveredTarget(
         at appKitPoint: CGPoint,
         requireFrontmostOwnership: Bool
@@ -218,6 +219,10 @@ final class DockTargetResolver: DockTargetResolving {
 #endif
     }
 
+    func currentDockTriggerRegions() -> [CGRect] {
+        dockElementFrames()
+    }
+
     func hoveredTarget(
         at appKitPoint: CGPoint,
         requireFrontmostOwnership: Bool
@@ -347,41 +352,22 @@ final class DockTargetResolver: DockTargetResolving {
     }
 
     private func rebuildDockSnapshot() -> DockHoverSnapshot {
-        guard AXIsProcessTrusted() else {
+        let dockElements = readableDockElements()
+        guard !dockElements.isEmpty else {
             return emptyDockSnapshot()
         }
 
-        guard let dockProcess = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
-            return emptyDockSnapshot()
-        }
-
-        let dockElement = AXUIElementCreateApplication(dockProcess.processIdentifier)
-        guard let dockList = AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: dockElement).first else {
-            return emptyDockSnapshot()
-        }
-
-        let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
         var appItems: [DockAppSnapshotItem] = []
         var minimizedItems: [MinimizedDockLedger.SnapshotItem] = []
 
-        for item in AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: dockList) {
-            guard
-                let axPosition = AXAttributeReader.point(kAXPositionAttribute as CFString, from: item),
-                let axSize = AXAttributeReader.size(kAXSizeAttribute as CFString, from: item)
-            else {
-                continue
-            }
+        for dockElement in dockElements {
+            let appKitFrame = dockElement.frame
+            let token = DockElementToken(element: dockElement.element)
 
-            let appKitFrame = geometry.appKitFrame(
-                fromAXFrame: CGRect(origin: axPosition, size: axSize)
-            )
-            let token = DockElementToken(element: item)
-            let subrole = AXAttributeReader.string(kAXSubroleAttribute as CFString, from: item) ?? ""
-
-            switch subrole {
+            switch dockElement.subrole {
             case "AXApplicationDockItem":
                 guard
-                    let bundleURL = AXAttributeReader.url("AXURL" as CFString, from: item),
+                    let bundleURL = AXAttributeReader.url("AXURL" as CFString, from: dockElement.element),
                     let appIdentity = registry.appIdentity(forBundleURL: bundleURL)
                 else {
                     continue
@@ -398,7 +384,7 @@ final class DockTargetResolver: DockTargetResolving {
                 minimizedItems.append(
                     MinimizedDockLedger.SnapshotItem(
                         token: token,
-                        element: item,
+                        element: dockElement.element,
                         frame: appKitFrame
                     )
                 )
@@ -445,6 +431,54 @@ final class DockTargetResolver: DockTargetResolving {
         }
 
         return DockHoverSnapshot(candidates: candidates)
+    }
+
+    private struct ReadableDockElement {
+        let element: AXUIElement
+        let subrole: String
+        let frame: CGRect
+    }
+
+    private func dockElementFrames() -> [CGRect] {
+        readableDockElements().map(\.frame)
+    }
+
+    private func readableDockElements() -> [ReadableDockElement] {
+        guard AXIsProcessTrusted() else {
+            return []
+        }
+
+        guard let dockProcess = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
+            return []
+        }
+
+        let dockElement = AXUIElementCreateApplication(dockProcess.processIdentifier)
+        guard let dockList = AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: dockElement).first else {
+            return []
+        }
+
+        let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
+        return AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: dockList).compactMap { item in
+            let subrole = AXAttributeReader.string(kAXSubroleAttribute as CFString, from: item) ?? ""
+            guard subrole == "AXApplicationDockItem" || subrole == "AXMinimizedWindowDockItem" else {
+                return nil
+            }
+
+            guard
+                let axPosition = AXAttributeReader.point(kAXPositionAttribute as CFString, from: item),
+                let axSize = AXAttributeReader.size(kAXSizeAttribute as CFString, from: item)
+            else {
+                return nil
+            }
+
+            return ReadableDockElement(
+                element: item,
+                subrole: subrole,
+                frame: geometry.appKitFrame(
+                    fromAXFrame: CGRect(origin: axPosition, size: axSize)
+                )
+            )
+        }
     }
 
     private func emptyDockSnapshot() -> DockHoverSnapshot {

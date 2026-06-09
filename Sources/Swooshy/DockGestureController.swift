@@ -10,8 +10,10 @@ final class DockGestureController {
     private let alertPresenter: AlertPresenting
     private let gestureFeedbackPresenter: GestureFeedbackPresenting
     private let settingsStore: SettingsStore
+    private let registry: WindowRegistry
     private let dockProbe: DockTargetResolving
     private let titleBarProbe: TitleBarAccessibilityProbe
+    private let triggerRegionOverlayController: GestureTriggerRegionOverlayController
     private let monitor = MultitouchInputMonitor()
     private var dockRecognizer = DockGestureRecognizer()
     private var dockCornerDragRecognizer = TitleBarCornerDragRecognizer()
@@ -140,11 +142,13 @@ final class DockGestureController {
     ) {
         self.windowManager = windowManager
         self.dockProbe = dockTargetResolver
+        self.registry = registry
         self.titleBarProbe = TitleBarAccessibilityProbe(registry: registry)
         self.layoutEngine = layoutEngine
         self.alertPresenter = alertPresenter
         self.gestureFeedbackPresenter = gestureFeedbackPresenter
         self.settingsStore = settingsStore
+        self.triggerRegionOverlayController = GestureTriggerRegionOverlayController()
 
         monitor.onFrame = { [weak self] frame in
             MainActor.assumeIsolated {
@@ -184,6 +188,7 @@ final class DockGestureController {
         activeCornerDragTouchReferencePoint = nil
         pendingPinchConfirmation?.timeoutTask?.cancel()
         pendingPinchConfirmation = nil
+        triggerRegionOverlayController.dismiss()
         endSmoothDockingSession(restore: true)
         dockProbe.clearCache()
         titleBarProbe.clearCache()
@@ -191,6 +196,53 @@ final class DockGestureController {
         monitor.onFrame = nil
         monitor.stop()
         cancelPendingReleaseAction()
+    }
+
+    func showGestureTriggerRegions(settingsWindowFrame: CGRect?) {
+        guard !isShuttingDown else {
+            return
+        }
+
+        registry.refreshRunningApplications()
+
+        var items: [GestureTriggerRegionOverlayItem] = []
+        if settingsStore.dockGesturesEnabled {
+            let dockRegions = dockProbe.currentDockTriggerRegions()
+            items += dockRegions.enumerated().map { index, dockRegion in
+                GestureTriggerRegionOverlayItem(
+                    kind: .dock,
+                    frame: dockRegion,
+                    title: index == 0 ? settingsStore.localized("settings.trigger_regions.dock.title") : "",
+                    detail: index == 0 ? settingsStore.localized("settings.trigger_regions.dock.detail") : ""
+                )
+            }
+        }
+
+        if
+            settingsStore.titleBarGesturesEnabled,
+            let settingsWindowFrame,
+            let titleBarRegion = GestureTriggerRegionOverlayLayout.titleBarRegion(
+                forWindowFrame: settingsWindowFrame,
+                titleBarHeight: settingsStore.titleBarTriggerHeight
+            )
+        {
+            items.append(
+                GestureTriggerRegionOverlayItem(
+                    kind: .titleBar,
+                    frame: titleBarRegion,
+                    title: settingsStore.localized("settings.trigger_regions.title_bar.title"),
+                    detail: String(
+                        format: settingsStore.localized("settings.trigger_regions.title_bar.detail"),
+                        Int(SettingsStore.clampTitleBarTriggerHeight(settingsStore.titleBarTriggerHeight))
+                    )
+                )
+            )
+        }
+
+        triggerRegionOverlayController.show(
+            items: items,
+            localized: settingsStore.localized
+        )
     }
 
     private func observeSettings() {
@@ -657,7 +709,7 @@ final class DockGestureController {
                gesture: event.gesture,
                action: action,
                application: application
-           ) {
+        ) {
             clearPinchConfirmation()
             DebugLog.info(DebugLog.dock, "Pinch confirmation accepted for dock action \(action.rawValue)")
             scheduleDockGestureAction(action, for: application)
@@ -832,7 +884,7 @@ final class DockGestureController {
                action: action,
                application: event.application,
                replacesWithTabClose: replacesWithTabClose
-           ) {
+        ) {
             clearPinchConfirmation()
             DebugLog.info(DebugLog.dock, "Pinch confirmation accepted for title-bar action \(String(describing: action))")
             executeTitleBarAction(

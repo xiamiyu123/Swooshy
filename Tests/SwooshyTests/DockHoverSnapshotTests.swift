@@ -77,6 +77,26 @@ struct DockHoverSnapshotTests {
     }
 
     @Test
+    func boundsCoverAllDockCandidates() {
+        let snapshot = DockHoverSnapshot(
+            candidates: [
+                candidate(
+                    dockItemName: "Finder",
+                    processIdentifier: 100,
+                    x: 12
+                ),
+                candidate(
+                    dockItemName: "Safari",
+                    processIdentifier: 101,
+                    x: 60
+                ),
+            ]
+        )
+
+        #expect(snapshot.bounds == CGRect(x: 12, y: 0, width: 80, height: 32))
+    }
+
+    @Test
     func emptySnapshotDoesNotReportDockRegionOrHits() {
         let snapshot = DockHoverSnapshot(candidates: [])
 

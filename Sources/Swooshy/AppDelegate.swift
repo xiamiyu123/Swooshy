@@ -55,6 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsWindowController = SettingsWindowController(
             settingsStore: settingsStore,
             hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore,
+            showGestureTriggerRegions: { [weak dockGestureController] settingsWindowFrame in
+                dockGestureController?.showGestureTriggerRegions(settingsWindowFrame: settingsWindowFrame)
+            },
             onPointerInsideChanged: { [weak dockGestureController] isInside in
                 dockGestureController?.setSettingsWindowHoverSuppressed(isInside)
             }

@@ -16,19 +16,25 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(
         settingsStore: SettingsStore,
         hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore = HotKeyRegistrationStatusStore(),
+        showGestureTriggerRegions: @escaping (CGRect?) -> Void = { _ in },
         onPointerInsideChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         self.settingsStore = settingsStore
         self.hotKeyRegistrationStatusStore = hotKeyRegistrationStatusStore
         self.onPointerInsideChanged = onPointerInsideChanged
 
+        let windowReference = WeakWindowReference()
         let rootView = SettingsView(
             settingsStore: settingsStore,
             hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore,
+            showGestureTriggerRegions: {
+                showGestureTriggerRegions(windowReference.window?.frame)
+            },
             navigationState: navigationState
         )
         let hostingController = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: hostingController)
+        windowReference.window = window
 
         window.setContentSize(NSSize(width: 860, height: 640))
         window.minSize = NSSize(width: 760, height: 560)
@@ -162,9 +168,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 }
 
+private final class WeakWindowReference {
+    weak var window: NSWindow?
+}
+
 private struct SettingsView: View {
     @Bindable var settingsStore: SettingsStore
     @Bindable var hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore
+    let showGestureTriggerRegions: () -> Void
     @Bindable var navigationState: SettingsNavigationState
     @State private var launchAtLoginController = LaunchAtLoginController()
 
@@ -180,6 +191,7 @@ private struct SettingsView: View {
                 page: navigationState.selectedPage ?? .general,
                 settingsStore: settingsStore,
                 hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore,
+                showGestureTriggerRegions: showGestureTriggerRegions,
                 launchAtLoginController: $launchAtLoginController
             )
         }
@@ -297,6 +309,7 @@ private struct SettingsDetailPage: View {
     let page: SettingsPage
     @Bindable var settingsStore: SettingsStore
     @Bindable var hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore
+    let showGestureTriggerRegions: () -> Void
     @Binding var launchAtLoginController: LaunchAtLoginController
 
     var body: some View {
@@ -308,11 +321,20 @@ private struct SettingsDetailPage: View {
                     launchAtLoginController: $launchAtLoginController
                 )
             case .gestures:
-                GestureSettingsPage(settingsStore: settingsStore)
+                GestureSettingsPage(
+                    settingsStore: settingsStore,
+                    showGestureTriggerRegions: showGestureTriggerRegions
+                )
             case .dockGestures:
-                DockGestureMappingsPage(settingsStore: settingsStore)
+                DockGestureMappingsPage(
+                    settingsStore: settingsStore,
+                    showGestureTriggerRegions: showGestureTriggerRegions
+                )
             case .titleBarGestures:
-                TitleBarGestureMappingsPage(settingsStore: settingsStore)
+                TitleBarGestureMappingsPage(
+                    settingsStore: settingsStore,
+                    showGestureTriggerRegions: showGestureTriggerRegions
+                )
             case .shortcuts:
                 HotKeysSettingsPage(
                     settingsStore: settingsStore,
@@ -387,6 +409,7 @@ private struct GeneralSettingsPage: View {
 
 private struct GestureSettingsPage: View {
     @Bindable var settingsStore: SettingsStore
+    let showGestureTriggerRegions: () -> Void
 
     private var preferredLanguages: [String] {
         settingsStore.preferredLanguages
@@ -411,6 +434,11 @@ private struct GestureSettingsPage: View {
 
     var body: some View {
         SettingsPageContainer {
+            GestureTriggerRegionsSection(
+                settingsStore: settingsStore,
+                showGestureTriggerRegions: showGestureTriggerRegions
+            )
+
             GestureSettingsSection(
                 settingsStore: settingsStore,
                 gestureHUDStyleOptions: gestureHUDStyleOptions,
@@ -422,6 +450,7 @@ private struct GestureSettingsPage: View {
 
 private struct DockGestureMappingsPage: View {
     @Bindable var settingsStore: SettingsStore
+    let showGestureTriggerRegions: () -> Void
 
     private var preferredLanguages: [String] {
         settingsStore.preferredLanguages
@@ -449,6 +478,11 @@ private struct DockGestureMappingsPage: View {
 
     var body: some View {
         SettingsPageContainer {
+            GestureTriggerRegionsSection(
+                settingsStore: settingsStore,
+                showGestureTriggerRegions: showGestureTriggerRegions
+            )
+
             DockGestureMappingsSection(
                 settingsStore: settingsStore,
                 rows: rows
@@ -459,6 +493,7 @@ private struct DockGestureMappingsPage: View {
 
 private struct TitleBarGestureMappingsPage: View {
     @Bindable var settingsStore: SettingsStore
+    let showGestureTriggerRegions: () -> Void
 
     private var preferredLanguages: [String] {
         settingsStore.preferredLanguages
@@ -487,6 +522,11 @@ private struct TitleBarGestureMappingsPage: View {
 
     var body: some View {
         SettingsPageContainer {
+            GestureTriggerRegionsSection(
+                settingsStore: settingsStore,
+                showGestureTriggerRegions: showGestureTriggerRegions
+            )
+
             TitleBarGestureMappingsSection(
                 settingsStore: settingsStore,
                 rows: rows
@@ -701,6 +741,40 @@ private struct GestureSettingsSection: View {
             Text(settingsStore.localized("settings.gestures.footer"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct GestureTriggerRegionsSection: View {
+    @Bindable var settingsStore: SettingsStore
+    let showGestureTriggerRegions: () -> Void
+
+    private var isEnabled: Bool {
+        settingsStore.dockGesturesEnabled || settingsStore.titleBarGesturesEnabled
+    }
+
+    var body: some View {
+        SettingsCardSection(title: settingsStore.localized("settings.trigger_regions.title")) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(settingsStore.localized("settings.trigger_regions.description"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    showGestureTriggerRegions()
+                } label: {
+                    Label(
+                        settingsStore.localized("settings.trigger_regions.show"),
+                        systemImage: "rectangle.dashed.badge.record"
+                    )
+                }
+                .disabled(!isEnabled)
+
+                SettingsHintGroup {
+                    Text(settingsStore.localized("settings.trigger_regions.footer"))
+                }
+            }
         }
     }
 }
