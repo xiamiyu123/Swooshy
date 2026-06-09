@@ -770,10 +770,6 @@ private struct GestureTriggerRegionsSection: View {
                     )
                 }
                 .disabled(!isEnabled)
-
-                SettingsHintGroup {
-                    Text(settingsStore.localized("settings.trigger_regions.footer"))
-                }
             }
         }
     }
