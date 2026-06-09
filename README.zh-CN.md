@@ -11,8 +11,13 @@
 - 多语言支持
 - 自定义手势动作与快捷键
 
+## 演示
+
+<img src="docs/images/swooshy-demo.gif" width="600" alt="Swooshy 标题栏手势演示" style="border-radius: 8px;">
+
 ## 目录
 
+- [演示](#演示)
 - [操作方式](#操作方式)
 - [安装与运行](#安装与运行)
 - [权限与限制](#权限与限制)

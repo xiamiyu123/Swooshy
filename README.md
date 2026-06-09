@@ -11,8 +11,13 @@ Manage windows quickly with trackpad gestures and global shortcuts.
 - Support multilingual UI and documentation
 - Customize gesture mappings and hotkeys
 
+## Demo
+
+<img src="docs/images/swooshy-demo.gif" width="600" alt="Swooshy title-bar gesture demo" style="border-radius: 8px;">
+
 ## Table of Contents
 
+- [Demo](#demo)
 - [How It Works](#how-it-works)
 - [Install and Run](#install-and-run)
 - [Permissions and Limitations](#permissions-and-limitations)
