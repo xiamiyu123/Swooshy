@@ -18,6 +18,7 @@ final class DockGestureController {
     private let alertPresenter: AlertPresenting
     private let gestureFeedbackPresenter: GestureFeedbackPresenting
     private let settingsStore: SettingsStore
+    private let gestureTargetCaptureController: GestureTargetCaptureController
     private let registry: WindowRegistry
     private let dockProbe: DockTargetResolving
     private let titleBarProbe: TitleBarAccessibilityProbe
@@ -28,6 +29,7 @@ final class DockGestureController {
     private var dockCornerDragRecognizer = TitleBarCornerDragRecognizer()
     private var titleBarRecognizer = DockGestureRecognizer()
     private var titleBarCornerDragRecognizer = TitleBarCornerDragRecognizer()
+    private var gestureTargetCaptureRecognizer = GestureTargetCaptureRecognizer()
     private var hasShownPermissionHint = false
     private var settingsObserver: NSObjectProtocol?
     private var workspaceWakeObserver: NSObjectProtocol?
@@ -150,6 +152,7 @@ final class DockGestureController {
         alertPresenter: AlertPresenting,
         gestureFeedbackPresenter: GestureFeedbackPresenting,
         settingsStore: SettingsStore,
+        gestureTargetCaptureController: GestureTargetCaptureController = GestureTargetCaptureController(),
         monitor: MultitouchMonitoring = MultitouchInputMonitor(),
         multitouchDeviceObserver: MultitouchDeviceObserving = HIDMultitouchDeviceObserver()
     ) {
@@ -161,6 +164,7 @@ final class DockGestureController {
         self.alertPresenter = alertPresenter
         self.gestureFeedbackPresenter = gestureFeedbackPresenter
         self.settingsStore = settingsStore
+        self.gestureTargetCaptureController = gestureTargetCaptureController
         self.triggerRegionOverlayController = GestureTriggerRegionOverlayController()
         self.monitor = monitor
         self.multitouchDeviceRestartCoordinator = MultitouchDeviceRestartCoordinator(
@@ -176,6 +180,7 @@ final class DockGestureController {
 
         observeSettings()
         observeWorkspaceWake()
+        observeGestureTargetCapture()
         syncMonitoring()
         observeMultitouchDevices()
     }
@@ -193,6 +198,8 @@ final class DockGestureController {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceWakeObserver)
             self.workspaceWakeObserver = nil
         }
+        gestureTargetCaptureController.onStateChanged = nil
+        gestureTargetCaptureController.cancel()
         multitouchDeviceRestartCoordinator.stop()
 
         pendingTouchFrame = nil
@@ -203,6 +210,7 @@ final class DockGestureController {
         dockCornerDragRecognizer = makeConfiguredCornerDragRecognizer()
         titleBarRecognizer = makeConfiguredRecognizer()
         titleBarCornerDragRecognizer = makeConfiguredCornerDragRecognizer()
+        gestureTargetCaptureRecognizer.reset()
         titleBarSessionHoverSource = nil
         activeCornerDragApplication = nil
         activeCornerDragSource = nil
@@ -315,6 +323,36 @@ final class DockGestureController {
         )
     }
 
+    private func observeGestureTargetCapture() {
+        gestureTargetCaptureController.onStateChanged = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !self.isShuttingDown else { return }
+                self.handleGestureTargetCaptureStateChanged()
+            }
+        }
+    }
+
+    func startGestureTargetCapture() {
+        guard !isShuttingDown else { return }
+        resetGestureStateForNewTouchSequence()
+        gestureTargetCaptureRecognizer.reset()
+        gestureTargetCaptureController.start()
+    }
+
+    func cancelGestureTargetCapture() {
+        guard !isShuttingDown else { return }
+        gestureTargetCaptureRecognizer.reset()
+        gestureTargetCaptureController.cancel()
+    }
+
+    private func handleGestureTargetCaptureStateChanged() {
+        gestureTargetCaptureRecognizer.reset()
+        if gestureTargetCaptureController.isCapturing {
+            resetGestureStateForNewTouchSequence()
+        }
+        applyTrackpadMonitoringState()
+    }
+
     private func handleWorkspaceDidWake() {
         guard !isShuttingDown else {
             return
@@ -414,14 +452,18 @@ final class DockGestureController {
 
     private var monitoringRequestedBySettings: Bool {
         guard let monitoringState else {
-            return false
+            return gestureTargetCaptureController.isCapturing
         }
 
-        return monitoringState.dockGesturesEnabled || monitoringState.titleBarGesturesEnabled
+        return monitoringState.dockGesturesEnabled ||
+            monitoringState.titleBarGesturesEnabled ||
+            gestureTargetCaptureController.isCapturing
     }
 
     private var activeInteractionPreventsSettingsHoverPause: Bool {
-        hasActiveGestureState || smoothDockingSession != nil
+        hasActiveGestureState ||
+            smoothDockingSession != nil ||
+            gestureTargetCaptureController.isCapturing
     }
 
     private var shouldSuppressTrackpadMonitoringForSettingsHover: Bool {
@@ -501,13 +543,21 @@ final class DockGestureController {
         let titleBarGesturesEnabled = settingsStore.titleBarGesturesEnabled
         let dockCornerDragEnabled = dockGesturesEnabled && settingsStore.dockCornerDragSnapEnabled
         let titleBarCornerDragEnabled = titleBarGesturesEnabled && settingsStore.titleBarCornerDragSnapEnabled
-        guard dockGesturesEnabled || titleBarGesturesEnabled else { return }
+        let targetCaptureEnabled = gestureTargetCaptureController.isCapturing
+        guard dockGesturesEnabled || titleBarGesturesEnabled || targetCaptureEnabled else { return }
 
         let touchCount = frame.touches.count
         let previousTouchCount = lastTouchCount
         lastTouchCount = touchCount
 
         refreshRecognizerConfiguration()
+
+        if targetCaptureEnabled {
+            handleGestureTargetCapture(frame: frame)
+            return
+        }
+
+        guard dockGesturesEnabled || titleBarGesturesEnabled else { return }
 
         if case .restarted(let previousIdentifiers, let currentIdentifiers) = touchSequenceTracker.consume(frame) {
             if hasActiveGestureState {
@@ -702,6 +752,97 @@ final class DockGestureController {
         )
     }
 
+    private func handleGestureTargetCapture(frame: TrackpadTouchFrame) {
+        guard frame.touches.count == 2 else {
+            _ = gestureTargetCaptureRecognizer.process(frame: frame)
+            return
+        }
+
+        guard let gesture = gestureTargetCaptureRecognizer.process(frame: frame) else {
+            return
+        }
+
+        let mouseLocation = NSEvent.mouseLocation
+        if let appIdentity = capturedAppIdentity(at: mouseLocation) {
+            showGestureTargetCaptureHUD(
+                gesture: gesture,
+                applicationName: appIdentity.localizedName,
+                anchorPoint: mouseLocation
+            )
+            gestureTargetCaptureController.complete(with: GestureExcludedApplication(appIdentity))
+            DebugLog.info(
+                DebugLog.dock,
+                "Captured gesture exclusion target \(appIdentity.logDescription) at \(NSStringFromPoint(mouseLocation))"
+            )
+        } else {
+            gestureTargetCaptureController.miss()
+            DebugLog.info(
+                DebugLog.dock,
+                "Gesture exclusion target capture missed at \(NSStringFromPoint(mouseLocation))"
+            )
+        }
+
+        gestureTargetCaptureRecognizer.reset()
+        // The capture success HUD uses the same presenter, so a full gesture reset here would hide it immediately.
+    }
+
+    private func capturedAppIdentity(at appKitPoint: CGPoint) -> AppIdentity? {
+        if let dockTarget = dockProbe.hoveredTarget(at: appKitPoint, requireFrontmostOwnership: false) {
+            return dockTarget.appIdentity
+        }
+
+        if let hitAppIdentity = appIdentityAtHitPoint(appKitPoint) {
+            return hitAppIdentity
+        }
+
+        if let titleBarTarget = titleBarProbe.hoveredTarget(
+            at: appKitPoint,
+            requireFrontmostOwnership: false,
+            titleBarHeight: CGFloat(settingsStore.titleBarTriggerHeight),
+            allowFullScreen: true,
+            allowBrowserTabFallback: false
+        ) {
+            return titleBarTarget.application.appIdentity
+        }
+
+        return nil
+    }
+
+    private func appIdentityAtHitPoint(_ appKitPoint: CGPoint) -> AppIdentity? {
+        guard let processIdentifier = AXAttributeReader.processIdentifier(at: appKitPoint) else {
+            return nil
+        }
+
+        if let appIdentity = registry.appIdentity(forProcessIdentifier: processIdentifier) {
+            return appIdentity
+        }
+
+        guard let application = NSRunningApplication(processIdentifier: processIdentifier) else {
+            return nil
+        }
+
+        return AppIdentity(application: application)
+    }
+
+    private func showGestureTargetCaptureHUD(
+        gesture: DockGestureKind,
+        applicationName: String,
+        anchorPoint: CGPoint
+    ) {
+        gestureFeedbackPresenter.show(
+            gesture: gesture,
+            gestureTitle: settingsStore.localized("gesture.capture.selected.title"),
+            actionTitle: String(
+                format: settingsStore.localized("gesture.capture.selected.application_format"),
+                applicationName
+            ),
+            anchor: anchorPoint,
+            persistent: false,
+            preview: nil
+        )
+        gestureFeedbackPresenter.scheduleDismiss()
+    }
+
     private func handleCornerDragEvent(
         _ event: TitleBarCornerDragEvent?,
         frame: TrackpadTouchFrame,
@@ -711,6 +852,16 @@ final class DockGestureController {
     ) -> Bool {
         switch event {
         case .began(let application, let startAveragePoint, let currentAveragePoint):
+            let surface: GestureExclusionSurface = source == .dock ? .dock : .titleBar
+            guard !settingsStore.isCornerDragExcluded(on: surface, for: application) else {
+                resetCornerDragRecognizer(for: source)
+                DebugLog.debug(
+                    DebugLog.dock,
+                    "Ignoring excluded \(source.logLabel) corner drag for \(application.logDescription)"
+                )
+                return false
+            }
+
             guard !standardGestureWouldTrigger(
                 beforeCornerDragFrom: source,
                 frame: frame,
@@ -746,7 +897,16 @@ final class DockGestureController {
             )
             DebugLog.info(DebugLog.dock, "Entered \(source.logLabel) corner drag mode for \(application.logDescription)")
             return true
-        case .changed(_, _, let currentAveragePoint):
+        case .changed(let application, _, let currentAveragePoint):
+            let surface: GestureExclusionSurface = source == .dock ? .dock : .titleBar
+            guard !settingsStore.isCornerDragExcluded(on: surface, for: application) else {
+                resetCornerDragSession(dismissFeedback: true)
+                DebugLog.debug(
+                    DebugLog.dock,
+                    "Cancelled excluded \(source.logLabel) corner drag for \(application.logDescription)"
+                )
+                return true
+            }
             updateCornerDragFeedback(currentTouchPoint: currentAveragePoint)
             return true
         case .ended:
@@ -767,6 +927,14 @@ final class DockGestureController {
             DebugLog.debug(DebugLog.dock, "Ignoring disabled Dock gesture \(event.gesture.rawValue)")
             return
         }
+        guard !settingsStore.isGestureExcluded(event.gesture, on: .dock, for: event.application) else {
+            clearPinchConfirmation()
+            DebugLog.debug(
+                DebugLog.dock,
+                "Ignoring excluded Dock gesture \(event.gesture.rawValue) for \(event.application.logDescription)"
+            )
+            return
+        }
         let action = settingsStore.dockGestureAction(for: event.gesture)
         let application = event.application
 
@@ -783,7 +951,7 @@ final class DockGestureController {
         ) {
             clearPinchConfirmation()
             DebugLog.info(DebugLog.dock, "Pinch confirmation accepted for dock action \(action.rawValue)")
-            scheduleDockGestureAction(action, for: application)
+            scheduleDockGestureAction(action, for: application, gesture: event.gesture)
             return
         }
 
@@ -819,15 +987,23 @@ final class DockGestureController {
             installEscMonitor()
             DebugLog.info(DebugLog.dock, "Deferred dock action \(action.rawValue) until finger release")
         } else {
-            scheduleDockGestureAction(action, for: application)
+            scheduleDockGestureAction(action, for: application, gesture: event.gesture)
         }
     }
 
-    private func scheduleDockGestureAction(_ action: DockGestureAction, for application: InteractionTarget) {
+    private func scheduleDockGestureAction(
+        _ action: DockGestureAction,
+        for application: InteractionTarget,
+        gesture: DockGestureKind
+    ) {
         Task { @MainActor [weak self] in
             guard let self, !self.isShuttingDown else { return }
 
             await Task.yield()
+            guard !self.settingsStore.isGestureExcluded(gesture, on: .dock, for: application) else {
+                DebugLog.info(DebugLog.dock, "Ignoring deferred excluded Dock gesture \(gesture.rawValue)")
+                return
+            }
             guard self.settingsStore.isDockGestureActionAvailable(action) else {
                 DebugLog.info(DebugLog.dock, "Ignoring unavailable Dock gesture action \(action.rawValue)")
                 return
@@ -932,6 +1108,15 @@ final class DockGestureController {
 
         guard settingsStore.titleBarGestureIsEnabled(for: event.gesture) else {
             DebugLog.debug(DebugLog.dock, "Ignoring disabled title-bar gesture \(event.gesture.rawValue)")
+            return
+        }
+
+        guard !settingsStore.isGestureExcluded(event.gesture, on: .titleBar, for: event.application) else {
+            clearPinchConfirmation()
+            DebugLog.debug(
+                DebugLog.dock,
+                "Ignoring excluded title-bar gesture \(event.gesture.rawValue) for \(event.application.logDescription)"
+            )
             return
         }
 
@@ -1072,6 +1257,11 @@ final class DockGestureController {
         anchorPoint: CGPoint,
         replacesWithTabClose: Bool = false
     ) {
+        guard !settingsStore.isGestureExcluded(event.gesture, on: .titleBar, for: event.application) else {
+            DebugLog.info(DebugLog.dock, "Ignoring excluded title-bar gesture \(event.gesture.rawValue)")
+            return
+        }
+
         guard settingsStore.isWindowActionAvailable(action) else {
             DebugLog.info(DebugLog.dock, "Ignoring unavailable title-bar gesture action \(String(describing: action))")
             return
@@ -1563,6 +1753,7 @@ final class DockGestureController {
     // need this release-time commit path.
     private func executePendingReleaseAction() {
         guard let action = pendingReleaseAction else { return }
+        let releasedGesture = pendingReleaseGestureKind
         pendingReleaseAction = nil
         clearTouchAnchor()
         removeEscMonitor()
@@ -1570,14 +1761,26 @@ final class DockGestureController {
 
         switch action {
         case .dock(let dockAction, let application):
+            guard let releasedGesture else {
+                DebugLog.info(DebugLog.dock, "Ignoring deferred Dock action without a recorded gesture")
+                break
+            }
+            guard !settingsStore.isGestureExcluded(releasedGesture, on: .dock, for: application) else {
+                DebugLog.info(DebugLog.dock, "Ignoring deferred excluded Dock gesture \(releasedGesture.rawValue)")
+                break
+            }
             guard settingsStore.isDockGestureActionAvailable(dockAction) else {
                 DebugLog.info(DebugLog.dock, "Ignoring deferred unavailable Dock action \(dockAction.rawValue)")
                 break
             }
             endSmoothDockingSession(restore: false)
             DebugLog.info(DebugLog.dock, "Executing deferred dock action \(dockAction.rawValue) on finger release")
-            scheduleDockGestureAction(dockAction, for: application)
+            scheduleDockGestureAction(dockAction, for: application, gesture: releasedGesture)
         case .titleBar(let windowAction, let event, let anchorPoint, let replacesWithTabClose):
+            guard !settingsStore.isGestureExcluded(event.gesture, on: .titleBar, for: event.application) else {
+                DebugLog.info(DebugLog.dock, "Ignoring deferred excluded title-bar gesture \(event.gesture.rawValue)")
+                break
+            }
             guard settingsStore.isWindowActionAvailable(windowAction) else {
                 DebugLog.info(DebugLog.dock, "Ignoring deferred unavailable title-bar action \(String(describing: windowAction))")
                 break
@@ -1591,13 +1794,19 @@ final class DockGestureController {
                     replacesWithTabClose: replacesWithTabClose
                 )
             }
-        case .cornerDrag(let windowAction, let application, let anchorPoint, _):
+        case .cornerDrag(let windowAction, let application, let anchorPoint, let source):
+            let surface: GestureExclusionSurface = source == .dock ? .dock : .titleBar
+            guard !settingsStore.isCornerDragExcluded(on: surface, for: application) else {
+                DebugLog.info(DebugLog.dock, "Ignoring deferred excluded \(source.logLabel) corner drag")
+                break
+            }
             DebugLog.info(DebugLog.dock, "Executing deferred corner drag action \(String(describing: windowAction)) on finger release")
             if !commitSmoothDockingSessionIfNeeded(for: windowAction) {
                 executeCornerDragAction(
                     windowAction,
                     application: application,
-                    anchorPoint: anchorPoint
+                    anchorPoint: anchorPoint,
+                    source: source
                 )
             }
         }
@@ -1608,8 +1817,15 @@ final class DockGestureController {
     private func executeCornerDragAction(
         _ action: WindowAction,
         application: InteractionTarget,
-        anchorPoint: CGPoint
+        anchorPoint: CGPoint,
+        source: CornerDragSource
     ) {
+        let surface: GestureExclusionSurface = source == .dock ? .dock : .titleBar
+        guard !settingsStore.isCornerDragExcluded(on: surface, for: application) else {
+            DebugLog.info(DebugLog.dock, "Ignoring excluded \(source.logLabel) corner drag action")
+            return
+        }
+
         runWindowAction(failureMessage: "Corner drag action failed") {
             try windowManager.perform(
                 action,

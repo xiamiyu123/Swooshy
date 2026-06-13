@@ -193,6 +193,73 @@ struct DockSwipeGestureRecognizerTests {
     }
 
     @Test
+    func targetCaptureRecognizerDetectsPinchInWithoutHoveredApplication() {
+        var recognizer = GestureTargetCaptureRecognizer()
+
+        #expect(
+            recognizer.process(
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.25, y: 0.5),
+                    CGPoint(x: 0.75, y: 0.5),
+                    timestamp: 0
+                )
+            ) == nil
+        )
+
+        #expect(
+            recognizer.process(
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.42, y: 0.5),
+                    CGPoint(x: 0.58, y: 0.5),
+                    timestamp: 0.1
+                )
+            ) == .pinchIn
+        )
+        #expect(
+            recognizer.process(
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.44, y: 0.5),
+                    CGPoint(x: 0.56, y: 0.5),
+                    timestamp: 0.2
+                )
+            ) == nil
+        )
+    }
+
+    @Test
+    func targetCaptureRecognizerDetectsPinchOutAfterReset() {
+        var recognizer = GestureTargetCaptureRecognizer()
+
+        _ = recognizer.process(
+            frame: twoFingerFrame(
+                CGPoint(x: 0.45, y: 0.5),
+                CGPoint(x: 0.55, y: 0.5),
+                timestamp: 0
+            )
+        )
+        _ = recognizer.process(frame: noTouchFrame(timestamp: 0.1))
+
+        #expect(
+            recognizer.process(
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.45, y: 0.5),
+                    CGPoint(x: 0.55, y: 0.5),
+                    timestamp: 0.2
+                )
+            ) == nil
+        )
+        #expect(
+            recognizer.process(
+                frame: twoFingerFrame(
+                    CGPoint(x: 0.25, y: 0.5),
+                    CGPoint(x: 0.75, y: 0.5),
+                    timestamp: 0.3
+                )
+            ) == .pinchOut
+        )
+    }
+
+    @Test
     func leftwardTwoFingerSwipeCyclesHoveredApplicationForward() {
         var recognizer = DockGestureRecognizer()
         let finder = target(

@@ -371,6 +371,15 @@ final class SettingsStore {
         }
     }
 
+    var gestureExclusionRules: [GestureExclusionRule] {
+        didSet {
+            guard oldValue != gestureExclusionRules else { return }
+            persistGestureExclusionRules()
+            DebugLog.debug(DebugLog.settings, "Persisted \(gestureExclusionRules.count) gesture exclusion rules")
+            notifyDidChange(.gestureMonitoring)
+        }
+    }
+
     var preferredLanguages: [String] {
         languageOverride.preferredLanguages ?? Locale.preferredLanguages
     }
@@ -513,6 +522,7 @@ final class SettingsStore {
             in: userDefaults
         )
         self.hotKeyBindings = Self.decodeHotKeyBindings(from: userDefaults) ?? HotKeyBindings.defaults
+        self.gestureExclusionRules = Self.decodeGestureExclusionRules(from: userDefaults) ?? []
         let decodedDockGestureBindings = Self.decodeDockGestureBindings(from: userDefaults) ?? DockGestureBindings.defaults
         let decodedTitleBarGestureBindings = Self.decodeTitleBarGestureBindings(from: userDefaults) ?? TitleBarGestureBindings.defaults
 
@@ -567,6 +577,7 @@ final class SettingsStore {
             Keys.collapseStatusItemWindowActions,
             Keys.debugLoggingEnabled,
             Keys.hotKeyBindings,
+            Keys.gestureExclusionRules,
             Keys.dockGestureBindings,
             Keys.titleBarGestureBindings,
             Keys.hasSeenWelcomeGuide,
@@ -744,6 +755,63 @@ final class SettingsStore {
 
     func resetTitleBarGestureActionsToDefaults() {
         titleBarGestureBindings = TitleBarGestureBindings.defaults
+    }
+
+    func gestureExclusionRule(matching appIdentity: AppIdentity) -> GestureExclusionRule? {
+        gestureExclusionRules.first { $0.matches(appIdentity) }
+    }
+
+    func updateGestureExclusionRule(_ rule: GestureExclusionRule) {
+        var rules = gestureExclusionRules
+
+        if let index = rules.firstIndex(where: { $0.application.matches(rule.application) }) {
+            rules[index] = rule
+        } else {
+            rules.append(rule)
+        }
+
+        gestureExclusionRules = rules.sorted(by: Self.gestureExclusionRuleSort)
+    }
+
+    func removeGestureExclusionRule(id: String) {
+        let rules = gestureExclusionRules.filter { $0.id != id }
+        guard rules != gestureExclusionRules else { return }
+        gestureExclusionRules = rules
+    }
+
+    func removeGestureExclusionRule(for application: GestureExcludedApplication) {
+        let rules = gestureExclusionRules.filter { !$0.application.matches(application) }
+        guard rules != gestureExclusionRules else { return }
+        gestureExclusionRules = rules
+    }
+
+    func isGestureExcluded(
+        _ gesture: DockGestureKind,
+        on surface: GestureExclusionSurface,
+        for target: InteractionTarget?
+    ) -> Bool {
+        guard
+            let appIdentity = target?.appIdentity,
+            let rule = gestureExclusionRule(matching: appIdentity)
+        else {
+            return false
+        }
+
+        return rule.disablesStandardGesture(gesture, on: surface)
+    }
+
+    func isCornerDragExcluded(
+        on surface: GestureExclusionSurface,
+        for target: InteractionTarget?
+    ) -> Bool {
+        guard
+            let appIdentity = target?.appIdentity,
+            let rule = gestureExclusionRule(matching: appIdentity)
+        else {
+            return false
+        }
+
+        return rule.disablesCornerDrag(on: surface)
     }
 
     func consumeWelcomeGuidePresentationFlag() -> Bool {
@@ -1003,6 +1071,14 @@ final class SettingsStore {
         )
     }
 
+    private func persistGestureExclusionRules() {
+        persistEncoded(
+            gestureExclusionRules,
+            key: Keys.gestureExclusionRules,
+            description: "gesture exclusion rules"
+        )
+    }
+
     private func persistEncoded<Value: Encodable>(
         _ value: Value,
         key: String,
@@ -1041,6 +1117,27 @@ final class SettingsStore {
             in: userDefaults,
             failureDescription: "title-bar gesture bindings"
         )
+    }
+
+    private static func decodeGestureExclusionRules(from userDefaults: UserDefaults) -> [GestureExclusionRule]? {
+        decodePersistedBindings(
+            [GestureExclusionRule].self,
+            forKey: Keys.gestureExclusionRules,
+            in: userDefaults,
+            failureDescription: "gesture exclusion rules"
+        )?.sorted(by: gestureExclusionRuleSort)
+    }
+
+    private static func gestureExclusionRuleSort(
+        _ lhs: GestureExclusionRule,
+        _ rhs: GestureExclusionRule
+    ) -> Bool {
+        let lhsName = lhs.application.displayName.localizedCaseInsensitiveCompare(rhs.application.displayName)
+        if lhsName != .orderedSame {
+            return lhsName == .orderedAscending
+        }
+
+        return lhs.id < rhs.id
     }
 
     private static func decodePersistedBindings<Value: Decodable>(
@@ -1090,6 +1187,7 @@ final class SettingsStore {
         static let hasSeenWelcomeGuide = "settings.hasSeenWelcomeGuide"
         static let debugLoggingEnabled = AppUserDefaultsKeys.debugLoggingEnabled
         static let hotKeyBindings = "settings.hotKeyBindings"
+        static let gestureExclusionRules = "settings.gestureExclusionRules"
         static let dockGestureBindings = "settings.dockGestureBindings"
         static let titleBarGestureBindings = "settings.titleBarGestureBindings"
     }

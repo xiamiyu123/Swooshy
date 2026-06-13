@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             layoutEngine: layoutEngine
         )
         let alertPresenter = AppAlertPresenter()
+        let gestureTargetCaptureController = GestureTargetCaptureController()
         let gestureFeedbackPresenter = GestureFeedbackController(settingsStore: settingsStore)
         let dockGestureController = DockGestureController(
             windowManager: windowManager,
@@ -50,14 +51,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             layoutEngine: layoutEngine,
             alertPresenter: alertPresenter,
             gestureFeedbackPresenter: gestureFeedbackPresenter,
-            settingsStore: settingsStore
+            settingsStore: settingsStore,
+            gestureTargetCaptureController: gestureTargetCaptureController
         )
         let settingsWindowController = SettingsWindowController(
             settingsStore: settingsStore,
             hotKeyRegistrationStatusStore: hotKeyRegistrationStatusStore,
+            gestureTargetCaptureController: gestureTargetCaptureController,
             previewUpdateAvailable: launchOptions.previewUpdateAvailable,
             showGestureTriggerRegions: { [weak dockGestureController] settingsWindowFrame in
                 dockGestureController?.showGestureTriggerRegions(settingsWindowFrame: settingsWindowFrame)
+            },
+            startGestureTargetCapture: { [weak dockGestureController] in
+                dockGestureController?.startGestureTargetCapture()
+            },
+            cancelGestureTargetCapture: { [weak dockGestureController] in
+                dockGestureController?.cancelGestureTargetCapture()
             },
             onPointerInsideChanged: { [weak dockGestureController] isInside in
                 dockGestureController?.setSettingsWindowHoverSuppressed(isInside)

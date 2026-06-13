@@ -73,6 +73,89 @@ struct SettingsStoreTests {
     }
 
     @Test
+    func persistsGestureExclusionRules() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+        let app = makeAppIdentity(name: "Canvas", bundleIdentifier: "com.example.Canvas")
+        let target = InteractionTarget.application(app, source: .dockAppItem(DockItemHandle()))
+
+        store.updateGestureExclusionRule(
+            GestureExclusionRule(
+                application: GestureExcludedApplication(app),
+                mode: .all
+            )
+        )
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+
+        #expect(reloadedStore.gestureExclusionRules.count == 1)
+        #expect(reloadedStore.isGestureExcluded(.pinchIn, on: .dock, for: target))
+        #expect(reloadedStore.isGestureExcluded(.swipeUp, on: .titleBar, for: target))
+        #expect(reloadedStore.isCornerDragExcluded(on: .dock, for: target))
+    }
+
+    @Test
+    func selectedGestureExclusionOnlyDisablesMatchingGestures() {
+        let store = makeSettingsStore()
+        let app = makeAppIdentity(name: "Sketch", bundleIdentifier: "com.example.Sketch")
+        let target = InteractionTarget.window(
+            WindowIdentity(),
+            app: app,
+            source: .titleBar
+        )
+
+        store.updateGestureExclusionRule(
+            GestureExclusionRule(
+                application: GestureExcludedApplication(app),
+                mode: .selected([
+                    .standard(.pinchIn, on: .dock),
+                    .cornerDrag(on: .titleBar),
+                ])
+            )
+        )
+
+        #expect(store.isGestureExcluded(.pinchIn, on: .dock, for: target))
+        #expect(!store.isGestureExcluded(.pinchIn, on: .titleBar, for: target))
+        #expect(!store.isGestureExcluded(.swipeUp, on: .dock, for: target))
+        #expect(store.isCornerDragExcluded(on: .titleBar, for: target))
+        #expect(!store.isCornerDragExcluded(on: .dock, for: target))
+    }
+
+    @Test
+    func updatingGestureExclusionRuleReplacesSameApplication() {
+        let store = makeSettingsStore()
+        let firstApp = makeAppIdentity(
+            name: "Editor",
+            bundleIdentifier: "com.example.Editor",
+            path: "/Applications/Editor.app"
+        )
+        let movedApp = makeAppIdentity(
+            name: "Editor Preview",
+            bundleIdentifier: "com.example.Editor",
+            path: "/Users/example/Applications/Editor Preview.app"
+        )
+        let target = InteractionTarget.application(movedApp, source: .dockAppItem(DockItemHandle()))
+
+        store.updateGestureExclusionRule(
+            GestureExclusionRule(
+                application: GestureExcludedApplication(firstApp),
+                mode: .all
+            )
+        )
+        store.updateGestureExclusionRule(
+            GestureExclusionRule(
+                application: GestureExcludedApplication(movedApp),
+                mode: .selected([.standard(.swipeLeft, on: .dock)])
+            )
+        )
+
+        #expect(store.gestureExclusionRules.count == 1)
+        #expect(store.gestureExclusionRules.first?.application.displayName == "Editor Preview")
+        #expect(store.isGestureExcluded(.swipeLeft, on: .dock, for: target))
+        #expect(!store.isGestureExcluded(.swipeRight, on: .dock, for: target))
+    }
+
+    @Test
     func persistsCustomHotKeyBinding() {
         let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
@@ -169,6 +252,12 @@ struct SettingsStoreTests {
         store.debugLoggingEnabled = true
         _ = store.consumeWelcomeGuidePresentationFlag()
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
+        store.updateGestureExclusionRule(
+            GestureExclusionRule(
+                application: GestureExcludedApplication(makeAppIdentity(name: "Canvas")),
+                mode: .all
+            )
+        )
 
         SettingsStore.resetPersistedConfiguration(in: defaults)
         let reloadedStore = SettingsStore(userDefaults: defaults)
@@ -189,6 +278,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.statusItemIcon == .gale)
         #expect(!reloadedStore.debugLoggingEnabled)
         #expect(!reloadedStore.hasSeenWelcomeGuide)
+        #expect(reloadedStore.gestureExclusionRules.isEmpty)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .quitApplication)
     }
 
@@ -674,6 +764,19 @@ struct SettingsStoreTests {
 
     private func makeSettingsStore() -> SettingsStore {
         SettingsStore(userDefaults: makeUserDefaults())
+    }
+
+    private func makeAppIdentity(
+        name: String,
+        bundleIdentifier: String? = nil,
+        path: String? = nil
+    ) -> AppIdentity {
+        AppIdentity(
+            bundleURL: URL(fileURLWithPath: path ?? "/Applications/\(name).app"),
+            bundleIdentifier: bundleIdentifier,
+            processIdentifier: 100,
+            localizedName: name
+        )!
     }
 
     private func recordSettingsChanges(
