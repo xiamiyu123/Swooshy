@@ -134,22 +134,6 @@ final class SettingsStore {
         }
     }
 
-    var pinchCloseConfirmationEnabled: Bool {
-        didSet {
-            if pinchCloseConfirmationEnabled, !experimentalBrowserTabCloseEnabled {
-                pinchCloseConfirmationEnabled = false
-                return
-            }
-            guard oldValue != pinchCloseConfirmationEnabled else { return }
-            userDefaults.set(pinchCloseConfirmationEnabled, forKey: Keys.pinchCloseConfirmationEnabled)
-            DebugLog.info(
-                DebugLog.settings,
-                "Pinch close confirmation enabled set to \(pinchCloseConfirmationEnabled)"
-            )
-            notifyDidChange(.advancedGestureBehavior)
-        }
-    }
-
     /// Global on/off switch for the per-gesture danger confirmation feature.
     /// When off, the runtime never prompts and the Settings UI hides the shield
     /// controls, but the per-gesture selections below are preserved so toggling
@@ -184,17 +168,10 @@ final class SettingsStore {
     var experimentalBrowserTabCloseEnabled: Bool {
         didSet {
             guard oldValue != experimentalBrowserTabCloseEnabled else { return }
-            let storedPinchCloseConfirmation = userDefaults.object(forKey: Keys.pinchCloseConfirmationEnabled) as? Bool
             userDefaults.set(experimentalBrowserTabCloseEnabled, forKey: Keys.experimentalBrowserTabCloseEnabled)
             if !experimentalBrowserTabCloseEnabled {
                 smartBrowserTabCloseEnabled = false
-                pinchCloseConfirmationEnabled = false
-                if storedPinchCloseConfirmation != false {
-                    userDefaults.removeObject(forKey: Keys.pinchCloseConfirmationEnabled)
-                }
                 removeBrowserTabCloseGestureActions()
-            } else if userDefaults.object(forKey: Keys.pinchCloseConfirmationEnabled) == nil {
-                pinchCloseConfirmationEnabled = true
             }
             DebugLog.info(
                 DebugLog.settings,
@@ -448,14 +425,8 @@ final class SettingsStore {
             defaultValue: false,
             in: userDefaults
         )
-        let pinchCloseConfirmationEnabled = Self.boolValue(
-            forKey: Keys.pinchCloseConfirmationEnabled,
-            defaultValue: false,
-            in: userDefaults
-        )
         self.smartBrowserTabCloseEnabled = experimentalBrowserTabCloseEnabled ? smartBrowserTabCloseEnabled : false
         self.experimentalBrowserTabCloseEnabled = experimentalBrowserTabCloseEnabled
-        self.pinchCloseConfirmationEnabled = experimentalBrowserTabCloseEnabled ? pinchCloseConfirmationEnabled : false
         self.experimentalDisplayMoveActionsEnabled = Self.boolValue(
             forKey: Keys.experimentalDisplayMoveActionsEnabled,
             defaultValue: false,
@@ -568,6 +539,7 @@ final class SettingsStore {
         }
 
         migrateLegacyDangerGestureConfirmationIfNeeded(in: userDefaults)
+        migrateLegacyPinchCloseConfirmationIfNeeded(in: userDefaults)
 
         // The first-enable seed only applies to genuinely new opt-ins. Installs
         // that already have the feature on (existing selections or a legacy
@@ -580,9 +552,6 @@ final class SettingsStore {
         if !experimentalBrowserTabCloseEnabled {
             if smartBrowserTabCloseEnabled {
                 userDefaults.set(false, forKey: Keys.smartBrowserTabCloseEnabled)
-            }
-            if pinchCloseConfirmationEnabled {
-                userDefaults.removeObject(forKey: Keys.pinchCloseConfirmationEnabled)
             }
         }
     }
@@ -1026,7 +995,6 @@ final class SettingsStore {
         titleBarTriggerHeight = Self.defaultTitleBarTriggerHeight
         titleBarCornerDragHoldDuration = Self.defaultTitleBarCornerDragHoldDuration
         smartBrowserTabCloseEnabled = false
-        pinchCloseConfirmationEnabled = false
         experimentalBrowserTabCloseEnabled = false
         experimentalDisplayMoveActionsEnabled = false
     }
@@ -1119,7 +1087,50 @@ final class SettingsStore {
             return
         }
 
-        dangerGestureConfirmationSelections = closeAndQuitDangerGestureConfirmationSelections()
+        let migratedSelections = closeAndQuitDangerGestureConfirmationSelections()
+        guard !migratedSelections.isEmpty else {
+            return
+        }
+
+        dangerGestureConfirmationSelections = migratedSelections
+        if !dangerGestureConfirmationEnabled {
+            dangerGestureConfirmationEnabled = true
+        }
+    }
+
+    private func migrateLegacyPinchCloseConfirmationIfNeeded(in userDefaults: UserDefaults) {
+        guard let legacyValue = userDefaults.object(forKey: Keys.pinchCloseConfirmationEnabled) as? Bool else {
+            return
+        }
+        defer { userDefaults.removeObject(forKey: Keys.pinchCloseConfirmationEnabled) }
+
+        guard userDefaults.data(forKey: Keys.dangerGestureConfirmationSelections) == nil else {
+            return
+        }
+
+        guard legacyValue else {
+            return
+        }
+
+        let migratedSelections = titleBarGestureBindings.reduce(
+            into: Set<DangerGestureConfirmationSelection>()
+        ) { selections, binding in
+            guard binding.gesture.isPinch, binding.action == .closeWindow else {
+                return
+            }
+            selections.insert(
+                DangerGestureConfirmationSelection(surface: .titleBar, gesture: binding.gesture)
+            )
+        }
+        guard !migratedSelections.isEmpty else {
+            return
+        }
+
+        userDefaults.set(true, forKey: Keys.dangerGestureConfirmationDidSeedDefaults)
+        dangerGestureConfirmationSelections.formUnion(migratedSelections)
+        if !dangerGestureConfirmationEnabled {
+            dangerGestureConfirmationEnabled = true
+        }
     }
 
     /// Every gesture currently mapped to Close Window or Quit Application, on
@@ -1304,6 +1315,7 @@ final class SettingsStore {
         static let titleBarOverlayProtectionEnabled = "settings.titleBarOverlayProtectionEnabled"
         static let smartPinchExitFullScreenEnabled = "settings.smartPinchExitFullScreenEnabled"
         static let smartBrowserTabCloseEnabled = "settings.smartBrowserTabCloseEnabled"
+        // Deprecated: migrated to per-title-bar-pinch danger confirmation selections.
         static let pinchCloseConfirmationEnabled = "settings.pinchCloseConfirmationEnabled"
         static let dangerGestureConfirmationEnabled = "settings.dangerGestureConfirmationEnabled"
         static let dangerGestureConfirmationDidSeedDefaults = "settings.dangerGestureConfirmationDidSeedDefaults"

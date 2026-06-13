@@ -5,34 +5,6 @@ import Testing
 @MainActor
 struct CloseGestureConfirmationPolicyTests {
     @Test
-    func legacyBrowserWindowCloseConfirmationOnlyAppliesToTitleBarWindowClose() {
-        let browserWindow = makeWindow(name: "Safari", bundleIdentifier: "com.apple.Safari")
-
-        #expect(
-            titleBarRequiresConfirmation(
-                action: .closeWindow,
-                application: browserWindow,
-                legacyBrowserWindowCloseConfirmationEnabled: true
-            )
-        )
-
-        #expect(
-            !titleBarRequiresConfirmation(
-                action: .quitApplication,
-                application: browserWindow,
-                legacyBrowserWindowCloseConfirmationEnabled: true
-            )
-        )
-
-        #expect(
-            !dockRequiresConfirmation(
-                action: .quitApplication,
-                requiresDangerConfirmation: false
-            )
-        )
-    }
-
-    @Test
     func dangerGestureConfirmationAppliesToSelectedDockAndTitleBarGestures() {
         let appWindow = makeWindow(name: "Calendar", bundleIdentifier: "com.apple.iCal")
 
@@ -96,21 +68,6 @@ struct CloseGestureConfirmationPolicyTests {
         )
     }
 
-    @Test
-    func legacyBrowserWindowCloseConfirmationSkipsNonPinchGestures() {
-        let appWindow = makeWindow(name: "Safari", bundleIdentifier: "com.apple.Safari")
-
-        #expect(
-            !titleBarRequiresConfirmation(
-                gesture: .swipeDown,
-                action: .closeWindow,
-                application: appWindow,
-                legacyBrowserWindowCloseConfirmationEnabled: true,
-                requiresDangerConfirmation: false
-            )
-        )
-    }
-
     private func dockRequiresConfirmation(
         gesture: DockGestureKind = .pinchIn,
         action: DockGestureAction,
@@ -127,7 +84,6 @@ struct CloseGestureConfirmationPolicyTests {
         gesture: DockGestureKind = .pinchIn,
         action: WindowAction,
         application: InteractionTarget,
-        legacyBrowserWindowCloseConfirmationEnabled: Bool = false,
         requiresDangerConfirmation: Bool = false,
         isReplacedBySmartFullScreenExit: Bool = false
     ) -> Bool {
@@ -135,7 +91,6 @@ struct CloseGestureConfirmationPolicyTests {
             gesture: gesture,
             action: action,
             application: application,
-            legacyBrowserWindowCloseConfirmationEnabled: legacyBrowserWindowCloseConfirmationEnabled,
             requiresDangerConfirmation: requiresDangerConfirmation,
             isReplacedBySmartFullScreenExit: isReplacedBySmartFullScreenExit
         )

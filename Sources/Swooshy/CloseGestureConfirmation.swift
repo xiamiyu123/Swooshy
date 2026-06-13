@@ -25,7 +25,6 @@ enum CloseGestureConfirmationPolicy {
         gesture: DockGestureKind,
         action: WindowAction,
         application: InteractionTarget,
-        legacyBrowserWindowCloseConfirmationEnabled: Bool,
         requiresDangerConfirmation: Bool,
         isReplacedBySmartFullScreenExit: Bool
     ) -> Bool {
@@ -33,24 +32,7 @@ enum CloseGestureConfirmationPolicy {
             return false
         }
 
-        if requiresDangerConfirmation {
-            return true
-        }
-
-        guard
-            gesture.isPinch,
-            legacyBrowserWindowCloseConfirmationEnabled,
-            action == .closeWindow,
-            let appIdentity = application.appIdentity,
-            BrowserTabProbe.supportsTabCloseHost(
-                bundleIdentifier: appIdentity.bundleIdentifier,
-                localizedName: appIdentity.localizedName
-            )
-        else {
-            return false
-        }
-
-        return true
+        return requiresDangerConfirmation
     }
 }
 

@@ -273,7 +273,7 @@ struct WelcomeGuideContent {
                 id: 10,
                 kind: .experimental,
                 key: "experimental",
-                bulletCount: 5
+                bulletCount: 4
             ),
         ]
     }
@@ -362,15 +362,6 @@ final class WelcomeGuideViewModel: ObservableObject {
             guard settingsStore.smartBrowserTabCloseEnabled != newValue else { return }
             objectWillChange.send()
             settingsStore.smartBrowserTabCloseEnabled = newValue
-        }
-    }
-
-    var pinchCloseConfirmationEnabled: Bool {
-        get { settingsStore.pinchCloseConfirmationEnabled }
-        set {
-            guard settingsStore.pinchCloseConfirmationEnabled != newValue else { return }
-            objectWillChange.send()
-            settingsStore.pinchCloseConfirmationEnabled = newValue
         }
     }
 
@@ -670,14 +661,7 @@ private struct WelcomeGuideView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
+        .glassCardBackground(cornerRadius: 14)
     }
 
     private func experimentalContent(page: WelcomeGuideContent.Page) -> some View {
@@ -707,12 +691,6 @@ private struct WelcomeGuideView: View {
                         isEnabled: viewModel.experimentalBrowserTabCloseEnabled
                     )
 
-                    experimentalToggleCard(
-                        title: viewModel.localized("settings.experimental.pinch_close_confirmation.enabled"),
-                        isOn: $viewModel.pinchCloseConfirmationEnabled,
-                        footer: viewModel.localized("settings.experimental.pinch_close_confirmation.footer"),
-                        isEnabled: viewModel.experimentalBrowserTabCloseEnabled
-                    )
                 }
 
                 Text(viewModel.localized("settings.experimental.opt_in_persistence.footer"))
@@ -748,14 +726,7 @@ private struct WelcomeGuideView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-        )
+        .glassCardBackground(cornerRadius: 12)
         .opacity(isEnabled ? 1 : 0.65)
         .disabled(!isEnabled)
     }
@@ -814,14 +785,7 @@ private struct WelcomeGuideView: View {
         }
         .padding(16)
         .frame(width: 228, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
+        .glassCardBackground(cornerRadius: 16)
         .padding(.trailing, 12)
         .padding(.bottom, 12)
     }
@@ -840,10 +804,7 @@ private struct WelcomeGuideView: View {
             .controlSize(.small)
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .glassCardBackground(cornerRadius: 14)
     }
 
     private var launchAtLoginSection: some View {
@@ -868,10 +829,7 @@ private struct WelcomeGuideView: View {
             }
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .glassCardBackground(cornerRadius: 14)
     }
 
     private var permissionTroubleshootingNotice: some View {
@@ -888,10 +846,7 @@ private struct WelcomeGuideView: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .glassCardBackground(cornerRadius: 14)
     }
 
     private var footer: some View {
@@ -976,14 +931,7 @@ private struct GuideImageCard: View {
             }
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
+        .glassCardBackground(cornerRadius: 16)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
@@ -1298,14 +1246,7 @@ private struct InteractionStyleCard: View {
                 }
             }
             .padding(18)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.06) : Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.1), lineWidth: isSelected ? 2 : 1)
-            )
+            .selectableCardBackground(isSelected: isSelected, cornerRadius: 16)
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)

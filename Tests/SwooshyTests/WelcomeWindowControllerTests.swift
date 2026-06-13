@@ -29,7 +29,6 @@ struct WelcomeWindowControllerTests {
         let titleBarHorizontalPage = englishContent.pages[5]
         let cornerSnapPage = englishContent.pages[6]
         let shortcutsPage = englishContent.pages[8]
-        let dangerConfirmationPage = englishContent.pages[9]
         let experimentalPage = englishContent.pages[10]
 
         #expect(englishContent.windowTitle == "Welcome")
@@ -44,8 +43,8 @@ struct WelcomeWindowControllerTests {
         #expect(cornerSnapPage.visual == .cornerSnapGesturePreview)
         #expect(shortcutsPage.bullets.count == 7)
         #expect(shortcutsPage.bullets[5].contains("Experimental display moves"))
-        #expect(experimentalPage.bullets.count == 5)
-        #expect(experimentalPage.bullets[4].contains("Display move actions"))
+        #expect(experimentalPage.bullets.count == 4)
+        #expect(experimentalPage.bullets[3].contains("Display move actions"))
     }
 
     @Test

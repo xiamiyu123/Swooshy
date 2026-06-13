@@ -50,6 +50,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.setContentSize(NSSize(width: 860, height: 640))
         window.minSize = NSSize(width: 760, height: 560)
         window.styleMask = [.titled, .closable, .miniaturizable]
+        window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
         window.center()
 
@@ -280,19 +281,40 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .general:
-            "gearshape"
+            "gearshape.fill"
         case .gestures:
-            "hand.draw"
+            "hand.draw.fill"
         case .dockGestures:
             "rectangle.bottomthird.inset.filled"
         case .titleBarGestures:
             "rectangle.topthird.inset.filled"
         case .shortcuts:
-            "command"
+            "command.square.fill"
         case .advanced:
-            "gearshape.2"
+            "slider.horizontal.3"
         case .about:
-            "info.circle"
+            "info.circle.fill"
+        }
+    }
+
+    /// Background tint for the sidebar icon tile (the system-settings style
+    /// rounded colored square). Distinct hues make rows easy to scan.
+    var iconTint: Color {
+        switch self {
+        case .general:
+            Color(nsColor: .systemGray)
+        case .gestures:
+            Color(nsColor: .systemIndigo)
+        case .dockGestures:
+            Color(nsColor: .systemBlue)
+        case .titleBarGestures:
+            Color(nsColor: .systemTeal)
+        case .shortcuts:
+            Color(nsColor: .systemPurple)
+        case .advanced:
+            Color(nsColor: .systemOrange)
+        case .about:
+            Color(nsColor: .systemPink)
         }
     }
 
@@ -302,7 +324,7 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 }
 
 private struct SettingsSidebar: View {
-    private static let width: CGFloat = 210
+    private static let width = SettingsDesign.Sidebar.width
 
     @Binding var selection: SettingsPage?
     @Bindable var settingsStore: SettingsStore
@@ -325,6 +347,27 @@ private struct SettingsSidebar: View {
     }
 }
 
+/// System-settings style rounded colored icon tile.
+private struct SidebarIconTile: View {
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: SettingsDesign.Radius.iconTile, style: .continuous)
+            .fill(tint.gradient)
+            .frame(
+                width: SettingsDesign.Sidebar.iconTileSize,
+                height: SettingsDesign.Sidebar.iconTileSize
+            )
+            .overlay(
+                Image(systemName: systemImage)
+                    .font(.system(size: SettingsDesign.Sidebar.iconGlyphSize, weight: .semibold))
+                    .foregroundStyle(.white)
+            )
+            .accessibilityHidden(true)
+    }
+}
+
 private struct SettingsSidebarRow: View {
     let page: SettingsPage
     let title: String
@@ -332,8 +375,13 @@ private struct SettingsSidebarRow: View {
     let warningTooltip: String
 
     var body: some View {
-        HStack(spacing: 8) {
-            Label(title, systemImage: page.systemImage)
+        HStack(alignment: .center, spacing: SettingsDesign.Spacing.inlineIcon) {
+            SidebarIconTile(systemImage: page.systemImage, tint: page.iconTint)
+
+            Text(title)
+                .font(.body)
+                .lineLimit(1)
+                .frame(maxHeight: .infinity, alignment: .center)
 
             Spacer(minLength: 4)
 
@@ -341,10 +389,13 @@ private struct SettingsSidebarRow: View {
                 Image(systemName: "exclamationmark.circle.fill")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color(nsColor: .systemRed))
+                    .frame(width: 14, height: SettingsDesign.Sidebar.rowHeight)
                     .help(warningTooltip)
                     .accessibilityLabel(warningTooltip)
             }
         }
+        .frame(height: SettingsDesign.Sidebar.rowHeight, alignment: .center)
+        .contentShape(Rectangle())
     }
 }
 
@@ -408,11 +459,13 @@ private struct SettingsPageContainer<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18) {
-                content
+            GlassGroup(spacing: SettingsDesign.Spacing.section) {
+                LazyVStack(alignment: .leading, spacing: SettingsDesign.Spacing.section) {
+                    content
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
+            .padding(SettingsDesign.Spacing.page)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -1416,14 +1469,7 @@ private struct SettingsCard<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.08), lineWidth: 1)
-        )
+        .glassCard(cornerRadius: SettingsDesign.Radius.card, padding: nil)
     }
 }
 
@@ -1432,9 +1478,10 @@ private struct SettingsSectionHeader: View {
 
     var body: some View {
         Text(title)
-            .font(.headline)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 8)
+            .font(SettingsDesign.Typography.sectionTitle)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+            .padding(.top, 6)
     }
 }
 
@@ -1583,14 +1630,7 @@ private struct AdvancedSettingsPage: View {
                     Text(settingsStore.localized("settings.experimental.smart_browser_tab_close.footer"))
                 }
 
-                Toggle(
-                    settingsStore.localized("settings.experimental.pinch_close_confirmation.enabled"),
-                    isOn: $settingsStore.pinchCloseConfirmationEnabled
-                )
-                .disabled(!settingsStore.experimentalBrowserTabCloseEnabled)
-
                 SettingsHintGroup {
-                    Text(settingsStore.localized("settings.experimental.pinch_close_confirmation.footer"))
                     Text(settingsStore.localized("settings.experimental.opt_in_persistence.footer"))
                 }
             }
@@ -1968,14 +2008,7 @@ private struct SettingsMappingCard<Rows: View>: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.08), lineWidth: 1)
-        )
+        .glassCard(cornerRadius: SettingsDesign.Radius.card, padding: nil)
     }
 }
 
@@ -2277,20 +2310,40 @@ private enum GestureMappingColumnLayout {
     static let columnSpacing: CGFloat = 12
 }
 
+private struct GestureMappingRowLayout<Leading: View, Action: View, Confirmation: View>: View {
+    let showsConfirmation: Bool
+    @ViewBuilder let leading: Leading
+    @ViewBuilder let action: Action
+    @ViewBuilder let confirmation: Confirmation
+
+    var body: some View {
+        HStack(spacing: GestureMappingColumnLayout.columnSpacing) {
+            leading
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            action
+                .frame(width: GestureMappingColumnLayout.actionWidth, alignment: .center)
+
+            if showsConfirmation {
+                confirmation
+                    .frame(width: GestureMappingColumnLayout.confirmationWidth, alignment: .center)
+            }
+        }
+    }
+}
+
 private struct GestureMappingColumnHeader: View {
     let actionTitle: String
     var confirmationTitle: String? = nil
 
     var body: some View {
-        HStack(spacing: GestureMappingColumnLayout.columnSpacing) {
-            Spacer(minLength: 0)
-
+        GestureMappingRowLayout(showsConfirmation: confirmationTitle != nil) {
+            Color.clear
+        } action: {
             Text(actionTitle)
-                .frame(width: GestureMappingColumnLayout.actionWidth, alignment: .leading)
-
+        } confirmation: {
             if let confirmationTitle {
                 Text(confirmationTitle)
-                    .frame(width: GestureMappingColumnLayout.confirmationWidth, alignment: .center)
             }
         }
         .font(.caption.weight(.semibold))
@@ -2308,11 +2361,10 @@ private struct GestureActionRow<Action: Hashable>: View {
     var confirmationHelp: String? = nil
 
     var body: some View {
-        HStack(spacing: 12) {
+        GestureMappingRowLayout(showsConfirmation: confirmationBinding != nil) {
             Toggle(row.title, isOn: toggleBinding)
                 .toggleStyle(.switch)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
+        } action: {
             Picker("", selection: actionBinding) {
                 ForEach(row.availableActions) { option in
                     Text(option.title)
@@ -2322,15 +2374,13 @@ private struct GestureActionRow<Action: Hashable>: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .frame(width: GestureMappingColumnLayout.actionWidth)
             .disabled(!isSectionEnabled || !row.isEnabled)
-
+        } confirmation: {
             if let confirmationBinding {
                 DangerGestureConfirmationButton(
                     isOn: confirmationBinding,
                     help: confirmationHelp ?? ""
                 )
-                .frame(width: GestureMappingColumnLayout.confirmationWidth)
                 .disabled(!isSectionEnabled || !row.isEnabled)
             }
         }
@@ -2417,9 +2467,10 @@ private struct SettingsSectionHeaderWithBadge: View {
     let warningTooltip: String
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(alignment: .center, spacing: 7) {
             Text(title)
-                .font(.headline)
+                .font(SettingsDesign.Typography.sectionTitle)
+                .lineLimit(1)
 
             if showsWarning {
                 Image(systemName: "exclamationmark.circle.fill")
@@ -2431,8 +2482,8 @@ private struct SettingsSectionHeaderWithBadge: View {
 
             Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
+        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+        .padding(.top, 6)
     }
 }
 
@@ -2792,14 +2843,7 @@ private struct CompactInteractionStyleCard: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.06) : Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.08), lineWidth: isSelected ? 2 : 1)
-            )
+            .selectableCardBackground(isSelected: isSelected, cornerRadius: 12)
         }
         .buttonStyle(.plain)
     }

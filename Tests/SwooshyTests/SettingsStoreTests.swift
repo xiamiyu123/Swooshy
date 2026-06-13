@@ -73,6 +73,7 @@ struct SettingsStoreTests {
 
         // Default bindings map Dock pinch in → quit and title-bar pinch in → close,
         // so migration should seed exactly those two and nothing else.
+        #expect(store.dangerGestureConfirmationEnabled)
         #expect(store.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
         #expect(store.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
         #expect(!store.requiresDangerGestureConfirmation(.swipeUp, on: .dock))
@@ -83,6 +84,7 @@ struct SettingsStoreTests {
         #expect(defaults.object(forKey: "settings.dangerGestureConfirmationGesture") == nil)
 
         let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.dangerGestureConfirmationEnabled)
         #expect(reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
         #expect(reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
     }
@@ -111,6 +113,63 @@ struct SettingsStoreTests {
         #expect(reloadedStore.requiresDangerGestureConfirmation(.swipeDown, on: .dock))
         #expect(!reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
         #expect(defaults.object(forKey: "settings.closeAndQuitConfirmationEnabled") == nil)
+    }
+
+    @Test
+    func migratesLegacyPinchCloseConfirmationToTitleBarPinchShields() throws {
+        let defaults = makeUserDefaults()
+        let titleBarBindings = [
+            TitleBarGestureBinding(gesture: .pinchIn, action: .closeWindow),
+            TitleBarGestureBinding(gesture: .pinchOut, action: .closeWindow),
+            TitleBarGestureBinding(gesture: .swipeUp, action: .closeWindow),
+        ]
+        defaults.set(try JSONEncoder().encode(titleBarBindings), forKey: "settings.titleBarGestureBindings")
+        defaults.set(true, forKey: "settings.pinchCloseConfirmationEnabled")
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.dangerGestureConfirmationEnabled)
+        #expect(store.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
+        #expect(store.requiresDangerGestureConfirmation(.pinchOut, on: .titleBar))
+        #expect(!store.requiresDangerGestureConfirmation(.swipeUp, on: .titleBar))
+        #expect(defaults.object(forKey: "settings.pinchCloseConfirmationEnabled") == nil)
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.dangerGestureConfirmationEnabled)
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.pinchOut, on: .titleBar))
+        #expect(!reloadedStore.requiresDangerGestureConfirmation(.swipeUp, on: .titleBar))
+    }
+
+    @Test
+    func staleLegacyPinchCloseConfirmationDoesNotOverwriteExistingDangerSelections() throws {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+        store.updateDangerGestureConfirmation(true, for: .swipeDown, on: .dock)
+
+        let titleBarBindings = [
+            TitleBarGestureBinding(gesture: .pinchIn, action: .closeWindow),
+        ]
+        defaults.set(try JSONEncoder().encode(titleBarBindings), forKey: "settings.titleBarGestureBindings")
+        defaults.set(true, forKey: "settings.pinchCloseConfirmationEnabled")
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.swipeDown, on: .dock))
+        #expect(!reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
+        #expect(defaults.object(forKey: "settings.pinchCloseConfirmationEnabled") == nil)
+    }
+
+    @Test
+    func clearsDisabledLegacyPinchCloseConfirmationWithoutMigrating() {
+        let defaults = makeUserDefaults()
+        defaults.set(false, forKey: "settings.pinchCloseConfirmationEnabled")
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(!store.dangerGestureConfirmationEnabled)
+        #expect(store.dangerGestureConfirmationSelections.isEmpty)
+        #expect(defaults.object(forKey: "settings.pinchCloseConfirmationEnabled") == nil)
     }
 
     @Test
@@ -714,7 +773,6 @@ struct SettingsStoreTests {
         let store = makeSettingsStore()
         store.experimentalBrowserTabCloseEnabled = true
         store.smartBrowserTabCloseEnabled = true
-        store.pinchCloseConfirmationEnabled = true
 
         let recorder = await recordSettingsChanges(from: store) {
             store.experimentalBrowserTabCloseEnabled = false
@@ -722,41 +780,8 @@ struct SettingsStoreTests {
 
         #expect(!store.experimentalBrowserTabCloseEnabled)
         #expect(!store.smartBrowserTabCloseEnabled)
-        #expect(!store.pinchCloseConfirmationEnabled)
         #expect(recorder.count == 1)
         #expect(recorder.categories == [.advancedGestureBehavior])
-    }
-
-    @Test
-    func reenablingExperimentalBrowserTabCloseRestoresDefaultPinchConfirmation() {
-        let defaults = makeUserDefaults()
-        let store = SettingsStore(userDefaults: defaults)
-
-        store.experimentalBrowserTabCloseEnabled = true
-        #expect(store.pinchCloseConfirmationEnabled)
-
-        store.experimentalBrowserTabCloseEnabled = false
-        #expect(!store.pinchCloseConfirmationEnabled)
-        #expect(defaults.object(forKey: "settings.pinchCloseConfirmationEnabled") == nil)
-
-        store.experimentalBrowserTabCloseEnabled = true
-        #expect(store.pinchCloseConfirmationEnabled)
-    }
-
-    @Test
-    func explicitPinchConfirmationOptOutSurvivesExperimentalBrowserTabCloseToggle() {
-        let defaults = makeUserDefaults()
-        let store = SettingsStore(userDefaults: defaults)
-
-        store.experimentalBrowserTabCloseEnabled = true
-        store.pinchCloseConfirmationEnabled = false
-
-        store.experimentalBrowserTabCloseEnabled = false
-        store.experimentalBrowserTabCloseEnabled = true
-
-        #expect(!store.pinchCloseConfirmationEnabled)
-        #expect(defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled") == false)
-        #expect(defaults.object(forKey: "settings.pinchCloseConfirmationEnabled") != nil)
     }
 
     @Test
@@ -780,12 +805,9 @@ struct SettingsStoreTests {
         let defaults = makeUserDefaults()
         let store = SettingsStore(userDefaults: defaults)
         store.smartBrowserTabCloseEnabled = true
-        store.pinchCloseConfirmationEnabled = true
 
         #expect(!store.smartBrowserTabCloseEnabled)
-        #expect(!store.pinchCloseConfirmationEnabled)
         #expect(!defaults.bool(forKey: "settings.smartBrowserTabCloseEnabled"))
-        #expect(!defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled"))
     }
 
     @Test
@@ -840,12 +862,10 @@ struct SettingsStoreTests {
         defaults.set(try JSONEncoder().encode(titleBarBindings), forKey: "settings.titleBarGestureBindings")
         defaults.set(false, forKey: "settings.experimentalBrowserTabCloseEnabled")
         defaults.set(true, forKey: "settings.smartBrowserTabCloseEnabled")
-        defaults.set(true, forKey: "settings.pinchCloseConfirmationEnabled")
 
         let store = SettingsStore(userDefaults: defaults)
 
         #expect(!store.smartBrowserTabCloseEnabled)
-        #expect(!store.pinchCloseConfirmationEnabled)
         #expect(store.dockGestureAction(for: .swipeUp) == .restoreWindow)
         #expect(!store.dockGestureIsEnabled(for: .swipeUp))
         #expect(store.titleBarGestureAction(for: .pinchOut) == .toggleFullScreen)
@@ -865,7 +885,6 @@ struct SettingsStoreTests {
         #expect(persistedTitleBarBindings.first?.action == .toggleFullScreen)
         #expect(persistedTitleBarBindings.first?.isEnabled == false)
         #expect(!defaults.bool(forKey: "settings.smartBrowserTabCloseEnabled"))
-        #expect(!defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled"))
     }
 
     @Test

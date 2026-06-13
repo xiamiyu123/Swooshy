@@ -1716,7 +1716,6 @@ final class DockGestureController {
             gesture: gesture,
             action: action,
             application: application,
-            legacyBrowserWindowCloseConfirmationEnabled: settingsStore.pinchCloseConfirmationEnabled,
             requiresDangerConfirmation: settingsStore.dangerGestureConfirmationEnabled
                 && settingsStore.requiresDangerGestureConfirmation(gesture, on: .titleBar),
             isReplacedBySmartFullScreenExit: isReplacedBySmartFullScreenExit
