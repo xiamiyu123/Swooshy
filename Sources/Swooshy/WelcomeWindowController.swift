@@ -265,6 +265,12 @@ struct WelcomeGuideContent {
             ),
             guidePage(
                 id: 9,
+                kind: .tutorial,
+                key: "danger_confirmation",
+                bulletCount: 4
+            ),
+            guidePage(
+                id: 10,
                 kind: .experimental,
                 key: "experimental",
                 bulletCount: 5

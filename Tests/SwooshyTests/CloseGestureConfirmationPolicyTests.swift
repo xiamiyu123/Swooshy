@@ -9,104 +9,135 @@ struct CloseGestureConfirmationPolicyTests {
         let browserWindow = makeWindow(name: "Safari", bundleIdentifier: "com.apple.Safari")
 
         #expect(
-            titleBarConfirmationAction(
+            titleBarRequiresConfirmation(
                 action: .closeWindow,
                 application: browserWindow,
                 legacyBrowserWindowCloseConfirmationEnabled: true
-            ) == .closeWindow
+            )
         )
 
         #expect(
-            titleBarConfirmationAction(
+            !titleBarRequiresConfirmation(
                 action: .quitApplication,
                 application: browserWindow,
                 legacyBrowserWindowCloseConfirmationEnabled: true
-            ) == nil
+            )
         )
 
         #expect(
-            dockConfirmationAction(
+            !dockRequiresConfirmation(
                 action: .quitApplication,
-                closeAndQuitConfirmationEnabled: false
-            ) == nil
+                requiresDangerConfirmation: false
+            )
         )
     }
 
     @Test
-    func closeAndQuitConfirmationAppliesToDockAndTitleBarPinchGestures() {
+    func dangerGestureConfirmationAppliesToSelectedDockAndTitleBarGestures() {
         let appWindow = makeWindow(name: "Calendar", bundleIdentifier: "com.apple.iCal")
 
         #expect(
-            dockConfirmationAction(
+            dockRequiresConfirmation(
+                gesture: .swipeUp,
                 action: .quitApplication,
-                closeAndQuitConfirmationEnabled: true
-            ) == .quitApplication
+                requiresDangerConfirmation: true
+            )
         )
 
         #expect(
-            dockConfirmationAction(
-                action: .closeWindow,
-                closeAndQuitConfirmationEnabled: true
-            ) == .closeWindow
+            dockRequiresConfirmation(
+                action: .minimizeWindow,
+                requiresDangerConfirmation: true
+            )
         )
 
         #expect(
-            titleBarConfirmationAction(
-                action: .quitApplication,
+            titleBarRequiresConfirmation(
+                gesture: .swipeLeft,
+                action: .leftHalf,
                 application: appWindow,
-                closeAndQuitConfirmationEnabled: true
-            ) == .quitApplication
+                requiresDangerConfirmation: true
+            )
         )
     }
 
     @Test
-    func confirmationSkipsNonPinchGestures() {
-        let appWindow = makeWindow(name: "Safari", bundleIdentifier: "com.apple.Safari")
+    func dangerGestureConfirmationNotRequiredForUnselectedGestures() {
+        let appWindow = makeWindow(name: "Calendar", bundleIdentifier: "com.apple.iCal")
 
         #expect(
-            dockConfirmationAction(
-                gesture: .swipeDown,
-                action: .closeWindow,
-                closeAndQuitConfirmationEnabled: true
-            ) == nil
+            !dockRequiresConfirmation(
+                action: .quitApplication,
+                requiresDangerConfirmation: false
+            )
         )
 
         #expect(
-            titleBarConfirmationAction(
+            !titleBarRequiresConfirmation(
+                action: .closeWindow,
+                application: appWindow,
+                requiresDangerConfirmation: false
+            )
+        )
+    }
+
+    @Test
+    func dangerGestureConfirmationSkipsSmartFullScreenExitReplacement() {
+        let appWindow = makeWindow(name: "Calendar", bundleIdentifier: "com.apple.iCal")
+
+        #expect(
+            !titleBarRequiresConfirmation(
+                gesture: .pinchIn,
+                action: .closeWindow,
+                application: appWindow,
+                requiresDangerConfirmation: true,
+                isReplacedBySmartFullScreenExit: true
+            )
+        )
+    }
+
+    @Test
+    func legacyBrowserWindowCloseConfirmationSkipsNonPinchGestures() {
+        let appWindow = makeWindow(name: "Safari", bundleIdentifier: "com.apple.Safari")
+
+        #expect(
+            !titleBarRequiresConfirmation(
                 gesture: .swipeDown,
                 action: .closeWindow,
                 application: appWindow,
                 legacyBrowserWindowCloseConfirmationEnabled: true,
-                closeAndQuitConfirmationEnabled: true
-            ) == nil
+                requiresDangerConfirmation: false
+            )
         )
     }
 
-    private func dockConfirmationAction(
+    private func dockRequiresConfirmation(
         gesture: DockGestureKind = .pinchIn,
         action: DockGestureAction,
-        closeAndQuitConfirmationEnabled: Bool = false
-    ) -> CloseGestureConfirmationAction? {
-        CloseGestureConfirmationPolicy.confirmationActionForDockGesture(
+        requiresDangerConfirmation: Bool = false
+    ) -> Bool {
+        CloseGestureConfirmationPolicy.requiresConfirmationForDockGesture(
             gesture: gesture,
             action: action,
-            closeAndQuitConfirmationEnabled: closeAndQuitConfirmationEnabled
+            requiresDangerConfirmation: requiresDangerConfirmation
         )
     }
 
-    private func titleBarConfirmationAction(
+    private func titleBarRequiresConfirmation(
         gesture: DockGestureKind = .pinchIn,
         action: WindowAction,
         application: InteractionTarget,
         legacyBrowserWindowCloseConfirmationEnabled: Bool = false,
-        closeAndQuitConfirmationEnabled: Bool = false
-    ) -> CloseGestureConfirmationAction? {
-        CloseGestureConfirmationPolicy.confirmationActionForTitleBarGesture(
+        requiresDangerConfirmation: Bool = false,
+        isReplacedBySmartFullScreenExit: Bool = false
+    ) -> Bool {
+        CloseGestureConfirmationPolicy.requiresConfirmationForTitleBarGesture(
             gesture: gesture,
             action: action,
             application: application,
             legacyBrowserWindowCloseConfirmationEnabled: legacyBrowserWindowCloseConfirmationEnabled,
-            closeAndQuitConfirmationEnabled: closeAndQuitConfirmationEnabled
+            requiresDangerConfirmation: requiresDangerConfirmation,
+            isReplacedBySmartFullScreenExit: isReplacedBySmartFullScreenExit
         )
     }
 

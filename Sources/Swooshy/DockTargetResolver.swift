@@ -93,8 +93,12 @@ final class MinimizedDockLedger {
         with items: [SnapshotItem],
         registry: DockMinimizedWindowBindingManaging
     ) {
+        // Tokens fall back to CFHash(element) when no CGWindowID is available, so two
+        // minimized items without window IDs can collide. Keep the first entry per token
+        // rather than trapping on duplicates.
         let previousEntriesByToken = Dictionary(
-            uniqueKeysWithValues: entries.map { ($0.token, $0) }
+            entries.map { ($0.token, $0) },
+            uniquingKeysWith: { existing, _ in existing }
         )
         let availableSnapshots = registry.minimizedWindowSnapshotsEligibleForDockBinding()
         var availableIterator = availableSnapshots.makeIterator()

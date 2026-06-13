@@ -457,6 +457,8 @@ private struct GeneralSettingsPage: View {
                 languageOptions: languageOptions,
                 statusItemIconOptions: statusItemIconOptions
             )
+
+            GeneralGestureBehaviorSection(settingsStore: settingsStore)
         }
     }
 
@@ -736,6 +738,47 @@ private struct GeneralSettingsSection: View {
 
             SettingsHintGroup {
                 Text(settingsStore.localized("settings.status_item_window_actions_collapsed.footer"))
+            }
+        }
+    }
+}
+
+private struct GeneralGestureBehaviorSection: View {
+    @Bindable var settingsStore: SettingsStore
+
+    var body: some View {
+        SettingsCardSection(title: settingsStore.localized("settings.advanced.section.other")) {
+            Toggle(
+                settingsStore.localized("settings.advanced.title_bar_overlay_protection.enabled"),
+                isOn: $settingsStore.titleBarOverlayProtectionEnabled
+            )
+            .disabled(!settingsStore.titleBarGesturesEnabled)
+
+            SettingsHintGroup {
+                Text(settingsStore.localized("settings.advanced.title_bar_overlay_protection.footer"))
+            }
+
+            Toggle(
+                settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.enabled"),
+                isOn: $settingsStore.smartPinchExitFullScreenEnabled
+            )
+            .disabled(!settingsStore.titleBarGesturesEnabled)
+
+            SettingsHintGroup {
+                Text(settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.footer"))
+            }
+
+            Toggle(
+                settingsStore.localized("settings.danger_gesture_confirmation.title"),
+                isOn: $settingsStore.dangerGestureConfirmationEnabled
+            )
+
+            SettingsHintGroup {
+                Text(
+                    settingsStore.dangerGestureConfirmationEnabled
+                        ? settingsStore.localized("settings.danger_gesture_confirmation.inline_footer")
+                        : settingsStore.localized("settings.danger_gesture_confirmation.footer")
+                )
             }
         }
     }
@@ -1493,37 +1536,6 @@ private struct AdvancedSettingsPage: View {
                 }
             }
 
-            SettingsCardSection(title: settingsStore.localized("settings.advanced.section.other")) {
-                Toggle(
-                    settingsStore.localized("settings.advanced.title_bar_overlay_protection.enabled"),
-                    isOn: $settingsStore.titleBarOverlayProtectionEnabled
-                )
-                .disabled(!settingsStore.titleBarGesturesEnabled)
-
-                SettingsHintGroup {
-                    Text(settingsStore.localized("settings.advanced.title_bar_overlay_protection.footer"))
-                }
-
-                Toggle(
-                    settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.enabled"),
-                    isOn: $settingsStore.smartPinchExitFullScreenEnabled
-                )
-                .disabled(!settingsStore.titleBarGesturesEnabled)
-
-                SettingsHintGroup {
-                    Text(settingsStore.localized("settings.advanced.smart_pinch_exit_full_screen.footer"))
-                }
-
-                Toggle(
-                    settingsStore.localized("settings.advanced.close_quit_confirmation.enabled"),
-                    isOn: $settingsStore.closeAndQuitConfirmationEnabled
-                )
-
-                SettingsHintGroup {
-                    Text(settingsStore.localized("settings.advanced.close_quit_confirmation.footer"))
-                }
-            }
-
             SettingsCardSection(title: settingsStore.localized("settings.advanced.section.logging")) {
                 Toggle(
                     settingsStore.localized("settings.debug_logging.enabled"),
@@ -1982,6 +1994,15 @@ private struct DockGestureMappingsSection: View {
             .disabled(!settingsStore.dockGesturesEnabled)
 
             SettingsMappingCard {
+                GestureMappingColumnHeader(
+                    actionTitle: settingsStore.localized("settings.gesture_mappings.column.action"),
+                    confirmationTitle: settingsStore.dangerGestureConfirmationEnabled
+                        ? settingsStore.localized("settings.gesture_mappings.column.confirmation")
+                        : nil
+                )
+
+                Divider()
+
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     GestureActionRow(
                         row: row,
@@ -1993,7 +2014,14 @@ private struct DockGestureMappingsSection: View {
                         actionBinding: Binding(
                             get: { settingsStore.dockGestureAction(for: row.gesture) },
                             set: { settingsStore.updateDockGestureAction($0, for: row.gesture) }
-                        )
+                        ),
+                        confirmationBinding: settingsStore.dangerGestureConfirmationEnabled
+                            ? Binding(
+                                get: { settingsStore.requiresDangerGestureConfirmation(row.gesture, on: .dock) },
+                                set: { settingsStore.updateDangerGestureConfirmation($0, for: row.gesture, on: .dock) }
+                            )
+                            : nil,
+                        confirmationHelp: settingsStore.localized("settings.danger_gesture_confirmation.toggle.help")
                     )
 
                     if index < rows.count - 1 {
@@ -2008,9 +2036,12 @@ private struct DockGestureMappingsSection: View {
             .disabled(!settingsStore.dockGesturesEnabled)
             .padding(.top, 2)
 
-            Text(settingsStore.localized("settings.dock_gestures.footer"))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(settingsStore.localized("settings.dock_gestures.footer"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                DangerGestureConfirmationDisabledHint(settingsStore: settingsStore)
+            }
         }
         .padding(.bottom, 10)
     }
@@ -2031,6 +2062,15 @@ private struct TitleBarGestureMappingsSection: View {
             .disabled(!settingsStore.titleBarGesturesEnabled)
 
             SettingsMappingCard {
+                GestureMappingColumnHeader(
+                    actionTitle: settingsStore.localized("settings.gesture_mappings.column.action"),
+                    confirmationTitle: settingsStore.dangerGestureConfirmationEnabled
+                        ? settingsStore.localized("settings.gesture_mappings.column.confirmation")
+                        : nil
+                )
+
+                Divider()
+
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     GestureActionRow(
                         row: row,
@@ -2045,7 +2085,14 @@ private struct TitleBarGestureMappingsSection: View {
                                 ?? TitleBarGestureBindings.fallbackBinding(for: row.gesture).action
                             },
                             set: { settingsStore.updateTitleBarGestureAction($0, for: row.gesture) }
-                        )
+                        ),
+                        confirmationBinding: settingsStore.dangerGestureConfirmationEnabled
+                            ? Binding(
+                                get: { settingsStore.requiresDangerGestureConfirmation(row.gesture, on: .titleBar) },
+                                set: { settingsStore.updateDangerGestureConfirmation($0, for: row.gesture, on: .titleBar) }
+                            )
+                            : nil,
+                        confirmationHelp: settingsStore.localized("settings.danger_gesture_confirmation.toggle.help")
                     )
 
                     if index < rows.count - 1 {
@@ -2060,9 +2107,12 @@ private struct TitleBarGestureMappingsSection: View {
             .disabled(!settingsStore.titleBarGesturesEnabled)
             .padding(.top, 2)
 
-            Text(settingsStore.localized("settings.title_bar_gestures.footer"))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(settingsStore.localized("settings.title_bar_gestures.footer"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                DangerGestureConfirmationDisabledHint(settingsStore: settingsStore)
+            }
         }
         .padding(.bottom, 10)
     }
@@ -2179,14 +2229,86 @@ private final class GestureHUDPreviewSnapshotCache {
     }
 }
 
+private struct DangerGestureConfirmationToggle: View {
+    @Bindable var settingsStore: SettingsStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(
+                settingsStore.localized("settings.danger_gesture_confirmation.title"),
+                isOn: $settingsStore.dangerGestureConfirmationEnabled
+            )
+
+            Text(
+                settingsStore.dangerGestureConfirmationEnabled
+                    ? settingsStore.localized("settings.danger_gesture_confirmation.inline_footer")
+                    : settingsStore.localized("settings.danger_gesture_confirmation.footer")
+            )
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Shown on the gesture mapping pages while the danger-confirmation master
+/// switch is off, so users understand why the shield column is hidden and
+/// where to turn the feature on (it lives in General now, not here).
+private struct DangerGestureConfirmationDisabledHint: View {
+    @Bindable var settingsStore: SettingsStore
+
+    var body: some View {
+        if !settingsStore.dangerGestureConfirmationEnabled {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "shield")
+                    .foregroundStyle(.secondary)
+                Text(settingsStore.localized("settings.danger_gesture_confirmation.mapping_hint"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private enum GestureMappingColumnLayout {
+    static let actionWidth: CGFloat = 220
+    static let confirmationWidth: CGFloat = 28
+    static let columnSpacing: CGFloat = 12
+}
+
+private struct GestureMappingColumnHeader: View {
+    let actionTitle: String
+    var confirmationTitle: String? = nil
+
+    var body: some View {
+        HStack(spacing: GestureMappingColumnLayout.columnSpacing) {
+            Spacer(minLength: 0)
+
+            Text(actionTitle)
+                .frame(width: GestureMappingColumnLayout.actionWidth, alignment: .leading)
+
+            if let confirmationTitle {
+                Text(confirmationTitle)
+                    .frame(width: GestureMappingColumnLayout.confirmationWidth, alignment: .center)
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.bottom, 2)
+    }
+}
+
 private struct GestureActionRow<Action: Hashable>: View {
     let row: GestureActionRowModel<DockGestureKind, Action>
     let isSectionEnabled: Bool
     let toggleBinding: Binding<Bool>
     let actionBinding: Binding<Action>
+    var confirmationBinding: Binding<Bool>? = nil
+    var confirmationHelp: String? = nil
 
     var body: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 12) {
             Toggle(row.title, isOn: toggleBinding)
                 .toggleStyle(.switch)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -2200,11 +2322,41 @@ private struct GestureActionRow<Action: Hashable>: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .frame(width: 220)
+            .frame(width: GestureMappingColumnLayout.actionWidth)
             .disabled(!isSectionEnabled || !row.isEnabled)
+
+            if let confirmationBinding {
+                DangerGestureConfirmationButton(
+                    isOn: confirmationBinding,
+                    help: confirmationHelp ?? ""
+                )
+                .frame(width: GestureMappingColumnLayout.confirmationWidth)
+                .disabled(!isSectionEnabled || !row.isEnabled)
+            }
         }
         .disabled(!isSectionEnabled)
         .padding(.vertical, 14)
+    }
+}
+
+private struct DangerGestureConfirmationButton: View {
+    @Binding var isOn: Bool
+    let help: String
+
+    var body: some View {
+        Button {
+            isOn.toggle()
+        } label: {
+            Image(systemName: isOn ? "shield.fill" : "shield")
+                .font(.system(size: 14, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(isOn ? Color.accentColor : Color(nsColor: .secondaryLabelColor))
+                .frame(width: 28, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
 

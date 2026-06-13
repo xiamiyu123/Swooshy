@@ -67,6 +67,14 @@ final class DockGestureController {
     private var activeCornerDragTouchOrigin: CGPoint?
     private var activeCornerDragTouchReferencePoint: CGPoint?
     private var smoothDockingSession: SmoothDockingSession?
+    // A session that has begun its restore animation and is awaiting delayed
+    // teardown. Kept separate from `smoothDockingSession` so an in-flight
+    // gesture update can't revive a session that is already ending.
+    private var finishingSmoothDockingSession: SmoothDockingSession?
+    // Monotonic tag identifying the current pending teardown, so a stale
+    // delayed-finish task can't fire against a re-armed teardown of the same
+    // session object. Incremented on every restore teardown.
+    private var finishingSmoothDockingGeneration: UInt64 = 0
     private let cornerDragTranslationThreshold: CGFloat = 0.06
 
     // Deprecated: legacy preview-mode actions are staged here until release.
@@ -86,7 +94,7 @@ final class DockGestureController {
         )
     }
 
-    private struct PendingPinchConfirmation {
+    private struct PendingDangerGestureConfirmation {
         enum Source {
             case dock(action: DockGestureAction, application: InteractionTarget)
             case titleBar(
@@ -96,15 +104,15 @@ final class DockGestureController {
                 replacesWithTabClose: Bool
             )
         }
-        let gesture: DockGestureKind
+        let triggerGesture: DockGestureKind
+        let confirmationGesture: DockGestureKind
         let source: Source
-        let confirmationAction: CloseGestureConfirmationAction
         let anchorPoint: CGPoint
         var timeoutTask: Task<Void, Never>?
     }
 
-    private var pendingPinchConfirmation: PendingPinchConfirmation?
-    private let pinchConfirmationTimeout: UInt64 = 3_000_000_000
+    private var pendingDangerGestureConfirmation: PendingDangerGestureConfirmation?
+    private let dangerGestureConfirmationTimeout: UInt64 = 3_000_000_000
 
     private struct MonitoringState: Equatable {
         let dockCornerDragEnabled: Bool
@@ -218,8 +226,8 @@ final class DockGestureController {
         activeCornerDragAnchorPoint = nil
         activeCornerDragTouchOrigin = nil
         activeCornerDragTouchReferencePoint = nil
-        pendingPinchConfirmation?.timeoutTask?.cancel()
-        pendingPinchConfirmation = nil
+        pendingDangerGestureConfirmation?.timeoutTask?.cancel()
+        pendingDangerGestureConfirmation = nil
         triggerRegionOverlayController.dismiss()
         endSmoothDockingSession(restore: true)
         dockProbe.clearCache()
@@ -463,6 +471,7 @@ final class DockGestureController {
     private var activeInteractionPreventsSettingsHoverPause: Bool {
         hasActiveGestureState ||
             smoothDockingSession != nil ||
+            finishingSmoothDockingSession != nil ||
             gestureTargetCaptureController.isCapturing
     }
 
@@ -923,12 +932,37 @@ final class DockGestureController {
     }
 
     private func handleDockGestureEvent(_ event: DockGestureEvent, anchorPoint: CGPoint, touches: [TrackpadTouchSample]) {
+        let application = event.application
+
+        if let pending = pendingDangerGestureConfirmation,
+           case .dock(let pendingAction, let pendingApp) = pending.source,
+           dockDangerGestureConfirmationMatches(
+               pendingConfirmationGesture: pending.confirmationGesture,
+               pendingApplication: pendingApp,
+               confirmationGesture: event.gesture,
+               application: application
+        ) {
+            guard !settingsStore.isGestureExcluded(event.gesture, on: .dock, for: application) else {
+                clearDangerGestureConfirmation()
+                DebugLog.debug(
+                    DebugLog.dock,
+                    "Ignoring excluded Dock confirmation gesture \(event.gesture.rawValue) for \(application.logDescription)"
+                )
+                return
+            }
+
+            clearDangerGestureConfirmation()
+            DebugLog.info(DebugLog.dock, "Danger gesture confirmation accepted for dock action \(pendingAction.rawValue)")
+            scheduleDockGestureAction(pendingAction, for: pendingApp, gesture: pending.triggerGesture)
+            return
+        }
+
         guard settingsStore.dockGestureIsEnabled(for: event.gesture) else {
             DebugLog.debug(DebugLog.dock, "Ignoring disabled Dock gesture \(event.gesture.rawValue)")
             return
         }
         guard !settingsStore.isGestureExcluded(event.gesture, on: .dock, for: event.application) else {
-            clearPinchConfirmation()
+            clearDangerGestureConfirmation()
             DebugLog.debug(
                 DebugLog.dock,
                 "Ignoring excluded Dock gesture \(event.gesture.rawValue) for \(event.application.logDescription)"
@@ -936,36 +970,18 @@ final class DockGestureController {
             return
         }
         let action = settingsStore.dockGestureAction(for: event.gesture)
-        let application = event.application
 
-        if let pending = pendingPinchConfirmation,
-           pending.gesture == event.gesture,
-           case .dock(let pendingAction, let pendingApp) = pending.source,
-           dockPinchConfirmationMatches(
-               pendingGesture: pending.gesture,
-               pendingAction: pendingAction,
-               pendingApplication: pendingApp,
-               gesture: event.gesture,
-               action: action,
-               application: application
-        ) {
-            clearPinchConfirmation()
-            DebugLog.info(DebugLog.dock, "Pinch confirmation accepted for dock action \(action.rawValue)")
-            scheduleDockGestureAction(action, for: application, gesture: event.gesture)
-            return
-        }
-
-        if let confirmationAction = pinchConfirmationAction(dockGesture: event.gesture, dockAction: action) {
-            showPinchConfirmation(
+        if requiresDangerGestureConfirmation(dockGesture: event.gesture, dockAction: action) {
+            showDangerGestureConfirmation(
                 gesture: event.gesture,
-                confirmationAction: confirmationAction,
+                actionTitle: action.title(preferredLanguages: settingsStore.preferredLanguages),
                 anchorPoint: anchorPoint,
                 source: .dock(action: action, application: application)
             )
             return
         }
 
-        clearPinchConfirmation(dismissFeedback: false)
+        clearDangerGestureConfirmation(dismissFeedback: false)
 
         let persistent = settingsStore.executeGestureOnRelease
         gestureFeedbackPresenter.show(
@@ -1106,13 +1122,41 @@ final class DockGestureController {
             return
         }
 
+        if let pending = pendingDangerGestureConfirmation,
+           case .titleBar(let pendingAction, let pendingEvent, let pendingAnchorPoint, let pendingReplaces) = pending.source,
+           titleBarDangerGestureConfirmationMatches(
+               pendingConfirmationGesture: pending.confirmationGesture,
+               pendingApplication: pendingEvent.application,
+               confirmationGesture: event.gesture,
+               application: event.application
+        ) {
+            guard !settingsStore.isGestureExcluded(event.gesture, on: .titleBar, for: event.application) else {
+                clearDangerGestureConfirmation()
+                DebugLog.debug(
+                    DebugLog.dock,
+                    "Ignoring excluded title-bar confirmation gesture \(event.gesture.rawValue) for \(event.application.logDescription)"
+                )
+                return
+            }
+
+            clearDangerGestureConfirmation()
+            DebugLog.info(DebugLog.dock, "Danger gesture confirmation accepted for title-bar action \(String(describing: pendingAction))")
+            executeTitleBarAction(
+                pendingAction,
+                event: pendingEvent,
+                anchorPoint: pendingAnchorPoint,
+                replacesWithTabClose: pendingReplaces
+            )
+            return
+        }
+
         guard settingsStore.titleBarGestureIsEnabled(for: event.gesture) else {
             DebugLog.debug(DebugLog.dock, "Ignoring disabled title-bar gesture \(event.gesture.rawValue)")
             return
         }
 
         guard !settingsStore.isGestureExcluded(event.gesture, on: .titleBar, for: event.application) else {
-            clearPinchConfirmation()
+            clearDangerGestureConfirmation()
             DebugLog.debug(
                 DebugLog.dock,
                 "Ignoring excluded title-bar gesture \(event.gesture.rawValue) for \(event.application.logDescription)"
@@ -1133,6 +1177,10 @@ final class DockGestureController {
             preferredAppKitPoint: anchorPoint
         )
         let isInFullScreen = fullScreenWindow != nil
+        let replacesWithFullScreenExit = titleBarGestureReplacesWithFullScreenExit(
+            gesture: event.gesture,
+            isInFullScreen: isInFullScreen
+        )
 
         // Whitelist: In Full Screen, ONLY Pinch In is allowed (for smart exit).
         if isInFullScreen {
@@ -1150,37 +1198,16 @@ final class DockGestureController {
             isInFullScreen: isInFullScreen
         )
 
-        if let pending = pendingPinchConfirmation,
-           pending.gesture == event.gesture,
-           case .titleBar(let pendingAction, let pendingEvent, _, let pendingReplaces) = pending.source,
-           titleBarPinchConfirmationMatches(
-               pendingAction: pendingAction,
-               pendingApplication: pendingEvent.application,
-               pendingReplacesWithTabClose: pendingReplaces,
-               action: action,
-               application: event.application,
-               replacesWithTabClose: replacesWithTabClose
-        ) {
-            clearPinchConfirmation()
-            DebugLog.info(DebugLog.dock, "Pinch confirmation accepted for title-bar action \(String(describing: action))")
-            executeTitleBarAction(
-                action,
-                event: event,
-                anchorPoint: anchorPoint,
-                replacesWithTabClose: replacesWithTabClose
-            )
-            return
-        }
-
         if !replacesWithTabClose,
-           let confirmationAction = pinchConfirmationAction(
+           requiresDangerGestureConfirmation(
                titleBarGesture: event.gesture,
                action: action,
-               application: event.application
+               application: event.application,
+               isReplacedBySmartFullScreenExit: replacesWithFullScreenExit
            ) {
-            showPinchConfirmation(
+            showDangerGestureConfirmation(
                 gesture: event.gesture,
-                confirmationAction: confirmationAction,
+                actionTitle: action.title(preferredLanguages: settingsStore.preferredLanguages),
                 anchorPoint: anchorPoint,
                 source: .titleBar(
                     action: action,
@@ -1192,7 +1219,7 @@ final class DockGestureController {
             return
         }
 
-        clearPinchConfirmation(dismissFeedback: false)
+        clearDangerGestureConfirmation(dismissFeedback: false)
 
         var actionTitle = action.title(preferredLanguages: settingsStore.preferredLanguages)
         if replacesWithTabClose {
@@ -1200,7 +1227,7 @@ final class DockGestureController {
                 "action.close_tab",
                 preferredLanguages: settingsStore.preferredLanguages
             )
-        } else if isInFullScreen, event.gesture == .pinchIn {
+        } else if replacesWithFullScreenExit {
             actionTitle = L10n.string(
                 "action.exit_full_screen",
                 preferredLanguages: settingsStore.preferredLanguages
@@ -1305,6 +1332,13 @@ final class DockGestureController {
 
     private func titleBarAction(for gesture: DockGestureKind) -> WindowAction? {
         settingsStore.titleBarGestureAction(for: gesture)
+    }
+
+    private func titleBarGestureReplacesWithFullScreenExit(
+        gesture: DockGestureKind,
+        isInFullScreen: Bool
+    ) -> Bool {
+        settingsStore.smartPinchExitFullScreenEnabled && isInFullScreen && gesture == .pinchIn
     }
 
     private func updateCornerDragFeedback(
@@ -1469,7 +1503,7 @@ final class DockGestureController {
         if rebuildRecognizers {
             DebugLog.info(DebugLog.dock, "Resetting gesture state by rebuilding recognizers for watchdog recovery")
         }
-        clearPinchConfirmation()
+        clearDangerGestureConfirmation()
         pendingReleaseAction = nil
         clearTouchAnchor()
         resetStandardRecognizers(rebuildRecognizers: rebuildRecognizers)
@@ -1670,52 +1704,63 @@ final class DockGestureController {
         resetGestureStateForNewTouchSequence()
     }
 
-    // MARK: - Pinch Close Confirmation
+    // MARK: - Danger Gesture Confirmation
 
-    private func pinchConfirmationAction(
+    private func requiresDangerGestureConfirmation(
         titleBarGesture gesture: DockGestureKind,
         action: WindowAction,
-        application: InteractionTarget
-    ) -> CloseGestureConfirmationAction? {
-        CloseGestureConfirmationPolicy.confirmationActionForTitleBarGesture(
+        application: InteractionTarget,
+        isReplacedBySmartFullScreenExit: Bool
+    ) -> Bool {
+        CloseGestureConfirmationPolicy.requiresConfirmationForTitleBarGesture(
             gesture: gesture,
             action: action,
             application: application,
             legacyBrowserWindowCloseConfirmationEnabled: settingsStore.pinchCloseConfirmationEnabled,
-            closeAndQuitConfirmationEnabled: settingsStore.closeAndQuitConfirmationEnabled
+            requiresDangerConfirmation: settingsStore.dangerGestureConfirmationEnabled
+                && settingsStore.requiresDangerGestureConfirmation(gesture, on: .titleBar),
+            isReplacedBySmartFullScreenExit: isReplacedBySmartFullScreenExit
         )
     }
 
-    private func pinchConfirmationAction(
+    private func requiresDangerGestureConfirmation(
         dockGesture gesture: DockGestureKind,
-        dockAction: DockGestureAction,
-    ) -> CloseGestureConfirmationAction? {
-        CloseGestureConfirmationPolicy.confirmationActionForDockGesture(
+        dockAction: DockGestureAction
+    ) -> Bool {
+        CloseGestureConfirmationPolicy.requiresConfirmationForDockGesture(
             gesture: gesture,
             action: dockAction,
-            closeAndQuitConfirmationEnabled: settingsStore.closeAndQuitConfirmationEnabled
+            requiresDangerConfirmation: settingsStore.dangerGestureConfirmationEnabled
+                && settingsStore.requiresDangerGestureConfirmation(gesture, on: .dock)
         )
     }
 
-    private func showPinchConfirmation(
+    private func showDangerGestureConfirmation(
         gesture: DockGestureKind,
-        confirmationAction: CloseGestureConfirmationAction,
+        actionTitle: String,
         anchorPoint: CGPoint,
-        source: PendingPinchConfirmation.Source
+        source: PendingDangerGestureConfirmation.Source
     ) {
-        clearPinchConfirmation(dismissFeedback: false)
+        clearDangerGestureConfirmation(dismissFeedback: false)
 
-        let confirmationText = settingsStore.localized(confirmationAction.confirmationPromptLocalizationKey)
+        // Confirmation is always the same gesture repeated, so the HUD shows the
+        // triggering gesture glyph plus a "repeat to confirm" prompt naming the
+        // action that is waiting.
+        let confirmationGestureTitle = gesture.title(preferredLanguages: settingsStore.preferredLanguages)
+        let confirmationText = String(
+            format: settingsStore.localized("confirmation.repeat_gesture.format"),
+            actionTitle
+        )
         gestureFeedbackPresenter.show(
             gesture: gesture,
-            gestureTitle: gesture.title(preferredLanguages: settingsStore.preferredLanguages),
+            gestureTitle: confirmationGestureTitle,
             actionTitle: confirmationText,
             anchor: anchorPoint,
             persistent: true,
             preview: nil
         )
 
-        let timeout = pinchConfirmationTimeout
+        let timeout = dangerGestureConfirmationTimeout
         let timeoutTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(nanoseconds: timeout)
@@ -1723,27 +1768,27 @@ final class DockGestureController {
                 return
             }
             guard !Task.isCancelled else { return }
-            self?.clearPinchConfirmation()
+            self?.clearDangerGestureConfirmation()
         }
 
-        pendingPinchConfirmation = PendingPinchConfirmation(
-            gesture: gesture,
+        pendingDangerGestureConfirmation = PendingDangerGestureConfirmation(
+            triggerGesture: gesture,
+            confirmationGesture: gesture,
             source: source,
-            confirmationAction: confirmationAction,
             anchorPoint: anchorPoint,
             timeoutTask: timeoutTask
         )
 
-        DebugLog.info(DebugLog.dock, "Showing pinch confirmation HUD")
+        DebugLog.info(DebugLog.dock, "Showing danger gesture confirmation HUD")
     }
 
-    private func clearPinchConfirmation(dismissFeedback: Bool = true) {
-        guard pendingPinchConfirmation != nil else {
+    private func clearDangerGestureConfirmation(dismissFeedback: Bool = true) {
+        guard pendingDangerGestureConfirmation != nil else {
             return
         }
 
-        pendingPinchConfirmation?.timeoutTask?.cancel()
-        pendingPinchConfirmation = nil
+        pendingDangerGestureConfirmation?.timeoutTask?.cancel()
+        pendingDangerGestureConfirmation = nil
         if dismissFeedback {
             gestureFeedbackPresenter.dismiss()
         }
@@ -1811,6 +1856,14 @@ final class DockGestureController {
             }
         }
 
+        // Clear any corner-drag session left over from the switch above so
+        // hasActiveGestureState drops back to idle; otherwise the
+        // activeCornerDrag* fields keep monitoring armed and the watchdog
+        // ticking until the next touch sequence or the 30s timeout. This also
+        // covers the corner-drag exclusion `break` path. For dock/title-bar
+        // actions there is no active corner drag, so this is a harmless no-op.
+        // Feedback dismissal was already scheduled at the top of this method.
+        resetCornerDragSession(dismissFeedback: false)
         resetStandardRecognizers()
     }
 
@@ -1941,6 +1994,17 @@ final class DockGestureController {
             return
         }
 
+        // A session may be mid-teardown: it has begun its restore animation and
+        // is awaiting the delayed finish task. Reclaim it instead of starting a
+        // second session that would fight over the same window. Niling
+        // finishingSmoothDockingSession makes the pending finish task's identity
+        // guard fail, so it returns early and won't finish the session out from
+        // under us. The update(action:) below redirects its animation.
+        if smoothDockingSession == nil, let reclaimed = finishingSmoothDockingSession {
+            finishingSmoothDockingSession = nil
+            smoothDockingSession = reclaimed
+        }
+
         if smoothDockingSession == nil {
             do {
                 smoothDockingSession = try windowManager.beginSmoothDockingSession(
@@ -1994,14 +2058,31 @@ final class DockGestureController {
         if restore {
             smoothDockingSession.restore()
             let session = smoothDockingSession
+            // Move the session out of `smoothDockingSession` immediately so an
+            // in-flight gesture update can't call `.update(...)` on a session
+            // that is already restoring/ending during the delayed teardown.
+            self.smoothDockingSession = nil
+            finishingSmoothDockingSession = session
+            // Tag this teardown with a monotonic generation. The delayed task
+            // only finishes the session if this exact generation is still the
+            // one pending. An object-identity check is insufficient: reclaiming
+            // and re-ending the same session object within 160ms would let an
+            // earlier task's `=== session` guard pass again and prematurely
+            // finish (truncating) the second restore animation.
+            finishingSmoothDockingGeneration &+= 1
+            let generation = finishingSmoothDockingGeneration
+            applyTrackpadMonitoringState()
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 160_000_000)
-                guard let self, self.smoothDockingSession === session else {
+                guard let self,
+                    self.finishingSmoothDockingGeneration == generation,
+                    self.finishingSmoothDockingSession === session
+                else {
                     return
                 }
 
                 session.finish()
-                self.smoothDockingSession = nil
+                self.finishingSmoothDockingSession = nil
                 self.applyTrackpadMonitoringState()
             }
             return
@@ -2278,29 +2359,23 @@ private func verticalCornerDragTransition(
     }
 }
 
-func titleBarPinchConfirmationMatches(
-    pendingAction: WindowAction,
+func titleBarDangerGestureConfirmationMatches(
+    pendingConfirmationGesture: DockGestureKind,
     pendingApplication: InteractionTarget,
-    pendingReplacesWithTabClose: Bool,
-    action: WindowAction,
-    application: InteractionTarget,
-    replacesWithTabClose: Bool
-) -> Bool {
-    pendingAction == action &&
-        pendingApplication == application &&
-        pendingReplacesWithTabClose == replacesWithTabClose
-}
-
-func dockPinchConfirmationMatches(
-    pendingGesture: DockGestureKind,
-    pendingAction: DockGestureAction,
-    pendingApplication: InteractionTarget,
-    gesture: DockGestureKind,
-    action: DockGestureAction,
+    confirmationGesture: DockGestureKind,
     application: InteractionTarget
 ) -> Bool {
-    pendingGesture == gesture &&
-        pendingAction == action &&
+    pendingConfirmationGesture == confirmationGesture &&
+        pendingApplication == application
+}
+
+func dockDangerGestureConfirmationMatches(
+    pendingConfirmationGesture: DockGestureKind,
+    pendingApplication: InteractionTarget,
+    confirmationGesture: DockGestureKind,
+    application: InteractionTarget
+) -> Bool {
+    pendingConfirmationGesture == confirmationGesture &&
         pendingApplication == application
 }
 

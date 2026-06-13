@@ -29,7 +29,8 @@ struct WelcomeWindowControllerTests {
         let titleBarHorizontalPage = englishContent.pages[5]
         let cornerSnapPage = englishContent.pages[6]
         let shortcutsPage = englishContent.pages[8]
-        let experimentalPage = englishContent.pages[9]
+        let dangerConfirmationPage = englishContent.pages[9]
+        let experimentalPage = englishContent.pages[10]
 
         #expect(englishContent.windowTitle == "Welcome")
         #expect(englishContent.welcomeTitle == "Welcome to Swooshy")

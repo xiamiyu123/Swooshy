@@ -1,71 +1,44 @@
 import Foundation
 
-enum CloseGestureConfirmationAction: Equatable {
-    case closeWindow
-    case quitApplication
+/// Identifies a single gesture on a given surface that the user has marked as
+/// requiring a second confirmation gesture before it executes.
+struct DangerGestureConfirmationSelection: Codable, Hashable, Identifiable, Sendable {
+    let surface: GestureExclusionSurface
+    let gesture: DockGestureKind
 
-    init?(_ action: WindowAction) {
-        switch action {
-        case .closeWindow:
-            self = .closeWindow
-        case .quitApplication:
-            self = .quitApplication
-        default:
-            return nil
-        }
-    }
-
-    init?(_ action: DockGestureAction) {
-        switch action {
-        case .closeWindow:
-            self = .closeWindow
-        case .quitApplication:
-            self = .quitApplication
-        default:
-            return nil
-        }
-    }
-
-    var confirmationPromptLocalizationKey: String {
-        switch self {
-        case .closeWindow:
-            "confirmation.pinch_again.close_window"
-        case .quitApplication:
-            "confirmation.pinch_again.quit_application"
-        }
+    var id: String {
+        "\(surface.rawValue).\(gesture.rawValue)"
     }
 }
 
 @MainActor
 enum CloseGestureConfirmationPolicy {
-    static func confirmationActionForDockGesture(
+    static func requiresConfirmationForDockGesture(
         gesture: DockGestureKind,
         action: DockGestureAction,
-        closeAndQuitConfirmationEnabled: Bool
-    ) -> CloseGestureConfirmationAction? {
-        guard gesture.isPinch, closeAndQuitConfirmationEnabled else {
-            return nil
-        }
-
-        return CloseGestureConfirmationAction(action)
+        requiresDangerConfirmation: Bool
+    ) -> Bool {
+        requiresDangerConfirmation
     }
 
-    static func confirmationActionForTitleBarGesture(
+    static func requiresConfirmationForTitleBarGesture(
         gesture: DockGestureKind,
         action: WindowAction,
         application: InteractionTarget,
         legacyBrowserWindowCloseConfirmationEnabled: Bool,
-        closeAndQuitConfirmationEnabled: Bool
-    ) -> CloseGestureConfirmationAction? {
-        guard gesture.isPinch else {
-            return nil
+        requiresDangerConfirmation: Bool,
+        isReplacedBySmartFullScreenExit: Bool
+    ) -> Bool {
+        guard !isReplacedBySmartFullScreenExit else {
+            return false
         }
 
-        if closeAndQuitConfirmationEnabled {
-            return CloseGestureConfirmationAction(action)
+        if requiresDangerConfirmation {
+            return true
         }
 
         guard
+            gesture.isPinch,
             legacyBrowserWindowCloseConfirmationEnabled,
             action == .closeWindow,
             let appIdentity = application.appIdentity,
@@ -74,10 +47,10 @@ enum CloseGestureConfirmationPolicy {
                 localizedName: appIdentity.localizedName
             )
         else {
-            return nil
+            return false
         }
 
-        return .closeWindow
+        return true
     }
 }
 

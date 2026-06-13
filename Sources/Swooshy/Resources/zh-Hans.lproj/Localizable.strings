@@ -112,6 +112,13 @@
 "guide.page.interaction.on_release.title" = "松手后触发";
 "guide.page.interaction.on_release.description" = "允许你在划动过程中通过 HUD 预览动作，松开手指才会真正执行。支持反向划动或 Esc 随时取消。";
 
+"guide.page.danger_confirmation.title" = "为危险手势开启二次确认";
+"guide.page.danger_confirmation.message" = "「关闭窗口」「退出应用」等动作很容易误触，而且难以撤销。Swooshy 允许你单独为某个手势开启保护，使其在执行前先要求二次确认。该设置在「设置」中针对每一条手势映射单独配置。";
+"guide.page.danger_confirmation.bullet1" = "在「设置 > 通用」里打开「危险手势二次确认」总开关。开启后，Dock 与标题栏每条手势右侧的「确认」列会出现盾牌按钮；点按使盾牌点亮，即可保护该手势。";
+"guide.page.danger_confirmation.bullet2" = "被保护的手势触发时不会立即执行，而是先弹出提示，请你重复同一个手势进行确认。";
+"guide.page.danger_confirmation.bullet3" = "在数秒内重复同一个手势即可执行动作；不操作则自动取消。";
+"guide.page.danger_confirmation.bullet4" = "被停用或被排除的手势不会触发确认。此功能与实验性的「标题栏捏合关闭二次确认」相互独立。";
+
 "settings.window.title" = "设置";
 "settings.section.general" = "通用";
 "settings.section.gestures" = "手势";
@@ -203,8 +210,15 @@
 "settings.advanced.title_bar_overlay_protection.footer" = "启用保护能避免 Swooshy 在其它独立菜单浮窗或其它基于叠加层窗口控制界面的 App 上产生不必要的手势误触。Swooshy 会确保在你开始手势前应用已被完全激活，并且没有其它叠加层挡住你的操作区域。但在偶尔某些特定边缘情况下，系统未及时上报正确的鼠标位置时，这也许会阻挡个别正常的手势。如果你想不计前提始终强行触发标题栏手势，可以关闭该选项。";
 "settings.advanced.smart_pinch_exit_full_screen.enabled" = "全屏状态下捏合退出全屏";
 "settings.advanced.smart_pinch_exit_full_screen.footer" = "在原生的 macOS 虚拟桌面全屏状态下（标题栏下拉时），不论你为标题栏的「捏合」手势绑定了什么动作，系统都会将其智能识别拦截为「退出全屏桌面」。这能避免在此直觉操作下不小心触发关闭窗口。";
-"settings.advanced.close_quit_confirmation.enabled" = "关闭窗口或退出应用前需要确认";
-"settings.advanced.close_quit_confirmation.footer" = "开启后，映射为「关闭窗口」或「退出应用」的捏合手势会先显示确认提示。请在数秒内重复同一个捏合手势以确认。";
+"settings.danger_gesture_confirmation.title" = "危险手势二次确认";
+"settings.danger_gesture_confirmation.description" = "勾选需要二次确认的手势。勾选后，触发该手势不会立即执行，而是先显示提示；请在数秒内重复同一个手势来确认，否则自动取消。";
+"settings.danger_gesture_confirmation.maps_to_format" = "当前动作：%@";
+"settings.danger_gesture_confirmation.footer" = "开启后，可在「Dock 手势」和「标题栏手势」页面单独为某些手势开启二次确认，适用于「关闭窗口」「退出应用」等不易撤销的动作，避免误触。开启后这些页面的每条手势右侧会显示盾牌按钮。";
+"settings.danger_gesture_confirmation.toggle.help" = "触发这个手势前需要二次确认";
+"settings.danger_gesture_confirmation.mapping_hint" = "二次确认当前已关闭。在「通用」设置中开启后，这里会显示盾牌按钮，可单独保护某些手势。";
+"settings.danger_gesture_confirmation.inline_footer" = "点按「确认」列中的盾牌即可为某个手势开启保护。被保护的手势（盾牌点亮）首次触发时不会立即执行，而是先弹出提示；请在数秒内重复同一个手势来确认，否则自动取消。被停用或被排除的手势不会触发确认。";
+"settings.gesture_mappings.column.action" = "动作";
+"settings.gesture_mappings.column.confirmation" = "确认";
 "settings.debug_logging.enabled" = "启用调试日志";
 "settings.shortcuts.recorder_placeholder" = "请按快捷键";
 "settings.shortcuts.registration_issue.tooltip" = "部分全局快捷键需要处理";
@@ -240,7 +254,7 @@
 "settings.about.open_releases.button" = "打开 Releases";
 
 "settings.advanced.open" = "高级设置…";
-"settings.advanced.footer" = "调节手势触发灵敏度、反向滑动取消和覆盖层保护等高级选项。";
+"settings.advanced.footer" = "调节手势触发灵敏度和反向滑动取消。";
 "settings.advanced.title" = "高级设置";
 "settings.advanced.section.sensitivity" = "手势灵敏度";
 "settings.advanced.swipe_sensitivity.label" = "滑动灵敏度";
@@ -279,6 +293,7 @@
 "guide.page.experimental.bullet5" = "显示器移动动作：允许在快捷键和手势映射中使用「移动到下一台显示器」与「移动到上一台显示器」。";
 "confirmation.pinch_again.close_window" = "再次捏合关闭窗口";
 "confirmation.pinch_again.quit_application" = "再次捏合退出应用";
+"confirmation.repeat_gesture.format" = "再次执行手势以确认：%@";
 
 "error.permission_missing" = "缺少辅助功能权限。请在系统设置中启用 Swooshy 后重试。";
 "error.no_frontmost_app" = "无法找到当前前台应用。";

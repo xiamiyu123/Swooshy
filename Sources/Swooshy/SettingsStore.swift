@@ -150,13 +150,32 @@ final class SettingsStore {
         }
     }
 
-    var closeAndQuitConfirmationEnabled: Bool {
+    /// Global on/off switch for the per-gesture danger confirmation feature.
+    /// When off, the runtime never prompts and the Settings UI hides the shield
+    /// controls, but the per-gesture selections below are preserved so toggling
+    /// this back on restores the previous configuration.
+    var dangerGestureConfirmationEnabled: Bool {
         didSet {
-            guard oldValue != closeAndQuitConfirmationEnabled else { return }
-            userDefaults.set(closeAndQuitConfirmationEnabled, forKey: Keys.closeAndQuitConfirmationEnabled)
+            guard oldValue != dangerGestureConfirmationEnabled else { return }
+            userDefaults.set(dangerGestureConfirmationEnabled, forKey: Keys.dangerGestureConfirmationEnabled)
+            if dangerGestureConfirmationEnabled {
+                seedDangerGestureConfirmationDefaultsIfNeeded()
+            }
             DebugLog.info(
                 DebugLog.settings,
-                "Close and quit confirmation enabled set to \(closeAndQuitConfirmationEnabled)"
+                "Danger gesture confirmation enabled set to \(dangerGestureConfirmationEnabled)"
+            )
+            notifyDidChange(.advancedGestureBehavior)
+        }
+    }
+
+    var dangerGestureConfirmationSelections: Set<DangerGestureConfirmationSelection> {
+        didSet {
+            guard oldValue != dangerGestureConfirmationSelections else { return }
+            persistDangerGestureConfirmationSelections()
+            DebugLog.info(
+                DebugLog.settings,
+                "Danger gesture confirmation selections set to \(dangerGestureConfirmationSelections.count) gestures"
             )
             notifyDidChange(.advancedGestureBehavior)
         }
@@ -442,17 +461,22 @@ final class SettingsStore {
             defaultValue: false,
             in: userDefaults
         )
-        self.closeAndQuitConfirmationEnabled = Self.boolValue(
-            forKey: Keys.closeAndQuitConfirmationEnabled,
-            defaultValue: false,
-            in: userDefaults
-        )
         self.titleBarOverlayProtectionEnabled = Self.boolValue(
             forKey: Keys.titleBarOverlayProtectionEnabled,
             defaultValue: true,
             in: userDefaults
         )
-        
+        let decodedDangerGestureConfirmationSelections =
+            Self.decodeDangerGestureConfirmationSelections(from: userDefaults) ?? []
+        self.dangerGestureConfirmationSelections = decodedDangerGestureConfirmationSelections
+        // Default the master switch on when the user already has selections (so
+        // existing installs keep prompting), off otherwise for a clean opt-in.
+        self.dangerGestureConfirmationEnabled = Self.boolValue(
+            forKey: Keys.dangerGestureConfirmationEnabled,
+            defaultValue: !decodedDangerGestureConfirmationSelections.isEmpty,
+            in: userDefaults
+        )
+
         // Deprecated preview-mode settings still load from UserDefaults so
         // older installs keep behaving consistently until the flow is removed.
         self.executeGestureOnRelease = Self.boolValue(
@@ -542,6 +566,17 @@ final class SettingsStore {
         if titleBarGestureBindings != decodedTitleBarGestureBindings {
             persistTitleBarGestureBindings()
         }
+
+        migrateLegacyDangerGestureConfirmationIfNeeded(in: userDefaults)
+
+        // The first-enable seed only applies to genuinely new opt-ins. Installs
+        // that already have the feature on (existing selections or a legacy
+        // migration) are considered already seeded, so a later off→on toggle
+        // never re-adds Close/Quit protections the user may have removed.
+        if dangerGestureConfirmationEnabled {
+            userDefaults.set(true, forKey: Keys.dangerGestureConfirmationDidSeedDefaults)
+        }
+
         if !experimentalBrowserTabCloseEnabled {
             if smartBrowserTabCloseEnabled {
                 userDefaults.set(false, forKey: Keys.smartBrowserTabCloseEnabled)
@@ -564,7 +599,9 @@ final class SettingsStore {
             Keys.smartPinchExitFullScreenEnabled,
             Keys.smartBrowserTabCloseEnabled,
             Keys.pinchCloseConfirmationEnabled,
-            Keys.closeAndQuitConfirmationEnabled,
+            Keys.dangerGestureConfirmationSelections,
+            Keys.dangerGestureConfirmationEnabled,
+            Keys.dangerGestureConfirmationDidSeedDefaults,
             Keys.executeGestureOnRelease,
             Keys.reverseCancelEnabled,
             Keys.reverseCancelSensitivity,
@@ -988,11 +1025,8 @@ final class SettingsStore {
         pinchSensitivity = 0.5
         titleBarTriggerHeight = Self.defaultTitleBarTriggerHeight
         titleBarCornerDragHoldDuration = Self.defaultTitleBarCornerDragHoldDuration
-        titleBarOverlayProtectionEnabled = true
-        smartPinchExitFullScreenEnabled = true
         smartBrowserTabCloseEnabled = false
         pinchCloseConfirmationEnabled = false
-        closeAndQuitConfirmationEnabled = false
         experimentalBrowserTabCloseEnabled = false
         experimentalDisplayMoveActionsEnabled = false
     }
@@ -1018,6 +1052,107 @@ final class SettingsStore {
         }
 
         return min(1, max(0, value))
+    }
+
+    func requiresDangerGestureConfirmation(
+        _ gesture: DockGestureKind,
+        on surface: GestureExclusionSurface
+    ) -> Bool {
+        dangerGestureConfirmationSelections.contains(
+            DangerGestureConfirmationSelection(surface: surface, gesture: gesture)
+        )
+    }
+
+    func updateDangerGestureConfirmation(
+        _ requiresConfirmation: Bool,
+        for gesture: DockGestureKind,
+        on surface: GestureExclusionSurface
+    ) {
+        let selection = DangerGestureConfirmationSelection(surface: surface, gesture: gesture)
+        var selections = dangerGestureConfirmationSelections
+        if requiresConfirmation {
+            selections.insert(selection)
+        } else {
+            selections.remove(selection)
+        }
+        dangerGestureConfirmationSelections = selections
+    }
+
+    private func persistDangerGestureConfirmationSelections() {
+        persistEncoded(
+            Array(dangerGestureConfirmationSelections),
+            key: Keys.dangerGestureConfirmationSelections,
+            description: "danger gesture confirmation selections"
+        )
+    }
+
+    private static func decodeDangerGestureConfirmationSelections(
+        from userDefaults: UserDefaults
+    ) -> Set<DangerGestureConfirmationSelection>? {
+        guard let selections = decodePersistedBindings(
+            [DangerGestureConfirmationSelection].self,
+            forKey: Keys.dangerGestureConfirmationSelections,
+            in: userDefaults,
+            failureDescription: "danger gesture confirmation selections"
+        ) else {
+            return nil
+        }
+
+        return Set(selections)
+    }
+
+    /// One-time migration from the old close/quit confirmation model. The legacy
+    /// model had a single global toggle (`closeAndQuitConfirmationEnabled`) plus a
+    /// confirmation-gesture picker; the new model is a per-(surface, gesture)
+    /// selection set confirmed by repeating the same gesture. When no new value
+    /// is stored yet, seed the set from the legacy toggle: off → empty, on → every
+    /// gesture currently mapped to Close Window or Quit Application.
+    private func migrateLegacyDangerGestureConfirmationIfNeeded(in userDefaults: UserDefaults) {
+        guard userDefaults.data(forKey: Keys.dangerGestureConfirmationSelections) == nil else {
+            clearLegacyDangerGestureConfirmationKeys(in: userDefaults)
+            return
+        }
+
+        defer { clearLegacyDangerGestureConfirmationKeys(in: userDefaults) }
+
+        guard userDefaults.bool(forKey: Keys.closeAndQuitConfirmationEnabled) else {
+            return
+        }
+
+        dangerGestureConfirmationSelections = closeAndQuitDangerGestureConfirmationSelections()
+    }
+
+    /// Every gesture currently mapped to Close Window or Quit Application, on
+    /// both surfaces. These are the hard-to-undo actions worth protecting by
+    /// default; the legacy migration and the first-enable seed both build on it.
+    private func closeAndQuitDangerGestureConfirmationSelections() -> Set<DangerGestureConfirmationSelection> {
+        var selections: Set<DangerGestureConfirmationSelection> = []
+        for binding in dockGestureBindings where binding.action == .closeWindow || binding.action == .quitApplication {
+            selections.insert(DangerGestureConfirmationSelection(surface: .dock, gesture: binding.gesture))
+        }
+        for binding in titleBarGestureBindings where binding.action == .closeWindow || binding.action == .quitApplication {
+            selections.insert(DangerGestureConfirmationSelection(surface: .titleBar, gesture: binding.gesture))
+        }
+        return selections
+    }
+
+    /// The first time the user turns the feature on, pre-protect every gesture
+    /// mapped to Close Window or Quit Application so the riskiest actions are
+    /// guarded out of the box. Runs at most once: afterwards the user's manual
+    /// shield choices are never overwritten, even across off/on toggles.
+    private func seedDangerGestureConfirmationDefaultsIfNeeded() {
+        guard !userDefaults.bool(forKey: Keys.dangerGestureConfirmationDidSeedDefaults) else { return }
+        userDefaults.set(true, forKey: Keys.dangerGestureConfirmationDidSeedDefaults)
+
+        let seeded = dangerGestureConfirmationSelections
+            .union(closeAndQuitDangerGestureConfirmationSelections())
+        guard seeded != dangerGestureConfirmationSelections else { return }
+        dangerGestureConfirmationSelections = seeded
+    }
+
+    private func clearLegacyDangerGestureConfirmationKeys(in userDefaults: UserDefaults) {
+        userDefaults.removeObject(forKey: Keys.closeAndQuitConfirmationEnabled)
+        userDefaults.removeObject(forKey: Keys.dangerGestureConfirmationGesture)
     }
 
     private func persistAdvancedGestureDouble(
@@ -1170,7 +1305,13 @@ final class SettingsStore {
         static let smartPinchExitFullScreenEnabled = "settings.smartPinchExitFullScreenEnabled"
         static let smartBrowserTabCloseEnabled = "settings.smartBrowserTabCloseEnabled"
         static let pinchCloseConfirmationEnabled = "settings.pinchCloseConfirmationEnabled"
+        static let dangerGestureConfirmationEnabled = "settings.dangerGestureConfirmationEnabled"
+        static let dangerGestureConfirmationDidSeedDefaults = "settings.dangerGestureConfirmationDidSeedDefaults"
+        static let dangerGestureConfirmationSelections = "settings.dangerGestureConfirmationSelections"
+        // Deprecated: superseded by per-gesture dangerGestureConfirmationSelections.
+        // Retained for migration and reset cleanup of older installs.
         static let closeAndQuitConfirmationEnabled = "settings.closeAndQuitConfirmationEnabled"
+        static let dangerGestureConfirmationGesture = "settings.dangerGestureConfirmationGesture"
         static let experimentalBrowserTabCloseEnabled = "settings.experimentalBrowserTabCloseEnabled"
         static let experimentalDisplayMoveActionsEnabled = "settings.experimentalDisplayMoveActionsEnabled"
         // Deprecated preview-mode persistence keys.

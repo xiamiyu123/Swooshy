@@ -30,7 +30,8 @@ struct SettingsStoreTests {
         store.experimentalBrowserTabCloseEnabled = true
         store.experimentalDisplayMoveActionsEnabled = true
         store.smartBrowserTabCloseEnabled = true
-        store.closeAndQuitConfirmationEnabled = true
+        store.updateDangerGestureConfirmation(true, for: .swipeUp, on: .dock)
+        store.updateDangerGestureConfirmation(true, for: .pinchIn, on: .titleBar)
         store.titleBarTriggerHeight = 42
         store.titleBarCornerDragHoldDuration = 0.9
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
@@ -52,13 +53,139 @@ struct SettingsStoreTests {
         #expect(reloadedStore.experimentalBrowserTabCloseEnabled)
         #expect(reloadedStore.experimentalDisplayMoveActionsEnabled)
         #expect(reloadedStore.smartBrowserTabCloseEnabled)
-        #expect(reloadedStore.closeAndQuitConfirmationEnabled)
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.swipeUp, on: .dock))
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
         #expect(reloadedStore.titleBarTriggerHeight == 42)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == 0.9)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .closeWindow)
         #expect(!reloadedStore.dockGestureIsEnabled(for: .pinchIn))
         #expect(reloadedStore.titleBarGestureAction(for: .swipeLeft) == .maximize)
         #expect(!reloadedStore.titleBarGestureIsEnabled(for: .swipeLeft))
+    }
+
+    @Test
+    func migratesLegacyEnabledCloseQuitConfirmationToCloseAndQuitGestures() {
+        let defaults = makeUserDefaults()
+        defaults.set(true, forKey: "settings.closeAndQuitConfirmationEnabled")
+        defaults.set("swipeUp", forKey: "settings.dangerGestureConfirmationGesture")
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        // Default bindings map Dock pinch in → quit and title-bar pinch in → close,
+        // so migration should seed exactly those two and nothing else.
+        #expect(store.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
+        #expect(store.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
+        #expect(!store.requiresDangerGestureConfirmation(.swipeUp, on: .dock))
+        #expect(!store.requiresDangerGestureConfirmation(.swipeLeft, on: .titleBar))
+
+        // Legacy keys are cleared once migration runs.
+        #expect(defaults.object(forKey: "settings.closeAndQuitConfirmationEnabled") == nil)
+        #expect(defaults.object(forKey: "settings.dangerGestureConfirmationGesture") == nil)
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
+    }
+
+    @Test
+    func migratesLegacyDisabledCloseQuitConfirmationToEmptySelection() {
+        let defaults = makeUserDefaults()
+        defaults.set(false, forKey: "settings.closeAndQuitConfirmationEnabled")
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.dangerGestureConfirmationSelections.isEmpty)
+        #expect(defaults.object(forKey: "settings.closeAndQuitConfirmationEnabled") == nil)
+    }
+
+    @Test
+    func existingDangerGestureSelectionsAreNotOverwrittenByLegacyMigration() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+        store.updateDangerGestureConfirmation(true, for: .swipeDown, on: .dock)
+
+        // A stale legacy toggle must not clobber an already-migrated selection set.
+        defaults.set(true, forKey: "settings.closeAndQuitConfirmationEnabled")
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.swipeDown, on: .dock))
+        #expect(!reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
+        #expect(defaults.object(forKey: "settings.closeAndQuitConfirmationEnabled") == nil)
+    }
+
+    @Test
+    func dangerGestureConfirmationMasterSwitchDefaultsOnWhenSelectionsExist() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+        store.updateDangerGestureConfirmation(true, for: .swipeDown, on: .dock)
+
+        // Existing installs that already protected gestures should keep the
+        // feature on after the master switch is introduced.
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.dangerGestureConfirmationEnabled)
+    }
+
+    @Test
+    func dangerGestureConfirmationMasterSwitchDefaultsOffWhenNoSelections() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+
+        // A clean install opts in explicitly rather than showing the shields.
+        #expect(!store.dangerGestureConfirmationEnabled)
+    }
+
+    @Test
+    func dangerGestureConfirmationMasterSwitchPreservesSelectionsWhenToggledOff() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+        store.dangerGestureConfirmationEnabled = true
+        store.updateDangerGestureConfirmation(true, for: .swipeDown, on: .dock)
+        store.dangerGestureConfirmationEnabled = false
+
+        // Turning the feature off hides the controls but must not discard the
+        // per-gesture choices, so flipping it back on restores them.
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(!reloadedStore.dangerGestureConfirmationEnabled)
+        #expect(reloadedStore.requiresDangerGestureConfirmation(.swipeDown, on: .dock))
+    }
+
+    @Test
+    func firstEnableProtectsCloseWindowAndQuitApplicationGestures() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+
+        // Clean install starts with no protected gestures.
+        #expect(store.dangerGestureConfirmationSelections.isEmpty)
+
+        store.dangerGestureConfirmationEnabled = true
+
+        // Default bindings map Dock pinch in → Quit Application and title-bar
+        // pinch in → Close Window, so the first enable should guard exactly those.
+        #expect(store.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
+        #expect(store.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
+        #expect(!store.requiresDangerGestureConfirmation(.swipeUp, on: .dock))
+        #expect(!store.requiresDangerGestureConfirmation(.swipeLeft, on: .titleBar))
+    }
+
+    @Test
+    func firstEnableSeedRunsOnceAndDoesNotResurrectRemovedProtections() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+
+        store.dangerGestureConfirmationEnabled = true
+        // User decides Quit Application does not need a confirmation after all.
+        store.updateDangerGestureConfirmation(false, for: .pinchIn, on: .dock)
+        store.dangerGestureConfirmationEnabled = false
+
+        // Toggling back on must not re-add the protection the user removed.
+        store.dangerGestureConfirmationEnabled = true
+        #expect(!store.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
+
+        // The decision also survives a relaunch.
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        reloadedStore.dangerGestureConfirmationEnabled = false
+        reloadedStore.dangerGestureConfirmationEnabled = true
+        #expect(!reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .dock))
     }
 
     @Test
@@ -245,7 +372,7 @@ struct SettingsStoreTests {
         store.titleBarOverlayProtectionEnabled = true
         store.smartPinchExitFullScreenEnabled = false
         store.smartBrowserTabCloseEnabled = true
-        store.closeAndQuitConfirmationEnabled = true
+        store.updateDangerGestureConfirmation(true, for: .pinchOut, on: .dock)
         store.titleBarTriggerHeight = 40
         store.titleBarCornerDragHoldDuration = 1.2
         store.statusItemIcon = .windowGrid
@@ -272,7 +399,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.titleBarOverlayProtectionEnabled)
         #expect(reloadedStore.smartPinchExitFullScreenEnabled)
         #expect(!reloadedStore.smartBrowserTabCloseEnabled)
-        #expect(!reloadedStore.closeAndQuitConfirmationEnabled)
+        #expect(reloadedStore.dangerGestureConfirmationSelections.isEmpty)
         #expect(reloadedStore.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
         #expect(reloadedStore.statusItemIcon == .gale)
@@ -489,14 +616,14 @@ struct SettingsStoreTests {
     }
 
     @Test
-    func resetAdvancedSettingsRestoresBrowserTabCloseDefaults() {
+    func resetAdvancedSettingsRestoresVisibleAdvancedDefaults() {
         let store = makeSettingsStore()
         store.experimentalBrowserTabCloseEnabled = true
         store.experimentalDisplayMoveActionsEnabled = true
         store.smartBrowserTabCloseEnabled = true
         store.titleBarOverlayProtectionEnabled = false
         store.smartPinchExitFullScreenEnabled = false
-        store.closeAndQuitConfirmationEnabled = true
+        store.updateDangerGestureConfirmation(true, for: .swipeLeft, on: .dock)
         store.reverseCancelEnabled = false
         store.reverseCancelSensitivity = 0.8
         store.swipeSensitivity = 0.2
@@ -509,9 +636,9 @@ struct SettingsStoreTests {
         #expect(!store.experimentalBrowserTabCloseEnabled)
         #expect(!store.experimentalDisplayMoveActionsEnabled)
         #expect(!store.smartBrowserTabCloseEnabled)
-        #expect(store.titleBarOverlayProtectionEnabled)
-        #expect(store.smartPinchExitFullScreenEnabled)
-        #expect(!store.closeAndQuitConfirmationEnabled)
+        #expect(!store.titleBarOverlayProtectionEnabled)
+        #expect(!store.smartPinchExitFullScreenEnabled)
+        #expect(store.requiresDangerGestureConfirmation(.swipeLeft, on: .dock))
         #expect(store.reverseCancelEnabled)
         #expect(store.reverseCancelSensitivity == 0.5)
         #expect(store.swipeSensitivity == 0.5)
