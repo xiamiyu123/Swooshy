@@ -117,6 +117,7 @@
 "settings.section.title_bar_gestures" = "Title Bar Gestures";
 "settings.section.advanced" = "Advanced";
 "settings.section.shortcuts" = "Shortcuts";
+"settings.section.about" = "About";
 "settings.language.label" = "Language";
 "settings.language.system" = "Follow System";
 "settings.language.english" = "English";
@@ -182,6 +183,29 @@
 "settings.shortcuts.handler_unavailable.title" = "Global hotkey service unavailable";
 "settings.shortcuts.handler_unavailable.message" = "Swooshy could not install its global hotkey listener, so recorded shortcuts will not work right now. Try restarting Swooshy; if it keeps happening, check debug logs or temporarily disable global hotkeys.";
 "settings.shortcuts.reset" = "Reset shortcut defaults";
+
+"settings.about.version_format" = "Version %@";
+"settings.about.github.title" = "GitHub Repository";
+"settings.about.github.subtitle" = "Source code, issues, and project updates";
+"settings.about.license.title" = "License";
+"settings.about.license.subtitle" = "GNU General Public License v3.0";
+"settings.about.attribution.title" = "Attribution";
+"settings.about.attribution.subtitle" = "Open-source projects and references";
+"settings.about.update.section" = "Updates";
+"settings.about.update.manual.title" = "Check Releases for Updates";
+"settings.about.update.manual.message" = "Swooshy can check the latest GitHub release when you ask. Updates are never installed automatically.";
+"settings.about.update.checking.title" = "Checking for Updates";
+"settings.about.update.checking.message" = "Swooshy is checking the latest GitHub release.";
+"settings.about.update.up_to_date.title" = "Swooshy Is Up to Date";
+"settings.about.update.up_to_date.message" = "The installed version is at least as new as the latest GitHub release.";
+"settings.about.update.available.title" = "New Update Available";
+"settings.about.update.available.message" = "A newer release is available on GitHub. Open the latest release to review notes and download the new build.";
+"settings.about.update.failed.title" = "Unable to Check Updates";
+"settings.about.update.failed.message" = "Swooshy could not reach the latest GitHub release right now. You can still open Releases manually.";
+"settings.about.check_updates.button" = "Check for Updates";
+"settings.about.checking_updates.button" = "Checking…";
+"settings.about.download_update.button" = "Open Latest Release";
+"settings.about.open_releases.button" = "Open Releases";
 
 "settings.advanced.open" = "Advanced Settings…";
 "settings.advanced.footer" = "Fine-tune gesture trigger sensitivity, reverse-swipe cancellation, and overlay protection.";

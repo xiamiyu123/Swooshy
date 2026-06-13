@@ -4,10 +4,12 @@ struct LaunchOptions: Equatable {
     static let resetUserConfigurationArgument = "--reset-user-config"
     static let clearCacheArgument = "--clear-cache"
     static let previewHotKeyRegistrationFailureArgument = "--preview-hotkey-registration-failure"
+    static let previewUpdateAvailableArgument = "--preview-update-available"
 
     let resetUserConfiguration: Bool
     let clearCache: Bool
     let previewHotKeyRegistrationFailure: Bool
+    let previewUpdateAvailable: Bool
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         let argumentSet = Set(arguments)
@@ -17,6 +19,7 @@ struct LaunchOptions: Equatable {
         self.previewHotKeyRegistrationFailure = argumentSet.contains(
             Self.previewHotKeyRegistrationFailureArgument
         )
+        self.previewUpdateAvailable = argumentSet.contains(Self.previewUpdateAvailableArgument)
     }
 
     @MainActor

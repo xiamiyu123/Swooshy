@@ -117,6 +117,7 @@
 "settings.section.title_bar_gestures" = "标题栏手势";
 "settings.section.advanced" = "高级";
 "settings.section.shortcuts" = "快捷键";
+"settings.section.about" = "关于";
 "settings.language.label" = "语言";
 "settings.language.system" = "跟随系统";
 "settings.language.english" = "English";
@@ -182,6 +183,29 @@
 "settings.shortcuts.handler_unavailable.title" = "全局快捷键服务不可用";
 "settings.shortcuts.handler_unavailable.message" = "Swooshy 无法安装全局快捷键监听器，因此当前录制的快捷键不会生效。请尝试重启 Swooshy；如果持续出现，可以查看调试日志或暂时关闭全局快捷键。";
 "settings.shortcuts.reset" = "恢复默认快捷键";
+
+"settings.about.version_format" = "版本 %@";
+"settings.about.github.title" = "GitHub 仓库";
+"settings.about.github.subtitle" = "源代码、问题反馈和项目更新";
+"settings.about.license.title" = "许可证";
+"settings.about.license.subtitle" = "GNU General Public License v3.0";
+"settings.about.attribution.title" = "致谢";
+"settings.about.attribution.subtitle" = "开源项目与参考资料";
+"settings.about.update.section" = "更新";
+"settings.about.update.manual.title" = "前往 Releases 检查更新";
+"settings.about.update.manual.message" = "Swooshy 会在你点击时检查最新 GitHub Release，但不会自动安装更新。";
+"settings.about.update.checking.title" = "正在检查更新";
+"settings.about.update.checking.message" = "Swooshy 正在读取最新 GitHub Release。";
+"settings.about.update.up_to_date.title" = "已是最新版本";
+"settings.about.update.up_to_date.message" = "当前安装版本不低于 GitHub 上的最新 Release。";
+"settings.about.update.available.title" = "发现新版本";
+"settings.about.update.available.message" = "GitHub 上已有更新版本。打开最新 Release 后可查看更新说明并下载新的构建。";
+"settings.about.update.failed.title" = "无法检查更新";
+"settings.about.update.failed.message" = "Swooshy 暂时无法读取最新 GitHub Release。你仍然可以手动打开 Releases 页面。";
+"settings.about.check_updates.button" = "检查更新";
+"settings.about.checking_updates.button" = "检查中…";
+"settings.about.download_update.button" = "打开最新 Release";
+"settings.about.open_releases.button" = "打开 Releases";
 
 "settings.advanced.open" = "高级设置…";
 "settings.advanced.footer" = "调节手势触发灵敏度、反向滑动取消和覆盖层保护等高级选项。";
