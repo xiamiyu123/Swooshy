@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import Swooshy
@@ -54,5 +55,26 @@ struct InteractionTargetTests {
             processIdentifier: 42,
             localizedName: "Calendar"
         )!
+    }
+}
+
+struct DockElementTokenTests {
+    @Test
+    func windowIdentifierTokensAreDistinctFromElementHashTokens() {
+        let windowIdentifierToken = DockElementToken(
+            processIdentifier: 42,
+            windowIdentifier: 7
+        )
+        let matchingWindowIdentifierToken = DockElementToken(
+            processIdentifier: 42,
+            windowIdentifier: 7
+        )
+        let elementHashToken = DockElementToken(
+            processIdentifier: 42,
+            rawHash: 7
+        )
+
+        #expect(windowIdentifierToken == matchingWindowIdentifierToken)
+        #expect(windowIdentifierToken != elementHashToken)
     }
 }

@@ -1,6 +1,10 @@
 import Foundation
 import Observation
 
+enum AppUserDefaultsKeys {
+    static let debugLoggingEnabled = "settings.debugLoggingEnabled"
+}
+
 struct SettingsChangeCategory: OptionSet {
     let rawValue: Int
 
@@ -161,10 +165,14 @@ final class SettingsStore {
     var experimentalBrowserTabCloseEnabled: Bool {
         didSet {
             guard oldValue != experimentalBrowserTabCloseEnabled else { return }
+            let storedPinchCloseConfirmation = userDefaults.object(forKey: Keys.pinchCloseConfirmationEnabled) as? Bool
             userDefaults.set(experimentalBrowserTabCloseEnabled, forKey: Keys.experimentalBrowserTabCloseEnabled)
             if !experimentalBrowserTabCloseEnabled {
                 smartBrowserTabCloseEnabled = false
                 pinchCloseConfirmationEnabled = false
+                if storedPinchCloseConfirmation != false {
+                    userDefaults.removeObject(forKey: Keys.pinchCloseConfirmationEnabled)
+                }
                 removeBrowserTabCloseGestureActions()
             } else if userDefaults.object(forKey: Keys.pinchCloseConfirmationEnabled) == nil {
                 pinchCloseConfirmationEnabled = true
@@ -529,7 +537,7 @@ final class SettingsStore {
                 userDefaults.set(false, forKey: Keys.smartBrowserTabCloseEnabled)
             }
             if pinchCloseConfirmationEnabled {
-                userDefaults.set(false, forKey: Keys.pinchCloseConfirmationEnabled)
+                userDefaults.removeObject(forKey: Keys.pinchCloseConfirmationEnabled)
             }
         }
     }
@@ -921,18 +929,18 @@ final class SettingsStore {
         experimentalDisplayMoveActionsEnabled = false
     }
 
-    static let defaultTitleBarTriggerHeight: Double = 32
-    static let minimumTitleBarTriggerHeight: Double = 24
-    static let maximumTitleBarTriggerHeight: Double = 56
-    static let defaultTitleBarCornerDragHoldDuration: Double = 0.2
-    static let minimumTitleBarCornerDragHoldDuration: Double = 0.2
-    static let maximumTitleBarCornerDragHoldDuration: Double = 1.5
+    nonisolated static let defaultTitleBarTriggerHeight: Double = 32
+    nonisolated static let minimumTitleBarTriggerHeight: Double = 24
+    nonisolated static let maximumTitleBarTriggerHeight: Double = 56
+    nonisolated static let defaultTitleBarCornerDragHoldDuration: Double = 0.2
+    nonisolated static let minimumTitleBarCornerDragHoldDuration: Double = 0.2
+    nonisolated static let maximumTitleBarCornerDragHoldDuration: Double = 1.5
 
-    static func clampTitleBarTriggerHeight(_ value: Double) -> Double {
+    nonisolated static func clampTitleBarTriggerHeight(_ value: Double) -> Double {
         min(maximumTitleBarTriggerHeight, max(minimumTitleBarTriggerHeight, value))
     }
 
-    static func clampTitleBarCornerDragHoldDuration(_ value: Double) -> Double {
+    nonisolated static func clampTitleBarCornerDragHoldDuration(_ value: Double) -> Double {
         min(maximumTitleBarCornerDragHoldDuration, max(minimumTitleBarCornerDragHoldDuration, value))
     }
 
@@ -1080,7 +1088,7 @@ final class SettingsStore {
         static let statusItemIcon = "settings.statusItemIcon"
         static let collapseStatusItemWindowActions = "settings.collapseStatusItemWindowActions"
         static let hasSeenWelcomeGuide = "settings.hasSeenWelcomeGuide"
-        static let debugLoggingEnabled = "settings.debugLoggingEnabled"
+        static let debugLoggingEnabled = AppUserDefaultsKeys.debugLoggingEnabled
         static let hotKeyBindings = "settings.hotKeyBindings"
         static let dockGestureBindings = "settings.dockGestureBindings"
         static let titleBarGestureBindings = "settings.titleBarGestureBindings"

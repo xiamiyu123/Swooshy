@@ -374,6 +374,24 @@ final class ObservedWindowConstraintStore {
         )
     }
 
+    func sharedSizeBounds(for applicationKey: String) -> WindowActionPreview.SizeBounds? {
+        pruneExpiredConstraints()
+
+        guard var applicationConstraints = constraintsByApplicationKey[applicationKey] else {
+            return nil
+        }
+
+        applicationConstraints.lastUsedAt = now()
+        constraintsByApplicationKey[applicationKey] = applicationConstraints
+        hasPendingPersistence = true
+
+        guard applicationConstraints.sharedSizeBounds.hasConstraints else {
+            return nil
+        }
+
+        return applicationConstraints.sharedSizeBounds
+    }
+
     func record(
         sizeBounds: WindowActionPreview.SizeBounds,
         horizontalAnchor: WindowActionPreview.AxisAnchor?,
@@ -587,6 +605,12 @@ final class WindowManager: WindowManaging {
         }
     }
 
+    private func requirePerformed(_ didPerform: Bool) throws {
+        guard didPerform else {
+            throw WindowManagerError.unableToPerformAction
+        }
+    }
+
     func perform(_ action: WindowAction, layoutEngine: WindowLayoutEngine) throws {
         try perform(
             action,
@@ -612,7 +636,7 @@ final class WindowManager: WindowManaging {
         }
 
         let app = try frontmostApplication()
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
 
         func targetedFrontmostWindow() throws -> AXUIElement {
             try targetedWindow(
@@ -689,10 +713,7 @@ final class WindowManager: WindowManaging {
             return
         case .toggleFullScreen:
             let window = try targetedFrontmostWindow()
-            let isFullScreen = isFullScreen(window)
-            if !isFullScreen {
-                try setFullScreen(true, for: window)
-            }
+            try setFullScreen(!isFullScreen(window), for: window)
             return
         case .exitFullScreen:
             let window = try targetedFrontmostWindow()
@@ -727,24 +748,32 @@ final class WindowManager: WindowManaging {
             _ = try quitApplication(matching: appIdentity)
             return
         case .minimize:
-            _ = try minimizeVisibleWindow(
-                of: target,
-                preferredAppKitPoint: preferredAppKitPoint
+            try requirePerformed(
+                try minimizeVisibleWindow(
+                    of: target,
+                    preferredAppKitPoint: preferredAppKitPoint
+                )
             )
             return
         case .closeWindow:
-            _ = try closeWindow(of: target, preferredAppKitPoint: preferredAppKitPoint)
+            try requirePerformed(
+                try closeWindow(of: target, preferredAppKitPoint: preferredAppKitPoint)
+            )
             return
         case .toggleFullScreen:
-            _ = try toggleFullScreenWindow(
-                of: target,
-                preferredAppKitPoint: preferredAppKitPoint
+            try requirePerformed(
+                try toggleFullScreenWindow(
+                    of: target,
+                    preferredAppKitPoint: preferredAppKitPoint
+                )
             )
             return
         case .exitFullScreen:
-            _ = try exitFullScreenWindow(
-                of: target,
-                preferredAppKitPoint: preferredAppKitPoint
+            try requirePerformed(
+                try exitFullScreenWindow(
+                    of: target,
+                    preferredAppKitPoint: preferredAppKitPoint
+                )
             )
             return
         case .closeTab:
@@ -753,17 +782,21 @@ final class WindowManager: WindowManaging {
             }
             return
         case .cycleSameAppWindowsForward:
-            _ = try cycleVisibleWindows(
-                of: target,
-                direction: .forward,
-                preferredAppKitPoint: preferredAppKitPoint
+            try requirePerformed(
+                try cycleVisibleWindows(
+                    of: target,
+                    direction: .forward,
+                    preferredAppKitPoint: preferredAppKitPoint
+                )
             )
             return
         case .cycleSameAppWindowsBackward:
-            _ = try cycleVisibleWindows(
-                of: target,
-                direction: .backward,
-                preferredAppKitPoint: preferredAppKitPoint
+            try requirePerformed(
+                try cycleVisibleWindows(
+                    of: target,
+                    direction: .backward,
+                    preferredAppKitPoint: preferredAppKitPoint
+                )
             )
             return
         case .moveToNextDisplay, .moveToPreviousDisplay:
@@ -813,7 +846,7 @@ final class WindowManager: WindowManaging {
         }
 
         let app = try frontmostApplication()
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
         let resolvedLayout = try resolvedWindowActionLayout(
             for: action,
             application: app,
@@ -1045,7 +1078,7 @@ final class WindowManager: WindowManaging {
         return ResolvedApplicationContext(
             identity: appIdentity,
             application: application,
-            appElement: AXUIElementCreateApplication(application.processIdentifier)
+            appElement: AXAttributeReader.applicationElement(for: application.processIdentifier)
         )
     }
 
@@ -1065,7 +1098,7 @@ final class WindowManager: WindowManaging {
         return ResolvedWindowContext(
             snapshot: snapshot,
             application: application,
-            appElement: AXUIElementCreateApplication(application.processIdentifier),
+            appElement: AXAttributeReader.applicationElement(for: application.processIdentifier),
             window: window
         )
     }
@@ -1207,7 +1240,12 @@ final class WindowManager: WindowManaging {
         let visibleWindows = try orderedVisibleWindowElements(in: app, appElement: appElement)
         let geometry = ScreenGeometry(screenFrames: NSScreen.screens.map(\.frame))
         for window in visibleWindows {
-            let appKitFrame = geometry.appKitFrame(fromAXFrame: try frame(of: window))
+            // Skip windows with unreadable frames so one broken AX element
+            // cannot abort containment matching for the remaining windows.
+            guard let axFrame = try? frame(of: window) else {
+                continue
+            }
+            let appKitFrame = geometry.appKitFrame(fromAXFrame: axFrame)
             if appKitFrame.contains(appKitPoint) {
                 DebugLog.debug(
                     DebugLog.windows,
@@ -1358,7 +1396,7 @@ final class WindowManager: WindowManaging {
             throw WindowManagerError.unableToResolveScreen
         }
 
-        let sizeConstraints = smoothDockingSizeConstraints(for: window)
+        let sizeConstraints = smoothDockingSizeConstraints(for: application, window: window)
         DebugLog.debug(
             DebugLog.windows,
             "Prepared smooth docking session for \(application.bundleIdentifier ?? application.localizedName ?? "unknown"): currentFrame = \(NSStringFromRect(currentFrame)), desktopFrame = \(NSStringFromRect(desktopFrame)), sizeConstraints = \(smoothDockingSizeConstraintDescription(sizeConstraints))"
@@ -1386,11 +1424,36 @@ final class WindowManager: WindowManaging {
                 }
 
                 return screenGeometry.appKitFrame(fromAXFrame: appliedAXFrame)
+            },
+            recordConstraintObservation: { [weak self, application, window] action, requestedFrame, appliedFrame in
+                self?.recordObservedConstraintIfNeeded(
+                    requestedFrame: requestedFrame,
+                    appliedFrame: appliedFrame,
+                    action: action,
+                    application: application,
+                    window: window
+                )
             }
         )
     }
 
-    private func smoothDockingSizeConstraints(for window: AXUIElement) -> SmoothDockingSizeConstraints {
+    private func smoothDockingSizeConstraints(
+        for application: NSRunningApplication,
+        window: AXUIElement
+    ) -> SmoothDockingSizeConstraints {
+        let axConstraints = smoothDockingAXSizeConstraints(for: window)
+        guard
+            let observedBounds = observedWindowConstraintStore.sharedSizeBounds(
+                for: observationKey(for: application, window: window)
+            )
+        else {
+            return axConstraints
+        }
+
+        return axConstraints.merged(with: SmoothDockingSizeConstraints(sizeBounds: observedBounds))
+    }
+
+    private func smoothDockingAXSizeConstraints(for window: AXUIElement) -> SmoothDockingSizeConstraints {
         let minimumSize = AXAttributeReader.size("AXMinSize" as CFString, from: window)
         let maximumSize = AXAttributeReader.size("AXMaxSize" as CFString, from: window)
 
@@ -1649,7 +1712,7 @@ final class WindowManager: WindowManaging {
         DebugLog.info(DebugLog.windows, "Attempting to restore a minimized window for \(application.logDescription)")
 
         let app = try runningApplication(matching: application)
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
         let windows = try windowElements(in: appElement).filter { isMinimized($0) }
         DebugLog.debug(
             DebugLog.windows,
@@ -1708,12 +1771,14 @@ final class WindowManager: WindowManaging {
             let targetWindow = try preferredWindowActionTarget(for: target, preferredAppKitPoint: preferredAppKitPoint)
 
             try bringWindowToFront(targetWindow, for: resolvedApplication.application)
-            if !isFullScreen(targetWindow) {
-                try setFullScreen(true, for: targetWindow)
-            }
+            let shouldEnterFullScreen = !isFullScreen(targetWindow)
+            try setFullScreen(shouldEnterFullScreen, for: targetWindow)
 
             cycleSessions.invalidate(for: resolvedApplication.application.processIdentifier)
-            DebugLog.info(DebugLog.windows, "Entered full screen for pointed window of \(target.logDescription)")
+            DebugLog.info(
+                DebugLog.windows,
+                "\(shouldEnterFullScreen ? "Entered" : "Exited") full screen for pointed window of \(target.logDescription)"
+            )
             return true
         }
 
@@ -1729,22 +1794,24 @@ final class WindowManager: WindowManaging {
         for targetWindow in windows {
             do {
                 try bringWindowToFront(targetWindow, for: resolvedApplication.application)
-                if !isFullScreen(targetWindow) {
-                    try setFullScreen(true, for: targetWindow)
-                }
+                let shouldEnterFullScreen = !isFullScreen(targetWindow)
+                try setFullScreen(shouldEnterFullScreen, for: targetWindow)
 
                 cycleSessions.invalidate(for: resolvedApplication.application.processIdentifier)
-                DebugLog.info(DebugLog.windows, "Entered full screen for one visible window of \(target.logDescription)")
+                DebugLog.info(
+                    DebugLog.windows,
+                    "\(shouldEnterFullScreen ? "Entered" : "Exited") full screen for one visible window of \(target.logDescription)"
+                )
                 return true
             } catch {
                 DebugLog.debug(
                     DebugLog.windows,
-                    "Visible window candidate could not enter full screen for \(target.logDescription): \(windowSummary([targetWindow]))"
+                    "Visible window candidate could not toggle full screen for \(target.logDescription): \(windowSummary([targetWindow]))"
                 )
             }
         }
 
-        DebugLog.debug(DebugLog.windows, "No full-screen-capable visible window found for \(target.logDescription)")
+        DebugLog.debug(DebugLog.windows, "No full-screen-toggle-capable visible window found for \(target.logDescription)")
         return false
     }
 
@@ -1811,7 +1878,7 @@ final class WindowManager: WindowManaging {
         DebugLog.info(DebugLog.windows, "Attempting to close a visible window for \(application.logDescription)")
 
         let app = try runningApplication(matching: application)
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
         let windows = try orderedVisibleWindowElements(in: app, appElement: appElement)
         DebugLog.debug(
             DebugLog.windows,
@@ -1852,7 +1919,7 @@ final class WindowManager: WindowManaging {
         case .application(let application, _):
             if let preferredAppKitPoint {
                 let app = try runningApplication(matching: application)
-                let appElement = AXUIElementCreateApplication(app.processIdentifier)
+                let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
                 DebugLog.info(
                     DebugLog.windows,
                     "Attempting to close pointed window for \(application.logDescription) at \(NSStringFromPoint(preferredAppKitPoint))"
@@ -1878,7 +1945,7 @@ final class WindowManager: WindowManaging {
         case .window(let windowIdentity, let appIdentity, _):
             if let preferredAppKitPoint {
                 let app = try runningApplication(matching: appIdentity, preferredProcessIdentifier: target.processIdentifier)
-                let appElement = AXUIElementCreateApplication(app.processIdentifier)
+                let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
                 let targetWindow = try preferredWindowActionTarget(
                     in: app,
                     appElement: appElement,
@@ -1903,7 +1970,7 @@ final class WindowManager: WindowManaging {
 
     private func closeRecentWindow(of application: AppIdentity) throws -> Bool {
         let app = try runningApplication(matching: application)
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
         let windows = try recentWindowCandidates(in: app, appElement: appElement)
         DebugLog.debug(
             DebugLog.windows,
@@ -1957,7 +2024,7 @@ final class WindowManager: WindowManaging {
 
         let resolvedApplication = try resolvedApplicationContext(for: target)
         let app = resolvedApplication.application
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
         let currentWindow: AXUIElement?
         if let preferredAppKitPoint {
             currentWindow = try preferredWindowActionTarget(for: target, preferredAppKitPoint: preferredAppKitPoint)
@@ -2121,7 +2188,7 @@ final class WindowManager: WindowManaging {
             return cachedValue
         }
 
-        let appElement = AXUIElementCreateApplication(application.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: application.processIdentifier)
         var value: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
 
@@ -2413,7 +2480,7 @@ final class WindowManager: WindowManaging {
     private func requestForegroundActivation(for app: NSRunningApplication) {
         _ = app.activate(options: [.activateAllWindows])
 
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: app.processIdentifier)
         let error = AXUIElementSetAttributeValue(
             appElement,
             kAXFrontmostAttribute as CFString,

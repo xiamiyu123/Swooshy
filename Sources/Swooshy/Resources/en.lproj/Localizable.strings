@@ -200,6 +200,8 @@
 "settings.about.update.up_to_date.message" = "The installed version is at least as new as the latest GitHub release.";
 "settings.about.update.available.title" = "New Update Available";
 "settings.about.update.available.message" = "A newer release is available on GitHub. Open the latest release to review notes and download the new build.";
+"settings.about.update.source_build.title" = "Source Build Detected";
+"settings.about.update.source_build.message" = "This build does not include a packaged app version, so Swooshy cannot compare it with GitHub releases. Open Releases manually to download a packaged build.";
 "settings.about.update.failed.title" = "Unable to Check Updates";
 "settings.about.update.failed.message" = "Swooshy could not reach the latest GitHub release right now. You can still open Releases manually.";
 "settings.about.check_updates.button" = "Check for Updates";

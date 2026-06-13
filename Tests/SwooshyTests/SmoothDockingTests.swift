@@ -74,6 +74,25 @@ struct SmoothDockingTests {
     }
 
     @Test
+    func smoothDockingSizeConstraintsUseObservedPreviewBounds() {
+        let sizeBounds = WindowActionPreview.SizeBounds(
+            minimumWidth: 520,
+            maximumWidth: 1200,
+            minimumHeight: 480,
+            maximumHeight: 700
+        )
+
+        #expect(
+            SmoothDockingSizeConstraints(sizeBounds: sizeBounds) == SmoothDockingSizeConstraints(
+                minimumWidth: 520,
+                maximumWidth: 1200,
+                minimumHeight: 480,
+                maximumHeight: 700
+            )
+        )
+    }
+
+    @Test
     func topLeftQuarterAnchorsConstrainedWindowToDesktopTopLeft() {
         let plan = resolver.plan(
             for: .topLeftQuarter,
@@ -161,6 +180,44 @@ struct SmoothDockingTests {
         #expect(currentFrame.size == constrainedSize)
         #expect(abs(currentFrame.maxX - desktopFrame.maxX) <= 1)
         #expect(abs(currentFrame.maxY - desktopFrame.maxY) <= 1)
+    }
+
+    @Test
+    func smoothDockingSessionReportsObservedFrameWritesOnCommit() throws {
+        let constrainedSize = CGSize(width: 560, height: 672)
+        var currentFrame = CGRect(x: 120, y: 120, width: 800, height: 600)
+        var observations: [(action: WindowAction, requested: CGRect, applied: CGRect)] = []
+
+        let session = SmoothDockingSession(
+            originalFrame: currentFrame,
+            desktopFrame: desktopFrame,
+            baseSizeConstraints: SmoothDockingSizeConstraints(),
+            loadCurrentFrame: { currentFrame },
+            applyFrame: { requestedFrame in
+                currentFrame = CGRect(
+                    x: requestedFrame.minX,
+                    y: requestedFrame.minY,
+                    width: constrainedSize.width,
+                    height: constrainedSize.height
+                )
+                return currentFrame
+            },
+            recordConstraintObservation: { action, requestedFrame, appliedFrame in
+                observations.append((action, requestedFrame, appliedFrame))
+            }
+        )
+
+        session.update(action: .rightHalf)
+        _ = try session.commit()
+        session.finish()
+
+        #expect(
+            observations.contains { observation in
+                observation.action == .rightHalf &&
+                    observation.requested.size != observation.applied.size &&
+                    observation.applied.size == constrainedSize
+            }
+        )
     }
 
     @Test

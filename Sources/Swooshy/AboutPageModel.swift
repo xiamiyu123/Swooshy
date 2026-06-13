@@ -5,6 +5,7 @@ enum AboutUpdateState: Equatable, Sendable {
     case checking
     case upToDate
     case updateAvailable
+    case sourceBuild
     case checkFailed
 }
 
@@ -68,10 +69,18 @@ struct AboutPageModel: Equatable, Sendable {
             let currentVersion,
             let currentVersion = ComparableVersion(currentVersion)
         else {
-            return .updateAvailable
+            return .sourceBuild
         }
 
         return latestVersion > currentVersion ? .updateAvailable : .upToDate
+    }
+
+    static func canCompareCurrentVersion(_ currentVersion: String?) -> Bool {
+        guard let currentVersion else {
+            return false
+        }
+
+        return ComparableVersion(currentVersion) != nil
     }
 
     private static func normalizedVersion(_ version: String?) -> String? {
@@ -107,13 +116,22 @@ struct AboutPageModel: Equatable, Sendable {
 }
 
 enum AboutUpdateChecker {
-    static func checkLatestRelease(currentVersion: String?) async -> AboutUpdateState {
+    static func checkLatestRelease(
+        currentVersion: String?,
+        dataForRequest: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
+            try await URLSession.shared.data(for: request)
+        }
+    ) async -> AboutUpdateState {
+        guard AboutPageModel.canCompareCurrentVersion(currentVersion) else {
+            return .sourceBuild
+        }
+
         do {
             var request = URLRequest(url: AboutPageModel.latestReleaseAPIURL)
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
             request.setValue("Swooshy", forHTTPHeaderField: "User-Agent")
 
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await dataForRequest(request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
                 return .checkFailed
             }

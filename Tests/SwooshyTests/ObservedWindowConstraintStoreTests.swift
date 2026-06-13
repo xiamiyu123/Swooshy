@@ -74,6 +74,24 @@ struct ObservedWindowConstraintStoreTests {
     }
 
     @Test
+    func sharedSizeBoundsCanBeReadWithoutAnAction() {
+        let store = ObservedWindowConstraintStore()
+
+        store.record(
+            sizeBounds: sizeBounds(maximumWidth: 1200, minimumHeight: 520),
+            horizontalAnchor: .centered,
+            verticalAnchor: .centered,
+            action: .maximize,
+            for: appKey
+        )
+
+        let sharedSizeBounds = store.sharedSizeBounds(for: appKey)
+
+        #expect(sharedSizeBounds?.maximumWidth == 1200)
+        #expect(sharedSizeBounds?.minimumHeight == 520)
+    }
+
+    @Test
     func persistsConstraintsAcrossStoreInstances() {
         let defaults = makeDefaults()
         let referenceDate = testDate(1_000_000)

@@ -68,13 +68,14 @@ struct MinimizedDockLedgerTests {
             isMinimized: true,
             isFocused: false,
             isMain: false,
+            isFullScreen: false,
             lastMinimizedAt: lastMinimizedAt,
             boundDockMinimizedHandle: nil
         )
     }
 
     private func dockItem(processIdentifier: pid_t) -> MinimizedDockLedger.SnapshotItem {
-        let element = AXUIElementCreateApplication(processIdentifier)
+        let element = AXAttributeReader.applicationElement(for: processIdentifier)
         return MinimizedDockLedger.SnapshotItem(
             token: DockElementToken(element: element),
             element: element,

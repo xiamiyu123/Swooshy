@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Swooshy
 
@@ -80,13 +81,13 @@ struct AboutPageModelTests {
             AboutPageModel.updateState(
                 currentVersion: nil,
                 latestReleaseTag: "v2.6.12"
-            ) == .updateAvailable
+            ) == .sourceBuild
         )
         #expect(
             AboutPageModel.updateState(
                 currentVersion: "2.6.x",
                 latestReleaseTag: "v2.6.12"
-            ) == .updateAvailable
+            ) == .sourceBuild
         )
         #expect(
             AboutPageModel.updateState(
@@ -94,5 +95,25 @@ struct AboutPageModelTests {
                 latestReleaseTag: "latest"
             ) == .checkFailed
         )
+    }
+
+    @Test
+    func sourceBuildCheckSkipsReleaseRequest() async {
+        for currentVersion in [String?.none, "2.6.x"] {
+            let state = await AboutUpdateChecker.checkLatestRelease(currentVersion: currentVersion) { _ in
+                Issue.record("Source builds should not request the latest release before reporting sourceBuild.")
+                return (
+                    Data(#"{"tag_name":"v2.6.12"}"#.utf8),
+                    HTTPURLResponse(
+                        url: AboutPageModel.latestReleaseAPIURL,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: nil
+                    )!
+                )
+            }
+
+            #expect(state == .sourceBuild)
+        }
     }
 }

@@ -66,6 +66,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    deinit {
+        // deinit is not guaranteed to run on the main thread; assumeIsolated
+        // would crash there. AppDelegate calls shutdown() explicitly, so this
+        // is only a best-effort fallback when deallocated on the main thread.
+        guard Thread.isMainThread else {
+            assertionFailure("SettingsWindowController deallocated off the main thread without shutdown()")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            shutdown()
+        }
+    }
+
     func shutdown() {
         setPointerInsideContentView(false)
         removePointerTracking()
@@ -1146,7 +1160,7 @@ private struct AboutUpdateStatusView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button {
-                    if updateState == .updateAvailable {
+                    if opensLatestRelease {
                         NSWorkspace.shared.open(model.latestReleaseURL)
                     } else {
                         checkForUpdates()
@@ -1157,7 +1171,7 @@ private struct AboutUpdateStatusView: View {
                 .padding(.top, 4)
                 .disabled(updateState == .checking)
 
-                if updateState != .updateAvailable {
+                if opensLatestRelease == false {
                     Button {
                         NSWorkspace.shared.open(model.latestReleaseURL)
                     } label: {
@@ -1181,6 +1195,8 @@ private struct AboutUpdateStatusView: View {
             localize("settings.about.update.up_to_date.title")
         case .updateAvailable:
             localize("settings.about.update.available.title")
+        case .sourceBuild:
+            localize("settings.about.update.source_build.title")
         case .checkFailed:
             localize("settings.about.update.failed.title")
         }
@@ -1196,6 +1212,8 @@ private struct AboutUpdateStatusView: View {
             localize("settings.about.update.up_to_date.message")
         case .updateAvailable:
             localize("settings.about.update.available.message")
+        case .sourceBuild:
+            localize("settings.about.update.source_build.message")
         case .checkFailed:
             localize("settings.about.update.failed.message")
         }
@@ -1211,6 +1229,8 @@ private struct AboutUpdateStatusView: View {
             "checkmark.circle.fill"
         case .updateAvailable:
             "sparkles"
+        case .sourceBuild:
+            "hammer.fill"
         case .checkFailed:
             "exclamationmark.triangle.fill"
         }
@@ -1226,6 +1246,8 @@ private struct AboutUpdateStatusView: View {
             Color(nsColor: .systemGreen)
         case .updateAvailable:
             Color(nsColor: .systemGreen)
+        case .sourceBuild:
+            Color(nsColor: .systemOrange)
         case .checkFailed:
             Color(nsColor: .systemOrange)
         }
@@ -1237,13 +1259,31 @@ private struct AboutUpdateStatusView: View {
             localize("settings.about.download_update.button")
         case .checking:
             localize("settings.about.checking_updates.button")
+        case .sourceBuild:
+            localize("settings.about.open_releases.button")
         case .manualCheck, .upToDate, .checkFailed:
             localize("settings.about.check_updates.button")
         }
     }
 
     private var buttonSystemImage: String {
-        updateState == .updateAvailable ? "square.and.arrow.down" : "arrow.triangle.2.circlepath"
+        switch updateState {
+        case .updateAvailable:
+            "square.and.arrow.down"
+        case .sourceBuild:
+            "arrow.up.right"
+        case .manualCheck, .checking, .upToDate, .checkFailed:
+            "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private var opensLatestRelease: Bool {
+        switch updateState {
+        case .updateAvailable, .sourceBuild:
+            true
+        case .manualCheck, .checking, .upToDate, .checkFailed:
+            false
+        }
     }
 }
 

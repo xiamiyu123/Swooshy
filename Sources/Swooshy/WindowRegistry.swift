@@ -11,6 +11,7 @@ struct WindowRecordSnapshot: Equatable {
     let isMinimized: Bool
     let isFocused: Bool
     let isMain: Bool
+    let isFullScreen: Bool
     let lastMinimizedAt: Date?
     let boundDockMinimizedHandle: DockMinimizedItemHandle?
 
@@ -24,6 +25,7 @@ struct WindowRecordSnapshot: Equatable {
             isMinimized: isMinimized,
             isFocused: isFocused,
             isMain: isMain,
+            isFullScreen: isFullScreen,
             lastMinimizedAt: lastMinimizedAt,
             boundDockMinimizedHandle: handle
         )
@@ -31,7 +33,62 @@ struct WindowRecordSnapshot: Equatable {
 }
 
 @MainActor
+final class RefreshDebouncer<Key: Hashable & Sendable> {
+    private let delayNanoseconds: UInt64
+    private var tasks: [Key: Task<Void, Never>] = [:]
+
+    var scheduledCount: Int {
+        tasks.count
+    }
+
+    init(delayNanoseconds: UInt64) {
+        self.delayNanoseconds = delayNanoseconds
+    }
+
+    func schedule(
+        key: Key,
+        action: @escaping @MainActor @Sendable () -> Void
+    ) {
+        guard tasks[key] == nil else {
+            return
+        }
+
+        let delayNanoseconds = delayNanoseconds
+        tasks[key] = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delayNanoseconds)
+            } catch {
+                return
+            }
+
+            guard let self, !Task.isCancelled else {
+                return
+            }
+
+            self.tasks.removeValue(forKey: key)
+            action()
+        }
+    }
+
+    func cancel(key: Key) {
+        tasks.removeValue(forKey: key)?.cancel()
+    }
+
+    func cancelAll() {
+        for task in tasks.values {
+            task.cancel()
+        }
+        tasks = [:]
+    }
+}
+
+@MainActor
 final class WindowRegistry {
+    private enum RefreshRequest: Hashable, Sendable {
+        case runningApplications
+        case application(pid_t)
+    }
+
     private struct ApplicationRecord {
         let application: NSRunningApplication
         let identity: AppIdentity
@@ -48,6 +105,7 @@ final class WindowRegistry {
     private let observationCenter: WindowObservationCenter
     private let workspaceNotificationCenter: NotificationCenter
     private let now: () -> Date
+    private let refreshDebouncer: RefreshDebouncer<RefreshRequest>
 
     private var workspaceObservers: [NSObjectProtocol] = []
     private var applicationsByProcessIdentifier: [pid_t: ApplicationRecord] = [:]
@@ -58,18 +116,20 @@ final class WindowRegistry {
     init(
         observationCenter: WindowObservationCenter = WindowObservationCenter(),
         workspaceNotificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        refreshCoalescingDelayNanoseconds: UInt64 = 80_000_000
     ) {
         self.observationCenter = observationCenter
         self.workspaceNotificationCenter = workspaceNotificationCenter
         self.now = now
+        refreshDebouncer = RefreshDebouncer(delayNanoseconds: refreshCoalescingDelayNanoseconds)
 
         observationCenter.onAccessibilityEvent = { [weak self] processIdentifier, _ in
             guard let self else {
                 return
             }
 
-            self.refreshApplication(processIdentifier: processIdentifier)
+            self.scheduleApplicationRefresh(processIdentifier: processIdentifier)
         }
 
         let notificationNames: [Notification.Name] = [
@@ -86,7 +146,7 @@ final class WindowRegistry {
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    self?.refreshRunningApplications()
+                    self?.scheduleRunningApplicationsRefresh()
                 }
             }
             workspaceObservers.append(observer)
@@ -100,6 +160,7 @@ final class WindowRegistry {
             workspaceNotificationCenter.removeObserver(observer)
         }
         workspaceObservers = []
+        refreshDebouncer.cancelAll()
         windowsByIdentity = [:]
         windowIdentitiesByToken = [:]
         applicationsByProcessIdentifier = [:]
@@ -108,6 +169,7 @@ final class WindowRegistry {
     }
 
     func refreshRunningApplications() {
+        refreshDebouncer.cancel(key: .runningApplications)
         let applications = refreshRunningApplicationRecords()
 
         for application in applications {
@@ -164,19 +226,45 @@ final class WindowRegistry {
     }
 
     func refreshApplication(processIdentifier: pid_t) {
+        refreshDebouncer.cancel(key: .application(processIdentifier))
         guard let applicationRecord = applicationsByProcessIdentifier[processIdentifier] else {
             removeWindows(forProcessIdentifier: processIdentifier)
             return
         }
 
-        let appElement = AXUIElementCreateApplication(processIdentifier)
-        let windows = AXAttributeReader.elements(kAXWindowsAttribute as CFString, from: appElement)
+        let appElement = AXAttributeReader.applicationElement(for: processIdentifier)
+        let windows: [AXUIElement]
+        switch AXAttributeReader.elementArray(kAXWindowsAttribute as CFString, from: appElement) {
+        case .success(let elements):
+            windows = elements
+        case .failure(let error) where shouldPreserveWindowsAfterEnumerationFailure(error):
+            DebugLog.debug(
+                DebugLog.accessibility,
+                "Skipping window registry refresh for pid \(processIdentifier) after transient AX window enumeration failure; error = \(error.rawValue)"
+            )
+            return
+        case .failure:
+            windows = []
+        }
+
         syncWindows(
             windows,
             for: applicationRecord.application,
             identity: applicationRecord.identity
         )
         observationCenter.updateObservedWindows(windows, for: processIdentifier)
+    }
+
+    private func scheduleRunningApplicationsRefresh() {
+        refreshDebouncer.schedule(key: .runningApplications) { [weak self] in
+            self?.refreshRunningApplications()
+        }
+    }
+
+    private func scheduleApplicationRefresh(processIdentifier: pid_t) {
+        refreshDebouncer.schedule(key: .application(processIdentifier)) { [weak self] in
+            self?.refreshApplication(processIdentifier: processIdentifier)
+        }
     }
 
     func appIdentity(forProcessIdentifier processIdentifier: pid_t) -> AppIdentity? {
@@ -284,7 +372,7 @@ final class WindowRegistry {
         matching attribute: CFString,
         in application: NSRunningApplication
     ) -> WindowIdentity? {
-        let appElement = AXUIElementCreateApplication(application.processIdentifier)
+        let appElement = AXAttributeReader.applicationElement(for: application.processIdentifier)
         guard let window = AXAttributeReader.element(attribute, from: appElement) else {
             return nil
         }
@@ -333,6 +421,91 @@ final class WindowRegistry {
                 }
 
                 return lhsDate < rhsDate
+            }
+    }
+
+    func titleBarHoverTarget(
+        at appKitPoint: CGPoint,
+        titleBarHeight: CGFloat,
+        allowFullScreen: Bool
+    ) -> TitleBarHoverTarget? {
+        titleBarHoverHit(
+            at: appKitPoint,
+            titleBarHeight: titleBarHeight,
+            allowFullScreen: allowFullScreen
+        )?.target
+    }
+
+    func titleBarHoverHit(
+        at appKitPoint: CGPoint,
+        titleBarHeight: CGFloat,
+        allowFullScreen: Bool
+    ) -> TitleBarHoverHit? {
+        Self.titleBarHoverHit(
+            at: appKitPoint,
+            titleBarHeight: titleBarHeight,
+            allowFullScreen: allowFullScreen,
+            snapshots: windowsByIdentity.values.map(\.snapshot),
+            screenFrames: NSScreen.screens.map(\.frame)
+        )
+    }
+
+    nonisolated static func titleBarHoverHit(
+        at appKitPoint: CGPoint,
+        titleBarHeight: CGFloat,
+        allowFullScreen: Bool,
+        snapshots: [WindowRecordSnapshot],
+        screenFrames: [CGRect]
+    ) -> TitleBarHoverHit? {
+        guard !screenFrames.isEmpty else {
+            return nil
+        }
+
+        let geometry = ScreenGeometry(screenFrames: screenFrames)
+        let triggerHeight = CGFloat(SettingsStore.clampTitleBarTriggerHeight(Double(titleBarHeight)))
+        return snapshots
+            .compactMap { snapshot -> (snapshot: WindowRecordSnapshot, frame: CGRect)? in
+                guard !snapshot.isMinimized else {
+                    return nil
+                }
+                guard allowFullScreen || !snapshot.isFullScreen else {
+                    return nil
+                }
+
+                let appKitFrame = geometry.appKitFrame(fromAXFrame: snapshot.frame)
+                guard appKitFrame.width >= 120, appKitFrame.height >= 80 else {
+                    return nil
+                }
+
+                let titleBarFrame = CGRect(
+                    x: appKitFrame.minX,
+                    y: appKitFrame.maxY - triggerHeight,
+                    width: appKitFrame.width,
+                    height: triggerHeight
+                ).integral
+                guard !titleBarFrame.isEmpty, titleBarFrame.contains(appKitPoint) else {
+                    return nil
+                }
+
+                return (snapshot, titleBarFrame)
+            }
+            .min { lhs, rhs in
+                Self.titleBarHoverSnapshotPrecedes(lhs.snapshot, rhs.snapshot)
+            }
+            .map { candidate in
+                TitleBarHoverHit(
+                    target: TitleBarHoverTarget(
+                        application: .window(
+                            candidate.snapshot.identity,
+                            app: candidate.snapshot.appIdentity,
+                            source: .titleBar
+                        ),
+                        source: .titleBar
+                    ),
+                    processIdentifier: candidate.snapshot.ownerProcessIdentifier,
+                    frame: candidate.frame,
+                    isFullScreen: candidate.snapshot.isFullScreen
+                )
             }
     }
 
@@ -408,6 +581,15 @@ final class WindowRegistry {
         }
     }
 
+    private func shouldPreserveWindowsAfterEnumerationFailure(_ error: AXError) -> Bool {
+        switch error {
+        case .cannotComplete, .apiDisabled:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func makeSnapshot(
         for window: AXUIElement,
         identity: WindowIdentity,
@@ -423,6 +605,7 @@ final class WindowRegistry {
         let isMinimized = AXAttributeReader.bool(kAXMinimizedAttribute as CFString, from: window) ?? false
         let isFocused = AXAttributeReader.bool(kAXFocusedAttribute as CFString, from: window) ?? false
         let isMain = AXAttributeReader.bool(kAXMainAttribute as CFString, from: window) ?? false
+        let isFullScreen = AXAttributeReader.bool("AXFullScreen" as CFString, from: window) ?? false
 
         let lastMinimizedAt: Date?
         if
@@ -443,6 +626,7 @@ final class WindowRegistry {
             isMinimized: isMinimized,
             isFocused: isFocused,
             isMain: isMain,
+            isFullScreen: isFullScreen,
             lastMinimizedAt: lastMinimizedAt,
             boundDockMinimizedHandle: previousSnapshot?.boundDockMinimizedHandle
         )
@@ -457,6 +641,41 @@ final class WindowRegistry {
             windowsByIdentity.removeValue(forKey: identity)
             windowIdentitiesByToken.removeValue(forKey: token)
         }
+    }
+
+    nonisolated private static func titleBarHoverSnapshotPrecedes(
+        _ lhs: WindowRecordSnapshot,
+        _ rhs: WindowRecordSnapshot
+    ) -> Bool {
+        if lhs.isFocused != rhs.isFocused {
+            return lhs.isFocused
+        }
+        if lhs.isMain != rhs.isMain {
+            return lhs.isMain
+        }
+        if lhs.ownerProcessIdentifier != rhs.ownerProcessIdentifier {
+            return lhs.ownerProcessIdentifier < rhs.ownerProcessIdentifier
+        }
+        if lhs.title != rhs.title {
+            return lhs.title < rhs.title
+        }
+        if lhs.frame != rhs.frame {
+            return framePrecedes(lhs.frame, rhs.frame)
+        }
+        return lhs.identity.stableSortKey < rhs.identity.stableSortKey
+    }
+
+    nonisolated private static func framePrecedes(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        if lhs.minX != rhs.minX {
+            return lhs.minX < rhs.minX
+        }
+        if lhs.minY != rhs.minY {
+            return lhs.minY < rhs.minY
+        }
+        if lhs.width != rhs.width {
+            return lhs.width < rhs.width
+        }
+        return lhs.height < rhs.height
     }
 
     private func applicationQualityScore(for application: NSRunningApplication) -> Int {

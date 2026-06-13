@@ -3,6 +3,14 @@ import ApplicationServices
 import CMultitouchShim
 import Foundation
 
+protocol MultitouchMonitoring: AnyObject {
+    var onFrame: ((TrackpadTouchFrame) -> Void)? { get set }
+    var isMonitoringActive: Bool { get }
+
+    func startIfAvailable()
+    func stop()
+}
+
 @MainActor
 final class DockGestureController {
     private let windowManager: WindowManager
@@ -14,13 +22,15 @@ final class DockGestureController {
     private let dockProbe: DockTargetResolving
     private let titleBarProbe: TitleBarAccessibilityProbe
     private let triggerRegionOverlayController: GestureTriggerRegionOverlayController
-    private let monitor = MultitouchInputMonitor()
+    private let monitor: MultitouchMonitoring
+    private let multitouchDeviceRestartCoordinator: MultitouchDeviceRestartCoordinator
     private var dockRecognizer = DockGestureRecognizer()
     private var dockCornerDragRecognizer = TitleBarCornerDragRecognizer()
     private var titleBarRecognizer = DockGestureRecognizer()
     private var titleBarCornerDragRecognizer = TitleBarCornerDragRecognizer()
     private var hasShownPermissionHint = false
     private var settingsObserver: NSObjectProtocol?
+    private var workspaceWakeObserver: NSObjectProtocol?
 #if DEBUG
     private var lastFrameLogAt = Date.distantPast
     private var lastLoggedTouchCount = -1
@@ -41,7 +51,8 @@ final class DockGestureController {
     // gesture flow. It remains because smooth docking, cancellation, and
     // corner-drag commit logic still branch through release-time execution.
     private var pendingReleaseAction: PendingReleaseAction?
-    private var escMonitor: Any?
+    private var globalEscMonitor: Any?
+    private var localEscMonitor: Any?
     private var lastTouchCount: Int = 0
     private var pendingReleaseGestureKind: DockGestureKind?
     private var pendingReleaseHighWaterMark: CGFloat?
@@ -138,7 +149,9 @@ final class DockGestureController {
         layoutEngine: WindowLayoutEngine,
         alertPresenter: AlertPresenting,
         gestureFeedbackPresenter: GestureFeedbackPresenting,
-        settingsStore: SettingsStore
+        settingsStore: SettingsStore,
+        monitor: MultitouchMonitoring = MultitouchInputMonitor(),
+        multitouchDeviceObserver: MultitouchDeviceObserving = HIDMultitouchDeviceObserver()
     ) {
         self.windowManager = windowManager
         self.dockProbe = dockTargetResolver
@@ -149,6 +162,10 @@ final class DockGestureController {
         self.gestureFeedbackPresenter = gestureFeedbackPresenter
         self.settingsStore = settingsStore
         self.triggerRegionOverlayController = GestureTriggerRegionOverlayController()
+        self.monitor = monitor
+        self.multitouchDeviceRestartCoordinator = MultitouchDeviceRestartCoordinator(
+            observer: multitouchDeviceObserver
+        )
 
         monitor.onFrame = { [weak self] frame in
             MainActor.assumeIsolated {
@@ -158,7 +175,9 @@ final class DockGestureController {
         }
 
         observeSettings()
+        observeWorkspaceWake()
         syncMonitoring()
+        observeMultitouchDevices()
     }
 
     func shutdown() {
@@ -170,6 +189,11 @@ final class DockGestureController {
             NotificationCenter.default.removeObserver(settingsObserver)
             self.settingsObserver = nil
         }
+        if let workspaceWakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceWakeObserver)
+            self.workspaceWakeObserver = nil
+        }
+        multitouchDeviceRestartCoordinator.stop()
 
         pendingTouchFrame = nil
         isProcessingTouchFrame = false
@@ -262,6 +286,63 @@ final class DockGestureController {
                 self?.syncMonitoring()
             }
         }
+    }
+
+    private func observeWorkspaceWake() {
+        workspaceWakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleWorkspaceDidWake()
+            }
+        }
+    }
+
+    private func observeMultitouchDevices() {
+        multitouchDeviceRestartCoordinator.start(
+            shouldRestart: { [weak self] in
+                guard let self else {
+                    return false
+                }
+
+                return !self.isShuttingDown && self.shouldMonitorTrackpad
+            },
+            restart: { [weak self] in
+                self?.handleMultitouchDeviceConfigurationChanged()
+            }
+        )
+    }
+
+    private func handleWorkspaceDidWake() {
+        guard !isShuttingDown else {
+            return
+        }
+
+        DebugLog.info(DebugLog.dock, "Workspace woke; refreshing trackpad gesture monitoring")
+        resetTrackpadInputStateForMonitoringRestart()
+        restartTrackpadMonitoringIfNeeded(reason: "workspace wake")
+    }
+
+    private func handleMultitouchDeviceConfigurationChanged() {
+        guard !isShuttingDown else {
+            return
+        }
+
+        DebugLog.info(DebugLog.dock, "Multitouch device configuration changed; refreshing trackpad gesture monitoring")
+        resetTrackpadInputStateForMonitoringRestart()
+        restartTrackpadMonitoringIfNeeded(reason: "multitouch device change")
+    }
+
+    private func resetTrackpadInputStateForMonitoringRestart() {
+        pendingTouchFrame = nil
+        isProcessingTouchFrame = false
+        lastTouchCount = 0
+        touchSequenceTracker.reset()
+        dockProbe.clearCache()
+        titleBarProbe.clearCache()
+        resetGestureStateForNewTouchSequence(rebuildRecognizers: true)
     }
 
     private func syncMonitoring() {
@@ -378,22 +459,15 @@ final class DockGestureController {
         monitor.stop()
     }
 
-    private func restartTrackpadMonitoringIfNeeded() {
+    private func restartTrackpadMonitoringIfNeeded(reason: String) {
         guard shouldMonitorTrackpad else {
             return
         }
 
-        DebugLog.info(DebugLog.dock, "Restarting trackpad gesture monitoring after watchdog recovery")
+        DebugLog.info(DebugLog.dock, "Restarting trackpad gesture monitoring after \(reason)")
         monitor.stop()
         monitor.startIfAvailable()
-        DebugLog.info(DebugLog.dock, "Trackpad gesture monitoring restart requested after watchdog recovery")
-    }
-
-    nonisolated private func enqueue(frame: TrackpadTouchFrame) {
-        Task { @MainActor [weak self] in
-            guard let self, !self.isShuttingDown else { return }
-            self.schedule(frame: frame)
-        }
+        DebugLog.info(DebugLog.dock, "Trackpad gesture monitoring restart requested after \(reason)")
     }
 
     private func schedule(frame: TrackpadTouchFrame) {
@@ -489,9 +563,6 @@ final class DockGestureController {
         // Check for reverse swipe cancellation while fingers are still down.
         if pendingReleaseGestureKind != nil {
             checkReverseCancellation(frame: frame)
-            if pendingReleaseAction == nil {
-                return
-            }
             return
         }
 
@@ -781,22 +852,36 @@ final class DockGestureController {
         runWindowAction(failureMessage: "Dock gesture action failed") {
             switch action {
             case .minimizeWindow:
-                _ = try windowManager.minimizeVisibleWindow(of: application)
+                try requireWindowActionPerformed(
+                    try windowManager.minimizeVisibleWindow(of: application)
+                )
             case .restoreWindow:
                 switch application {
                 case .window(let windowIdentity, _, let source) where source.isDockMinimizedItem:
-                    _ = try windowManager.restoreWindow(windowIdentity)
+                    try requireWindowActionPerformed(
+                        try windowManager.restoreWindow(windowIdentity)
+                    )
                 case .unresolvedDockMinimizedItem(let handle):
-                    _ = try windowManager.restoreDockItem(handle)
+                    try requireWindowActionPerformed(
+                        try windowManager.restoreDockItem(handle)
+                    )
                 case .application(let appIdentity, _), .window(_, let appIdentity, _):
-                    _ = try windowManager.restoreMinimizedWindow(of: appIdentity)
+                    try requireWindowActionPerformed(
+                        try windowManager.restoreMinimizedWindow(of: appIdentity)
+                    )
                 }
             case .cycleWindowsForward:
-                _ = try windowManager.cycleVisibleWindows(of: application, direction: .forward)
+                try requireWindowActionPerformed(
+                    try windowManager.cycleVisibleWindows(of: application, direction: .forward)
+                )
             case .cycleWindowsBackward:
-                _ = try windowManager.cycleVisibleWindows(of: application, direction: .backward)
+                try requireWindowActionPerformed(
+                    try windowManager.cycleVisibleWindows(of: application, direction: .backward)
+                )
             case .closeWindow:
-                _ = try windowManager.closeWindow(of: application, preferredAppKitPoint: nil)
+                try requireWindowActionPerformed(
+                    try windowManager.closeWindow(of: application, preferredAppKitPoint: nil)
+                )
             case .closeTab:
                 guard BrowserTabProbe.simulateMiddleClickAtMouseLocation() else {
                     throw WindowManagerError.unableToPerformAction
@@ -805,11 +890,17 @@ final class DockGestureController {
                 guard let appIdentity = application.appIdentity else {
                     throw WindowManagerError.unableToPerformAction
                 }
-                _ = try windowManager.quitApplication(matching: appIdentity)
+                try requireWindowActionPerformed(
+                    try windowManager.quitApplication(matching: appIdentity)
+                )
             case .toggleFullScreenWindow:
-                _ = try windowManager.toggleFullScreenWindow(of: application)
+                try requireWindowActionPerformed(
+                    try windowManager.toggleFullScreenWindow(of: application)
+                )
             case .exitFullScreenWindow:
-                _ = try windowManager.exitFullScreenWindow(of: application)
+                try requireWindowActionPerformed(
+                    try windowManager.exitFullScreenWindow(of: application)
+                )
             case .moveWindowToNextDisplay:
                 try windowManager.perform(
                     .moveToNextDisplay,
@@ -1281,7 +1372,7 @@ final class DockGestureController {
         dockProbe.clearCache()
         titleBarProbe.clearCache()
         resetGestureStateForNewTouchSequence(rebuildRecognizers: true)
-        restartTrackpadMonitoringIfNeeded()
+        restartTrackpadMonitoringIfNeeded(reason: "watchdog recovery")
     }
 
     private func cornerDragGlyph(for action: WindowAction?) -> GestureHUDGlyph {
@@ -1345,21 +1436,35 @@ final class DockGestureController {
     // MARK: - Execute on Release
 
     private func installEscMonitor() {
-        guard escMonitor == nil else { return }
-        escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        guard globalEscMonitor == nil, localEscMonitor == nil else { return }
+        globalEscMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 53 else { return } // 53 = Esc
             Task { @MainActor [weak self] in
                 self?.cancelPendingReleaseAction()
             }
         }
-        DebugLog.debug(DebugLog.dock, "Installed global Esc monitor for pending gesture")
+        localEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return event } // 53 = Esc
+            Task { @MainActor [weak self] in
+                self?.cancelPendingReleaseAction()
+            }
+            return event
+        }
+        DebugLog.debug(DebugLog.dock, "Installed Esc monitors for pending gesture")
     }
 
     private func removeEscMonitor() {
-        if let escMonitor {
-            NSEvent.removeMonitor(escMonitor)
-            self.escMonitor = nil
-            DebugLog.debug(DebugLog.dock, "Removed global Esc monitor")
+        let didRemoveMonitor = globalEscMonitor != nil || localEscMonitor != nil
+        if let globalEscMonitor {
+            NSEvent.removeMonitor(globalEscMonitor)
+            self.globalEscMonitor = nil
+        }
+        if let localEscMonitor {
+            NSEvent.removeMonitor(localEscMonitor)
+            self.localEscMonitor = nil
+        }
+        if didRemoveMonitor {
+            DebugLog.debug(DebugLog.dock, "Removed Esc monitors")
         }
     }
 
@@ -1775,6 +1880,12 @@ final class DockGestureController {
         return false
     }
 
+    private func requireWindowActionPerformed(_ didPerform: Bool) throws {
+        guard didPerform else {
+            throw WindowManagerError.unableToPerformAction
+        }
+    }
+
     private func handleWindowManagerError(_ error: WindowManagerError) {
         switch error {
         case .accessibilityPermissionMissing:
@@ -1977,34 +2088,6 @@ func dockPinchConfirmationMatches(
         pendingApplication == application
 }
 
-enum TitleBarHoverSource: Equatable {
-    case titleBar
-    case browserTabFallback
-
-    func allowsGestureAction(_ action: WindowAction) -> Bool {
-        switch self {
-        case .titleBar:
-            return true
-        case .browserTabFallback:
-            return action.supportsBrowserTabCloseReplacement
-        }
-    }
-}
-
-struct TitleBarHoverTarget: Equatable {
-    let application: InteractionTarget
-    let source: TitleBarHoverSource
-
-    var logDescription: String {
-        switch source {
-        case .titleBar:
-            return application.logDescription
-        case .browserTabFallback:
-            return "\(application.logDescription) via browser-tab fallback"
-        }
-    }
-}
-
 @MainActor
 private final class TitleBarAccessibilityProbe {
     private let registry: WindowRegistry
@@ -2078,17 +2161,42 @@ private final class TitleBarAccessibilityProbe {
                 )
             }
 
-            guard allowBrowserTabFallback else {
-                return nil
-            }
+            self.cachedHitRegion = nil
+        }
+
+        guard AXIsProcessTrusted() else {
+            cachedHitRegion = nil
+            return nil
         }
 
         preheatTask?.cancel()
         preheatTask = nil
 
-        guard AXIsProcessTrusted() else {
-            cachedHitRegion = nil
-            return nil
+        if let registryHit = registry.titleBarHoverHit(
+            at: appKitPoint,
+            titleBarHeight: titleBarHeight,
+            allowFullScreen: allowFullScreen
+        ) {
+            if pointBelongsToFrontmostApplication(
+                appKitPoint,
+                processIdentifier: registryHit.processIdentifier,
+                required: requireFrontmostOwnership
+            ) {
+                cachedHitRegion = CachedHitRegion(
+                    application: registryHit.target.application,
+                    processIdentifier: registryHit.processIdentifier,
+                    frame: registryHit.frame,
+                    isFullScreen: registryHit.isFullScreen,
+                    expiresAt: now.addingTimeInterval(cacheTTL)
+                )
+                logProbeIfNeeded(
+                    key: "hit-registry:\(registryHit.processIdentifier):\(Int(registryHit.frame.minX)):\(Int(registryHit.frame.minY)):\(Int(registryHit.frame.width)):\(Int(registryHit.frame.height))",
+                    message: {
+                        "Pointer hit registry title-bar region for \(registryHit.target.application.logDescription) at \(NSStringFromPoint(appKitPoint)); frame = \(NSStringFromRect(registryHit.frame))"
+                    }
+                )
+                return registryHit.target
+            }
         }
 
         guard let hitRegion = hitRegion(
@@ -2163,15 +2271,23 @@ private final class TitleBarAccessibilityProbe {
         }
 
         preheatTask = Task { @MainActor [weak self] in
-            guard let self else {
+            guard let self, !Task.isCancelled else {
                 return
             }
 
             let mouseLocation = NSEvent.mouseLocation
 
+            guard !Task.isCancelled else {
+                return
+            }
+
             guard AXIsProcessTrusted() else {
                 self.cachedHitRegion = nil
                 self.preheatTask = nil
+                return
+            }
+
+            guard !Task.isCancelled else {
                 return
             }
 
@@ -2181,8 +2297,16 @@ private final class TitleBarAccessibilityProbe {
                 allowFullScreen: allowFullScreen,
                 expiresAt: { Date().addingTimeInterval(self.cacheTTL) }
             ) else {
+                guard !Task.isCancelled else {
+                    return
+                }
+
                 self.cachedHitRegion = nil
                 self.preheatTask = nil
+                return
+            }
+
+            guard !Task.isCancelled else {
                 return
             }
 
@@ -2240,7 +2364,7 @@ private final class TitleBarAccessibilityProbe {
         }
 
         let window = AXAttributeReader.window(containing: hitElement) ?? focusedOrMainWindow(
-            in: AXUIElementCreateApplication(application.processIdentifier)
+            in: AXAttributeReader.applicationElement(for: application.processIdentifier)
         )
         guard
             let window,
@@ -2329,11 +2453,13 @@ private final class TitleBarAccessibilityProbe {
     }
 }
 
-final class MultitouchInputMonitor: @unchecked Sendable {
+final class MultitouchInputMonitor: MultitouchMonitoring, @unchecked Sendable {
     var onFrame: ((TrackpadTouchFrame) -> Void)?
 
     private let frameDeliveryCoalescer = FrameDeliveryCoalescer()
     private let scheduleDrain: (@escaping @MainActor () -> Void) -> Void
+    private let startMonitoring: (UnsafeMutableRawPointer) -> Bool
+    private let stopMonitoring: () -> Void
     private var isMonitoring = false
 
     init(
@@ -2341,9 +2467,17 @@ final class MultitouchInputMonitor: @unchecked Sendable {
             Task { @MainActor in
                 operation()
             }
+        },
+        startMonitoring: @escaping (UnsafeMutableRawPointer) -> Bool = { context in
+            SwooshyMTStartMonitoring(multitouchCallback, context)
+        },
+        stopMonitoring: @escaping () -> Void = {
+            SwooshyMTStopMonitoring()
         }
     ) {
         self.scheduleDrain = scheduleDrain
+        self.startMonitoring = startMonitoring
+        self.stopMonitoring = stopMonitoring
     }
 
     var isMonitoringActive: Bool {
@@ -2354,9 +2488,10 @@ final class MultitouchInputMonitor: @unchecked Sendable {
         guard !isMonitoring else { return }
 
         let context = Unmanaged.passUnretained(self).toOpaque()
-        isMonitoring = SwooshyMTStartMonitoring(multitouchCallback, context)
+        isMonitoring = startMonitoring(context)
         frameDeliveryCoalescer.reset()
         if !isMonitoring {
+            stopMonitoring()
             DebugLog.error(DebugLog.dock, "MultitouchSupport monitoring unavailable")
         } else {
             DebugLog.info(DebugLog.dock, "MultitouchSupport monitoring active")
@@ -2365,7 +2500,7 @@ final class MultitouchInputMonitor: @unchecked Sendable {
 
     func stop() {
         if isMonitoring {
-            SwooshyMTStopMonitoring()
+            stopMonitoring()
         }
         isMonitoring = false
         frameDeliveryCoalescer.reset()
@@ -2515,7 +2650,7 @@ private final class FrameDeliveryCoalescer {
     }
 
     private func coalescingBucket(for frame: TrackpadTouchFrame) -> Int {
-        frame.touches.count == 2 ? 2 : 0
+        frame.touches.count
     }
 }
 

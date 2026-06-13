@@ -200,6 +200,8 @@
 "settings.about.update.up_to_date.message" = "当前安装版本不低于 GitHub 上的最新 Release。";
 "settings.about.update.available.title" = "发现新版本";
 "settings.about.update.available.message" = "GitHub 上已有更新版本。打开最新 Release 后可查看更新说明并下载新的构建。";
+"settings.about.update.source_build.title" = "当前是源码构建版本";
+"settings.about.update.source_build.message" = "这个构建没有可用于核对的打包版本号，Swooshy 无法和 GitHub Release 比较。你仍然可以手动打开 Releases 页面。";
 "settings.about.update.failed.title" = "无法检查更新";
 "settings.about.update.failed.message" = "Swooshy 暂时无法读取最新 GitHub Release。你仍然可以手动打开 Releases 页面。";
 "settings.about.check_updates.button" = "检查更新";

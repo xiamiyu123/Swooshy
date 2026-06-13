@@ -336,11 +336,15 @@ final class DockTargetResolver: DockTargetResolving {
         }
 
         preheatTask = Task { @MainActor [weak self] in
-            guard let self else {
+            guard let self, !Task.isCancelled else {
                 return
             }
 
             let snapshot = self.rebuildDockSnapshot()
+            guard !Task.isCancelled else {
+                return
+            }
+
             let now = Date()
             self.cachedSnapshot = CachedSnapshot(
                 snapshot: snapshot,
@@ -452,7 +456,7 @@ final class DockTargetResolver: DockTargetResolving {
             return []
         }
 
-        let dockElement = AXUIElementCreateApplication(dockProcess.processIdentifier)
+        let dockElement = AXAttributeReader.applicationElement(for: dockProcess.processIdentifier)
         guard let dockList = AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: dockElement).first else {
             return []
         }

@@ -54,6 +54,77 @@ struct DebugLogTests {
         let oldestRemaining = try #require(remainingDates.min())
         #expect(oldestRemaining >= now.addingTimeInterval(-(12 * 60 * 60)))
     }
+
+    @Test
+    func fileWriterPreservesAppendOrder() async throws {
+        let directory = try makeTemporaryLogDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let currentLogURL = directory.appendingPathComponent("debug.log")
+        let writer = DebugLogFileWriter(fileSink: DebugLogFileSink(logDirectoryURL: directory))
+
+        for index in 0..<100 {
+            writer.append(level: "INFO", channel: "tests", message: "message-\(index)")
+        }
+        await writer.flush()
+
+        let contents = try String(contentsOf: currentLogURL, encoding: .utf8)
+        let lines = contents.split(separator: "\n")
+
+        #expect(lines.count == 100)
+        #expect(
+            lines.enumerated().allSatisfy { index, line in
+                line.hasSuffix("message-\(index)")
+            }
+        )
+    }
+
+    @Test
+    func reopensCurrentLogAfterExternalRotation() async throws {
+        let directory = try makeTemporaryLogDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let currentLogURL = directory.appendingPathComponent("debug.log")
+        let sink = DebugLogFileSink(logDirectoryURL: directory)
+        await sink.append(level: "INFO", channel: "tests", message: "before-rotation")
+
+        // Simulate another running instance rotating the log from under us.
+        let externalArchiveURL = directory.appendingPathComponent("debug-external.log")
+        try FileManager.default.moveItem(at: currentLogURL, to: externalArchiveURL)
+
+        await sink.append(level: "INFO", channel: "tests", message: "after-rotation")
+
+        let currentLogContents = try String(contentsOf: currentLogURL, encoding: .utf8)
+        #expect(currentLogContents.contains("after-rotation"))
+
+        let archiveContents = try String(contentsOf: externalArchiveURL, encoding: .utf8)
+        #expect(archiveContents.contains("before-rotation"))
+        #expect(!archiveContents.contains("after-rotation"))
+    }
+
+    @Test
+    func reopensCurrentLogAfterExternalReplacement() async throws {
+        let directory = try makeTemporaryLogDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let currentLogURL = directory.appendingPathComponent("debug.log")
+        let sink = DebugLogFileSink(logDirectoryURL: directory)
+        await sink.append(level: "INFO", channel: "tests", message: "before-replacement")
+
+        // Simulate another instance rotating debug.log and starting a new one.
+        let externalArchiveURL = directory.appendingPathComponent("debug-external.log")
+        try FileManager.default.moveItem(at: currentLogURL, to: externalArchiveURL)
+        try write("replacement-seed\n", to: currentLogURL)
+
+        await sink.append(level: "INFO", channel: "tests", message: "after-replacement")
+
+        let currentLogContents = try String(contentsOf: currentLogURL, encoding: .utf8)
+        #expect(currentLogContents.contains("replacement-seed"))
+        #expect(currentLogContents.contains("after-replacement"))
+
+        let archiveContents = try String(contentsOf: externalArchiveURL, encoding: .utf8)
+        #expect(!archiveContents.contains("after-replacement"))
+    }
 }
 
 private func makeTemporaryLogDirectory() throws -> URL {

@@ -17,6 +17,27 @@ struct SmoothDockingSizeConstraints: Equatable, Sendable {
     var minimumHeight: CGFloat?
     var maximumHeight: CGFloat?
 
+    init(
+        minimumWidth: CGFloat? = nil,
+        maximumWidth: CGFloat? = nil,
+        minimumHeight: CGFloat? = nil,
+        maximumHeight: CGFloat? = nil
+    ) {
+        self.minimumWidth = minimumWidth
+        self.maximumWidth = maximumWidth
+        self.minimumHeight = minimumHeight
+        self.maximumHeight = maximumHeight
+    }
+
+    init(sizeBounds: WindowActionPreview.SizeBounds) {
+        self.init(
+            minimumWidth: sizeBounds.minimumWidth,
+            maximumWidth: sizeBounds.maximumWidth,
+            minimumHeight: sizeBounds.minimumHeight,
+            maximumHeight: sizeBounds.maximumHeight
+        )
+    }
+
     func merged(with other: Self) -> Self {
         Self(
             minimumWidth: maxNonNil(minimumWidth, other.minimumWidth),
@@ -253,6 +274,7 @@ final class SmoothDockingSession {
     private let baseSizeConstraints: SmoothDockingSizeConstraints
     private let loadCurrentFrame: () -> CGRect?
     private let applyFrame: (CGRect) throws -> CGRect
+    private let recordConstraintObservation: @MainActor (WindowAction, CGRect, CGRect) -> Void
     private let animationStepDuration: UInt64
     private let animationFactor: CGFloat
     private let snapThreshold: CGFloat
@@ -269,6 +291,7 @@ final class SmoothDockingSession {
         baseSizeConstraints: SmoothDockingSizeConstraints,
         loadCurrentFrame: @escaping () -> CGRect?,
         applyFrame: @escaping (CGRect) throws -> CGRect,
+        recordConstraintObservation: @escaping @MainActor (WindowAction, CGRect, CGRect) -> Void = { _, _, _ in },
         animationStepDuration: UInt64 = 16_000_000,
         animationFactor: CGFloat = 0.32,
         snapThreshold: CGFloat = 0.5
@@ -278,6 +301,7 @@ final class SmoothDockingSession {
         self.baseSizeConstraints = baseSizeConstraints
         self.loadCurrentFrame = loadCurrentFrame
         self.applyFrame = applyFrame
+        self.recordConstraintObservation = recordConstraintObservation
         self.animationStepDuration = animationStepDuration
         self.animationFactor = animationFactor
         self.snapThreshold = snapThreshold
@@ -385,11 +409,19 @@ final class SmoothDockingSession {
     }
 
     private func applyAndObserve(_ requestedFrame: CGRect) throws -> CGRect {
-        let appliedFrame = try applyFrame(requestedFrame.integral).integral
+        let normalizedRequestedFrame = requestedFrame.integral
+        let appliedFrame = try applyFrame(normalizedRequestedFrame).integral
+        let previousAdaptiveSizeConstraints = adaptiveSizeConstraints
         adaptiveSizeConstraints.incorporateObservation(
-            requestedFrame: requestedFrame.integral,
+            requestedFrame: normalizedRequestedFrame,
             appliedFrame: appliedFrame
         )
+        if
+            let currentAction,
+            adaptiveSizeConstraints != previousAdaptiveSizeConstraints
+        {
+            recordConstraintObservation(currentAction, normalizedRequestedFrame, appliedFrame)
+        }
 
         // Retarget immediately after each write so later steps chase the frame
         // the app can actually honor instead of the original ideal geometry.

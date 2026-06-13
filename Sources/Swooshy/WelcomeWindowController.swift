@@ -59,6 +59,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func shutdown() {
+        viewModel.endPresentation()
         if let settingsObserver {
             NotificationCenter.default.removeObserver(settingsObserver)
             self.settingsObserver = nil
@@ -89,6 +90,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func reloadLocalizedContent(preservingPageIndex: Int? = nil) {
+        viewModel.endPresentation()
         let viewModel = WelcomeGuideViewModel(
             settingsStore: settingsStore,
             permissionManager: permissionManager,
@@ -104,6 +106,13 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
         self.viewModel = viewModel
         hostingController.rootView = WelcomeGuideView(viewModel: viewModel)
         window?.title = viewModel.windowTitle
+        if window?.isVisible == true {
+            viewModel.resumePresentation()
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        viewModel.endPresentation()
     }
 }
 
@@ -282,6 +291,8 @@ final class WelcomeGuideViewModel: ObservableObject {
     private let permissionManager: AccessibilityPermissionManaging
     private let onOpenSettings: () -> Void
     private let onDismiss: () -> Void
+    private var isPresented = false
+    private var permissionRefreshTask: Task<Void, Never>?
 
     init(
         settingsStore: SettingsStore,
@@ -295,6 +306,10 @@ final class WelcomeGuideViewModel: ObservableObject {
         self.onOpenSettings = onOpenSettings
         self.onDismiss = onDismiss
         self.permissionGranted = permissionManager.isTrusted(promptIfNeeded: false)
+    }
+
+    deinit {
+        permissionRefreshTask?.cancel()
     }
 
     // Deprecated: onboarding still proxies the legacy preview-mode toggle until
@@ -394,23 +409,29 @@ final class WelcomeGuideViewModel: ObservableObject {
     }
 
     func presentWelcome() {
-        refreshPermissionState()
+        isPresented = true
         currentPageIndex = 0
+        refreshPermissionState()
+        syncPermissionPolling()
     }
 
     func presentGuide() {
-        refreshPermissionState()
+        isPresented = true
         currentPageIndex = min(1, pages.count - 1)
+        refreshPermissionState()
+        syncPermissionPolling()
     }
 
     func goToNextPage() {
         guard !isLastPage else { return }
         currentPageIndex += 1
+        syncPermissionPolling()
     }
 
     func goToPreviousPage() {
         guard !isFirstPage else { return }
         currentPageIndex -= 1
+        syncPermissionPolling()
     }
 
     func requestPermission() {
@@ -419,16 +440,70 @@ final class WelcomeGuideViewModel: ObservableObject {
     }
 
     func refreshPermissionState() {
-        permissionGranted = permissionManager.isTrusted(promptIfNeeded: false)
+        let nextPermissionGranted = permissionManager.isTrusted(promptIfNeeded: false)
+        guard permissionGranted != nextPermissionGranted else { return }
+        permissionGranted = nextPermissionGranted
     }
 
     func dismiss() {
+        endPresentation()
         onDismiss()
     }
 
     func openSettings() {
+        endPresentation()
         onOpenSettings()
         onDismiss()
+    }
+
+    func resumePresentation() {
+        isPresented = true
+        refreshPermissionState()
+        syncPermissionPolling()
+    }
+
+    func endPresentation() {
+        isPresented = false
+        stopPermissionPolling()
+    }
+
+    private func syncPermissionPolling() {
+        guard isPresented, currentPage.kind == .welcome else {
+            stopPermissionPolling()
+            return
+        }
+
+        startPermissionPollingIfNeeded()
+    }
+
+    private func startPermissionPollingIfNeeded() {
+        guard permissionRefreshTask == nil else {
+            return
+        }
+
+        permissionRefreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                } catch {
+                    return
+                }
+
+                guard let self else {
+                    return
+                }
+                guard self.isPresented, self.currentPage.kind == .welcome else {
+                    self.stopPermissionPolling()
+                    return
+                }
+                self.refreshPermissionState()
+            }
+        }
+    }
+
+    private func stopPermissionPolling() {
+        permissionRefreshTask?.cancel()
+        permissionRefreshTask = nil
     }
 
     func localized(_ key: String) -> String {
@@ -456,10 +531,6 @@ private struct WelcomeGuideView: View {
     @ObservedObject var viewModel: WelcomeGuideViewModel
     @State private var launchAtLoginController = LaunchAtLoginController()
 
-    private let permissionRefreshTimer = Timer
-        .publish(every: 1.0, on: .main, in: .common)
-        .autoconnect()
-
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
@@ -486,10 +557,6 @@ private struct WelcomeGuideView: View {
         .onAppear(perform: viewModel.refreshPermissionState)
         .onAppear {
             launchAtLoginController.refresh(localize: viewModel.localized)
-        }
-        .onReceive(permissionRefreshTimer) { _ in
-            guard viewModel.currentPage.kind == .welcome else { return }
-            viewModel.refreshPermissionState()
         }
     }
 

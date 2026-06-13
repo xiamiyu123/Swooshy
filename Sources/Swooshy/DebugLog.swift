@@ -17,6 +17,7 @@ enum DebugLog {
     static let accessibility = Channel(name: "accessibility", logger: Logger(subsystem: subsystem, category: "accessibility"))
 
     private static let fileSink = DebugLogFileSink()
+    private static let fileWriter = DebugLogFileWriter(fileSink: fileSink)
 
     static func debug(_ channel: Channel, _ message: @autoclosure () -> String) {
         log(level: "DEBUG", channel: channel, message: message) {
@@ -42,7 +43,7 @@ enum DebugLog {
 
     static var isEnabled: Bool {
         ProcessInfo.processInfo.environment["SWOOSHY_DEBUG_LOGS"] == "1" ||
-            UserDefaults.standard.bool(forKey: "settings.debugLoggingEnabled")
+            UserDefaults.standard.bool(forKey: AppUserDefaultsKeys.debugLoggingEnabled)
     }
 
     private static func log(
@@ -59,15 +60,108 @@ enum DebugLog {
     }
 
     private static func writeToFile(level: String, channel: Channel, message: String) {
-        Task {
-            await fileSink.append(level: level, channel: channel.name, message: message)
+        fileWriter.append(level: level, channel: channel.name, message: message)
+    }
+}
+
+final class DebugLogFileWriter: @unchecked Sendable {
+    private struct Entry: Sendable {
+        let level: String
+        let channel: String
+        let message: String
+        let date: Date
+    }
+
+    private enum DrainItem {
+        case entry(Entry)
+        case finished([CheckedContinuation<Void, Never>])
+    }
+
+    private let fileSink: DebugLogFileSink
+    private let lock = NSLock()
+    private var queuedEntries: [Entry] = []
+    private var isDraining = false
+    private var idleContinuations: [CheckedContinuation<Void, Never>] = []
+
+    init(fileSink: DebugLogFileSink) {
+        self.fileSink = fileSink
+    }
+
+    func append(level: String, channel: String, message: String) {
+        let shouldScheduleDrain: Bool
+        lock.lock()
+        queuedEntries.append(Entry(level: level, channel: channel, message: message, date: Date()))
+        if isDraining {
+            shouldScheduleDrain = false
+        } else {
+            isDraining = true
+            shouldScheduleDrain = true
         }
+        lock.unlock()
+
+        if shouldScheduleDrain {
+            Task {
+                await drain()
+            }
+        }
+    }
+
+    func flush() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            guard isDraining || !queuedEntries.isEmpty else {
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+
+            idleContinuations.append(continuation)
+            lock.unlock()
+        }
+    }
+
+    private func drain() async {
+        while true {
+            switch nextDrainItem() {
+            case .entry(let entry):
+                await fileSink.append(
+                    level: entry.level,
+                    channel: entry.channel,
+                    message: entry.message,
+                    date: entry.date
+                )
+            case .finished(let continuations):
+                for continuation in continuations {
+                    continuation.resume()
+                }
+                return
+            }
+        }
+    }
+
+    private func nextDrainItem() -> DrainItem {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !queuedEntries.isEmpty else {
+            isDraining = false
+            let continuations = idleContinuations
+            idleContinuations = []
+            return .finished(continuations)
+        }
+
+        return .entry(queuedEntries.removeFirst())
     }
 }
 
 /// Serializes file I/O and log rotation so hot paths can append debug output
 /// without coordinating access to the underlying file handle.
 actor DebugLogFileSink {
+    private struct FileIdentity: Equatable {
+        let device: dev_t
+        let inode: ino_t
+    }
+
     private let fileManager = FileManager.default
     let logDirectoryURL: URL
     let currentLogFileURL: URL
@@ -78,6 +172,7 @@ actor DebugLogFileSink {
     private let archivedLogRetentionInterval: TimeInterval = 7 * 24 * 60 * 60
     private let maintenanceInterval: TimeInterval = 24 * 60 * 60
     private var fileHandle: FileHandle?
+    private var fileHandleIdentity: FileIdentity?
     private var lastMaintenanceDate: Date?
 
     init(logDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -100,13 +195,13 @@ actor DebugLogFileSink {
         }
     }
 
-    func append(level: String, channel: String, message: String) {
+    func append(level: String, channel: String, message: String, date: Date = Date()) {
         do {
-            let line = "\(timestampFormatter.string(from: Date())) [\(level)] [\(channel)] \(message)\n"
+            let line = "\(timestampFormatter.string(from: date)) [\(level)] [\(channel)] \(message)\n"
             try performMaintenanceIfNeeded()
+            try closeStaleFileHandleIfNeeded()
             try rotateCurrentLogIfNeeded(projectedAdditionalBytes: Int64(line.utf8.count))
             let handle = try logFileHandle()
-            try handle.seekToEnd()
             try handle.write(contentsOf: Data(line.utf8))
         } catch {
             NSLog("Swooshy debug log file write failed: %@", error.localizedDescription)
@@ -134,6 +229,24 @@ actor DebugLogFileSink {
         )
     }
 
+    /// Another Swooshy instance may rotate debug.log from under this one;
+    /// writing through the old handle would keep growing the archived file
+    /// unbounded, so re-resolve the handle whenever the path's identity moves.
+    private func closeStaleFileHandleIfNeeded() throws {
+        guard fileHandle != nil else {
+            return
+        }
+
+        if
+            let pathIdentity = fileIdentity(atPath: currentLogFileURL.path),
+            pathIdentity == fileHandleIdentity
+        {
+            return
+        }
+
+        try closeCurrentFileHandle()
+    }
+
     private func rotateCurrentLogIfNeeded(projectedAdditionalBytes: Int64) throws {
         guard let currentFileSize = currentLogFileSize() else {
             return
@@ -150,7 +263,12 @@ actor DebugLogFileSink {
         }
 
         let rotatedLogURL = try uniqueArchivedLogURL()
-        try fileManager.moveItem(at: currentLogFileURL, to: rotatedLogURL)
+        do {
+            try fileManager.moveItem(at: currentLogFileURL, to: rotatedLogURL)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            // A concurrent instance rotated the file between our existence
+            // check and the move; the next append opens a fresh debug.log.
+        }
     }
 
     private func pruneArchivedLogs(now: Date) throws {
@@ -195,19 +313,21 @@ actor DebugLogFileSink {
 
         try ensureLogDirectoryExists()
 
-        if !fileManager.fileExists(atPath: currentLogFileURL.path) {
-            let created = fileManager.createFile(atPath: currentLogFileURL.path, contents: nil)
-            guard created else {
-                throw NSError(
-                    domain: NSCocoaErrorDomain,
-                    code: NSFileWriteUnknownError,
-                    userInfo: [NSFilePathErrorKey: currentLogFileURL.path]
-                )
-            }
+        // O_APPEND makes the kernel position every write at end-of-file
+        // atomically, so concurrent instances cannot clobber each other's
+        // appends the way an explicit seek-then-write can.
+        let descriptor = open(currentLogFileURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+        guard descriptor >= 0 else {
+            throw NSError(
+                domain: NSPOSIXErrorDomain,
+                code: Int(errno),
+                userInfo: [NSFilePathErrorKey: currentLogFileURL.path]
+            )
         }
 
-        let handle = try FileHandle(forWritingTo: currentLogFileURL)
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         self.fileHandle = handle
+        self.fileHandleIdentity = fileIdentity(of: handle)
         return handle
     }
 
@@ -218,6 +338,25 @@ actor DebugLogFileSink {
 
         try fileHandle.close()
         self.fileHandle = nil
+        self.fileHandleIdentity = nil
+    }
+
+    private func fileIdentity(atPath path: String) -> FileIdentity? {
+        var status = stat()
+        guard stat(path, &status) == 0 else {
+            return nil
+        }
+
+        return FileIdentity(device: status.st_dev, inode: status.st_ino)
+    }
+
+    private func fileIdentity(of handle: FileHandle) -> FileIdentity? {
+        var status = stat()
+        guard fstat(handle.fileDescriptor, &status) == 0 else {
+            return nil
+        }
+
+        return FileIdentity(device: status.st_dev, inode: status.st_ino)
     }
 
     private func currentLogFileSize() -> Int64? {

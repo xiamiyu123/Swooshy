@@ -1,10 +1,10 @@
 import Foundation
 
 enum L10n {
-    nonisolated(unsafe) private static var preferredLanguagesOverride: [String]?
+    private static let preferredLanguagesOverrideStore = PreferredLanguagesOverrideStore()
 
     static func setPreferredLanguagesOverride(_ languages: [String]?) {
-        preferredLanguagesOverride = languages
+        preferredLanguagesOverrideStore.set(languages)
     }
 
     static func string(
@@ -69,10 +69,14 @@ enum L10n {
         let basePreferences =
             explicitLocaleIdentifier.map { [$0] }
             ?? preferredLanguages
-            ?? preferredLanguagesOverride
+            ?? preferredLanguagesOverrideSnapshot()
             ?? Locale.preferredLanguages
 
         return basePreferences.flatMap(localePreferenceCandidates)
+    }
+
+    private static func preferredLanguagesOverrideSnapshot() -> [String]? {
+        preferredLanguagesOverrideStore.snapshot()
     }
 
     private static var fallbackLocalizationCandidates: [String] {
@@ -121,4 +125,23 @@ enum L10n {
     }
 
     private static let resourcesBundle: Bundle = .appResources
+}
+
+private final class PreferredLanguagesOverrideStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var languages: [String]?
+
+    func set(_ languages: [String]?) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        self.languages = languages
+    }
+
+    func snapshot() -> [String]? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return languages
+    }
 }

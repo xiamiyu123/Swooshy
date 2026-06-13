@@ -69,16 +69,40 @@ struct DockSwipeGestureRecognizerTests {
             secondPosition: CGPoint,
             timestamp: Double
         ) {
-            withUnsafeTemporaryAllocation(of: SwooshyMTFinger.self, capacity: 2) { buffer in
+            receiveTouchPayload(
+                [
+                    (identifier: firstIdentifier, position: firstPosition),
+                    (identifier: secondIdentifier, position: secondPosition),
+                ],
+                timestamp: timestamp
+            )
+        }
+
+        func receiveThreeFingerPayload(timestamp: Double) {
+            receiveTouchPayload(
+                [
+                    (identifier: 1, position: CGPoint(x: 0.20, y: 0.30)),
+                    (identifier: 2, position: CGPoint(x: 0.40, y: 0.50)),
+                    (identifier: 3, position: CGPoint(x: 0.60, y: 0.70)),
+                ],
+                timestamp: timestamp
+            )
+        }
+
+        private func receiveTouchPayload(
+            _ touches: [(identifier: Int, position: CGPoint)],
+            timestamp: Double
+        ) {
+            withUnsafeTemporaryAllocation(of: SwooshyMTFinger.self, capacity: touches.count) { buffer in
                 buffer.initialize(repeating: SwooshyMTFinger())
-                buffer[0].identifier = Int32(firstIdentifier)
-                buffer[1].identifier = Int32(secondIdentifier)
-                buffer[0].normalized.position = multitouchPoint(firstPosition)
-                buffer[1].normalized.position = multitouchPoint(secondPosition)
+                for (index, touch) in touches.enumerated() {
+                    buffer[index].identifier = Int32(touch.identifier)
+                    buffer[index].normalized.position = multitouchPoint(touch.position)
+                }
 
                 monitor.receiveCallbackPayload(
                     fingers: buffer.baseAddress,
-                    fingerCount: 2,
+                    fingerCount: touches.count,
                     timestamp: timestamp
                 )
             }
@@ -87,6 +111,30 @@ struct DockSwipeGestureRecognizerTests {
         private func multitouchPoint(_ point: CGPoint) -> SwooshyMTPoint {
             SwooshyMTPoint(x: Float(point.x), y: Float(point.y))
         }
+    }
+
+    @MainActor
+    private final class FakeMultitouchDeviceObserver: MultitouchDeviceObserving {
+        var onDeviceConfigurationChanged: (@MainActor () -> Void)?
+        private(set) var startCount = 0
+        private(set) var stopCount = 0
+
+        func start() {
+            startCount += 1
+        }
+
+        func stop() {
+            stopCount += 1
+        }
+
+        func emitDeviceConfigurationChanged() {
+            onDeviceConfigurationChanged?()
+        }
+    }
+
+    @MainActor
+    private final class RestartGate {
+        var isEnabled = true
     }
 
     private func expect(_ point: CGPoint, approximatelyEquals expected: CGPoint) {
@@ -924,6 +972,126 @@ struct DockSwipeGestureRecognizerTests {
         #expect(fixture.deliveredFrames.count == 3)
         #expect(fixture.deliveredFrames.map(\.touches.count) == [2, 0, 2])
         #expect(fixture.deliveredFrames.map(\.timestamp) == [1.0, 1.1, 1.2])
+    }
+
+    @MainActor
+    @Test
+    func multitouchMonitorPreservesAdditionalTouchCancellationBeforeRelease() {
+        let fixture = MultitouchMonitorFixture()
+
+        fixture.receiveTwoFingerPayload(
+            firstPosition: CGPoint(x: 0.20, y: 0.30),
+            secondPosition: CGPoint(x: 0.40, y: 0.50),
+            timestamp: 1.0
+        )
+        fixture.receiveThreeFingerPayload(timestamp: 1.1)
+        fixture.receiveZeroTouchPayload(timestamp: 1.2)
+
+        fixture.runScheduledFrames()
+
+        #expect(fixture.deliveredFrames.count == 3)
+        #expect(fixture.deliveredFrames.map(\.touches.count) == [2, 3, 0])
+        #expect(fixture.deliveredFrames.map(\.timestamp) == [1.0, 1.1, 1.2])
+    }
+
+    @MainActor
+    @Test
+    func multitouchDeviceRestartCoordinatorCoalescesDeviceChanges() async {
+        let observer = FakeMultitouchDeviceObserver()
+        let coordinator = MultitouchDeviceRestartCoordinator(observer: observer)
+        let restartGate = RestartGate()
+        var restartCount = 0
+
+        coordinator.start(
+            shouldRestart: { restartGate.isEnabled },
+            restart: { restartCount += 1 }
+        )
+
+        observer.emitDeviceConfigurationChanged()
+        observer.emitDeviceConfigurationChanged()
+        await Task.yield()
+        await Task.yield()
+
+        #expect(observer.startCount == 1)
+        #expect(restartCount == 1)
+
+        restartGate.isEnabled = false
+        observer.emitDeviceConfigurationChanged()
+        await Task.yield()
+        await Task.yield()
+
+        #expect(restartCount == 1)
+
+        coordinator.stop()
+        observer.emitDeviceConfigurationChanged()
+        await Task.yield()
+        await Task.yield()
+
+        #expect(observer.stopCount == 1)
+        #expect(restartCount == 1)
+    }
+
+    @MainActor
+    @Test
+    func multitouchDeviceRestartCoordinatorCancelsPendingRestartOnStop() async {
+        let observer = FakeMultitouchDeviceObserver()
+        let coordinator = MultitouchDeviceRestartCoordinator(observer: observer)
+        var restartCount = 0
+
+        coordinator.start(
+            shouldRestart: { true },
+            restart: { restartCount += 1 }
+        )
+
+        observer.emitDeviceConfigurationChanged()
+        coordinator.stop()
+        await Task.yield()
+        await Task.yield()
+
+        #expect(observer.stopCount == 1)
+        #expect(restartCount == 0)
+    }
+
+    @MainActor
+    @Test
+    func multitouchMonitorCleansBackendAfterFailedStart() {
+        var capturedContext: UnsafeMutableRawPointer?
+        var stopCount = 0
+        let monitor = MultitouchInputMonitor(
+            scheduleDrain: { _ in },
+            startMonitoring: { context in
+                capturedContext = context
+                return false
+            },
+            stopMonitoring: {
+                stopCount += 1
+            }
+        )
+
+        monitor.startIfAvailable()
+
+        #expect(capturedContext != nil)
+        #expect(!monitor.isMonitoringActive)
+        #expect(stopCount == 1)
+    }
+
+    @MainActor
+    @Test
+    func multitouchMonitorStopsBackendAfterSuccessfulStart() {
+        var stopCount = 0
+        let monitor = MultitouchInputMonitor(
+            scheduleDrain: { _ in },
+            startMonitoring: { _ in true },
+            stopMonitoring: {
+                stopCount += 1
+            }
+        )
+
+        monitor.startIfAvailable()
+        monitor.stop()
+
+        #expect(!monitor.isMonitoringActive)
+        #expect(stopCount == 1)
     }
 
     @MainActor

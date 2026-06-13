@@ -118,6 +118,20 @@ final class GlobalHotKeyController {
         observeSettings()
     }
 
+    deinit {
+        // deinit is not guaranteed to run on the main thread; assumeIsolated
+        // would crash there. AppDelegate calls shutdown() explicitly, so this
+        // is only a best-effort fallback when deallocated on the main thread.
+        guard Thread.isMainThread else {
+            assertionFailure("GlobalHotKeyController deallocated off the main thread without shutdown()")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            shutdown()
+        }
+    }
+
     func shutdown() {
         if let settingsObserver {
             NotificationCenter.default.removeObserver(settingsObserver)
@@ -195,7 +209,7 @@ final class GlobalHotKeyController {
             let binding = settingsStore.hotKeyBinding(for: action)
             var hotKeyRef: EventHotKeyRef?
             let hotKeyID = EventHotKeyID(
-                signature: hotKeySignature,
+                signature: Self.hotKeySignature,
                 id: UInt32(action.rawValue + 1)
             )
 
@@ -303,6 +317,10 @@ final class GlobalHotKeyController {
             return status
         }
 
+        guard hotKeyID.signature == GlobalHotKeyController.hotKeySignature else {
+            return OSStatus(eventNotHandledErr)
+        }
+
         let controller = Unmanaged<GlobalHotKeyController>
             .fromOpaque(userData)
             .takeUnretainedValue()
@@ -314,5 +332,5 @@ final class GlobalHotKeyController {
         return noErr
     }
 
-    private let hotKeySignature: OSType = 0x53575348 // "SWSH"
+    private static let hotKeySignature: OSType = 0x53575348 // "SWSH"
 }

@@ -2,6 +2,7 @@
 
 #import <CoreFoundation/CoreFoundation.h>
 #import <dlfcn.h>
+#import <stdatomic.h>
 
 typedef void *MTDeviceRef;
 typedef CFMutableArrayRef (*MTDeviceCreateListFunction)(void);
@@ -11,8 +12,8 @@ typedef void (*MTDeviceStopFunction)(MTDeviceRef);
 
 static void *sLibraryHandle = NULL;
 static CFMutableArrayRef sDevices = NULL;
-static SwooshyMTContactCallback sClientCallback = NULL;
-static void *sClientContext = NULL;
+static _Atomic(SwooshyMTContactCallback) sClientCallback = NULL;
+static _Atomic(void *) sClientContext = NULL;
 static MTDeviceCreateListFunction sMTDeviceCreateList = NULL;
 static MTRegisterContactFrameCallbackFunction sMTRegisterContactFrameCallback = NULL;
 static MTDeviceStartFunction sMTDeviceStart = NULL;
@@ -38,9 +39,22 @@ static void SwooshyMTUnloadSymbols(void) {
     sMTDeviceStop = NULL;
 }
 
+static void SwooshyMTSetClient(SwooshyMTContactCallback callback, void *context) {
+    if (callback == NULL || context == NULL) {
+        atomic_store_explicit(&sClientCallback, NULL, memory_order_release);
+        atomic_store_explicit(&sClientContext, NULL, memory_order_relaxed);
+        return;
+    }
+
+    atomic_store_explicit(&sClientContext, context, memory_order_relaxed);
+    atomic_store_explicit(&sClientCallback, callback, memory_order_release);
+}
+
 static int swooshy_mt_callback(int device, const SwooshyMTFinger *data, int fingerCount, double timestamp, int frame) {
-    if (sClientCallback != NULL) {
-        sClientCallback(device, data, fingerCount, timestamp, frame, sClientContext);
+    SwooshyMTContactCallback callback = atomic_load_explicit(&sClientCallback, memory_order_acquire);
+    void *context = atomic_load_explicit(&sClientContext, memory_order_relaxed);
+    if (callback != NULL && context != NULL) {
+        callback(device, data, fingerCount, timestamp, frame, context);
     }
     return 0;
 }
@@ -69,33 +83,42 @@ static bool SwooshyMTLoadSymbols(void) {
 }
 
 bool SwooshyMTStartMonitoring(SwooshyMTContactCallback callback, void *context) {
+    if (callback == NULL || context == NULL) {
+        return false;
+    }
+
     if (!SwooshyMTLoadSymbols()) {
         return false;
     }
 
     SwooshyMTStopMonitoring();
 
-    sClientCallback = callback;
-    sClientContext = context;
     sDevices = sMTDeviceCreateList();
 
     if (sDevices == NULL) {
-        sClientCallback = NULL;
-        sClientContext = NULL;
         return false;
     }
 
     CFIndex count = CFArrayGetCount(sDevices);
+    if (count == 0) {
+        CFRelease(sDevices);
+        sDevices = NULL;
+        return false;
+    }
+
+    SwooshyMTSetClient(callback, context);
     for (CFIndex index = 0; index < count; index++) {
         MTDeviceRef device = (MTDeviceRef)CFArrayGetValueAtIndex(sDevices, index);
         sMTRegisterContactFrameCallback(device, swooshy_mt_callback);
         sMTDeviceStart(device, 0);
     }
 
-    return count > 0;
+    return true;
 }
 
 void SwooshyMTStopMonitoring(void) {
+    SwooshyMTSetClient(NULL, NULL);
+
     if (sDevices != NULL && sMTDeviceStop != NULL) {
         CFIndex count = CFArrayGetCount(sDevices);
         for (CFIndex index = 0; index < count; index++) {
@@ -105,7 +128,4 @@ void SwooshyMTStopMonitoring(void) {
         CFRelease(sDevices);
         sDevices = NULL;
     }
-
-    sClientCallback = NULL;
-    sClientContext = NULL;
 }

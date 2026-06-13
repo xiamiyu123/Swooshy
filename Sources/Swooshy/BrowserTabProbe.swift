@@ -24,9 +24,24 @@ enum BrowserTabProbe {
     }
 
     private struct CachedHostSupport {
+        let identity: HostCacheIdentity
         let isSupported: Bool
         let description: String
         let family: TabHostFamily
+    }
+
+    private struct HostCacheIdentity: Equatable {
+        let bundleIdentifier: String?
+        let bundleURL: URL?
+        let executableURL: URL?
+        let localizedName: String?
+
+        init(application: NSRunningApplication) {
+            bundleIdentifier = application.bundleIdentifier
+            bundleURL = application.bundleURL
+            executableURL = application.executableURL
+            localizedName = application.localizedName
+        }
     }
 
     // MARK: - Public API
@@ -211,12 +226,14 @@ enum BrowserTabProbe {
     }
 
     private static func hostSupport(processIdentifier: pid_t) -> CachedHostSupport? {
-        if let cached = hostSupportCache[processIdentifier] {
-            return cached
+        guard let app = NSRunningApplication(processIdentifier: processIdentifier) else {
+            hostSupportCache.removeValue(forKey: processIdentifier)
+            return nil
         }
 
-        guard let app = NSRunningApplication(processIdentifier: processIdentifier) else {
-            return nil
+        let identity = HostCacheIdentity(application: app)
+        if let cached = hostSupportCache[processIdentifier], cached.identity == identity {
+            return cached
         }
 
         let isSupported = supportsTabCloseHost(
@@ -224,6 +241,7 @@ enum BrowserTabProbe {
             localizedName: app.localizedName
         )
         let support = CachedHostSupport(
+            identity: identity,
             isSupported: isSupported,
             description: hostDescription(for: app),
             family: tabHostFamily(bundleIdentifier: app.bundleIdentifier)

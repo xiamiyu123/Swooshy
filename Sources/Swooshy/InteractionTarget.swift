@@ -95,6 +95,10 @@ struct WindowIdentity: Hashable, Sendable {
     init(rawValue: UUID = UUID()) {
         self.rawValue = rawValue
     }
+
+    var stableSortKey: String {
+        rawValue.uuidString
+    }
 }
 
 struct DockItemHandle: Hashable, Sendable {
@@ -114,17 +118,31 @@ struct DockMinimizedItemHandle: Hashable, Sendable {
 }
 
 struct DockElementToken: Hashable, Sendable {
+    private enum Value: Hashable, Sendable {
+        case windowIdentifier(CGWindowID)
+        case elementHash(Int)
+    }
+
     let processIdentifier: pid_t
-    let rawHash: Int
+    private let value: Value
 
     init(element: AXUIElement) {
         processIdentifier = AXAttributeReader.processIdentifier(of: element) ?? 0
-        rawHash = Int(CFHash(element as CFTypeRef))
+        if let windowIdentifier = AXAttributeReader.windowIdentifier(of: element), windowIdentifier != 0 {
+            value = .windowIdentifier(windowIdentifier)
+        } else {
+            value = .elementHash(Int(CFHash(element as CFTypeRef)))
+        }
     }
 
     init(processIdentifier: pid_t = 0, rawHash: Int) {
         self.processIdentifier = processIdentifier
-        self.rawHash = rawHash
+        value = .elementHash(rawHash)
+    }
+
+    init(processIdentifier: pid_t = 0, windowIdentifier: CGWindowID) {
+        self.processIdentifier = processIdentifier
+        value = .windowIdentifier(windowIdentifier)
     }
 }
 

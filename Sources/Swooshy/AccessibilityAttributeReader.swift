@@ -7,12 +7,46 @@ import Foundation
 /// Centralizes AX reads so callers can treat missing attributes, AX errors,
 /// and unexpected value types as the same "best effort" failure case.
 enum AXAttributeReader {
+    enum AttributeReadResult<Value> {
+        case success(Value)
+        case failure(AXError)
+    }
+
+    static let defaultMessagingTimeout: Float = 0.35
+
     private static let windowIdentifierResolver = AXWindowIdentifierResolver()
 
-    private static func attributeValue(_ attribute: CFString, from element: AXUIElement) -> CFTypeRef? {
+    static func applicationElement(for processIdentifier: pid_t) -> AXUIElement {
+        let element = AXUIElementCreateApplication(processIdentifier)
+        configureMessagingTimeout(for: element)
+        return element
+    }
+
+    static func systemWideElement() -> AXUIElement {
+        let element = AXUIElementCreateSystemWide()
+        configureMessagingTimeout(for: element)
+        return element
+    }
+
+    static func configureMessagingTimeout(for element: AXUIElement) {
+        _ = AXUIElementSetMessagingTimeout(element, defaultMessagingTimeout)
+    }
+
+    private static func attributeValueResult(_ attribute: CFString, from element: AXUIElement) -> AttributeReadResult<CFTypeRef> {
+        configureMessagingTimeout(for: element)
         var value: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(element, attribute, &value)
-        guard error == .success else { return nil }
+        guard error == .success, let value else {
+            return .failure(error == .success ? AXError.failure : error)
+        }
+        return .success(value)
+    }
+
+    private static func attributeValue(_ attribute: CFString, from element: AXUIElement) -> CFTypeRef? {
+        guard case .success(let value) = attributeValueResult(attribute, from: element) else {
+            return nil
+        }
+
         return value
     }
 
@@ -29,10 +63,27 @@ enum AXAttributeReader {
     }
 
     static func elements(_ attribute: CFString, from element: AXUIElement) -> [AXUIElement] {
-        guard let children = attributeValue(attribute, from: element) as? [AnyObject] else {
+        guard case .success(let children) = elementArray(attribute, from: element) else {
             return []
         }
 
+        return children
+    }
+
+    static func elementArray(_ attribute: CFString, from element: AXUIElement) -> AttributeReadResult<[AXUIElement]> {
+        switch attributeValueResult(attribute, from: element) {
+        case .success(let value):
+            guard let children = value as? [AnyObject] else {
+                return .success([])
+            }
+
+            return .success(elements(from: children))
+        case .failure(let error):
+            return .failure(error)
+        }
+    }
+
+    private static func elements(from children: [AnyObject]) -> [AXUIElement] {
         return children.compactMap { child in
             guard CFGetTypeID(child) == AXUIElementGetTypeID() else {
                 return nil
@@ -101,6 +152,7 @@ enum AXAttributeReader {
     }
 
     static func actionNames(of element: AXUIElement) -> [String] {
+        configureMessagingTimeout(for: element)
         var actionNamesRef: CFArray?
         let result = AXUIElementCopyActionNames(element, &actionNamesRef)
         guard result == .success, let actionNames = actionNamesRef as? [String] else {
@@ -133,10 +185,10 @@ enum AXAttributeReader {
     }
 
     static func hitElement(atAXPoint axPoint: CGPoint) -> AXUIElement? {
-        let systemWideElement = AXUIElementCreateSystemWide()
+        let rootElement = systemWideElement()
         var hitElement: AXUIElement?
         let result = AXUIElementCopyElementAtPosition(
-            systemWideElement,
+            rootElement,
             Float(axPoint.x),
             Float(axPoint.y),
             &hitElement
@@ -152,7 +204,14 @@ enum AXAttributeReader {
     /// Walks up the parent chain because hit-testing often lands on a child
     /// inside the title bar or toolbar instead of the window element itself.
     static func window(containing element: AXUIElement, maxDepth: Int = 12) -> AXUIElement? {
-        if let window = self.element(kAXWindowAttribute as CFString, from: element) {
+        // Some apps (e.g. Tauri/WebView shells) expose an AXWindow attribute
+        // that resolves to an invalid element where every AX call fails with
+        // kAXErrorInvalidUIElement. Require a readable role before trusting it
+        // so callers can fall back to their own window resolution.
+        if
+            let window = self.element(kAXWindowAttribute as CFString, from: element),
+            string(kAXRoleAttribute as CFString, from: window) != nil
+        {
             return window
         }
 

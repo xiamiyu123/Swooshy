@@ -511,6 +511,38 @@ struct SettingsStoreTests {
     }
 
     @Test
+    func reenablingExperimentalBrowserTabCloseRestoresDefaultPinchConfirmation() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+
+        store.experimentalBrowserTabCloseEnabled = true
+        #expect(store.pinchCloseConfirmationEnabled)
+
+        store.experimentalBrowserTabCloseEnabled = false
+        #expect(!store.pinchCloseConfirmationEnabled)
+        #expect(defaults.object(forKey: "settings.pinchCloseConfirmationEnabled") == nil)
+
+        store.experimentalBrowserTabCloseEnabled = true
+        #expect(store.pinchCloseConfirmationEnabled)
+    }
+
+    @Test
+    func explicitPinchConfirmationOptOutSurvivesExperimentalBrowserTabCloseToggle() {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults)
+
+        store.experimentalBrowserTabCloseEnabled = true
+        store.pinchCloseConfirmationEnabled = false
+
+        store.experimentalBrowserTabCloseEnabled = false
+        store.experimentalBrowserTabCloseEnabled = true
+
+        #expect(!store.pinchCloseConfirmationEnabled)
+        #expect(defaults.bool(forKey: "settings.pinchCloseConfirmationEnabled") == false)
+        #expect(defaults.object(forKey: "settings.pinchCloseConfirmationEnabled") != nil)
+    }
+
+    @Test
     func togglingDisplayMoveExperimentalModeInvalidatesHiddenEntrypoints() async {
         let store = makeSettingsStore()
 
