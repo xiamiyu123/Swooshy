@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Centralizes the Liquid Glass treatment so every card and panel in Settings
-/// and the Welcome guide goes through one place. On macOS 26 it uses the native
-/// `glassEffect` API; on macOS 14/15 it falls back to a standard card surface.
+/// Centralizes the card and panel treatment so Settings and the Welcome guide
+/// go through one surface implementation that builds with the current project
+/// SDK.
 ///
 /// Usage: `someView.glassCard()` for content cards, `.glassPanel()` for larger
 /// hero/preview surfaces with a bigger radius.
@@ -37,16 +37,8 @@ private struct GlassSurfaceModifier: ViewModifier {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(padding ?? 0)
 
-        if #available(macOS 26.0, *) {
-            padded
-                .glassEffect(
-                    .regular,
-                    in: .rect(cornerRadius: cornerRadius)
-                )
-        } else {
-            padded
-                .standardCardSurface(cornerRadius: cornerRadius)
-        }
+        padded
+            .standardCardSurface(cornerRadius: cornerRadius)
     }
 }
 
@@ -66,24 +58,15 @@ private struct GlassCardBackgroundModifier: ViewModifier {
     let cornerRadius: CGFloat
 
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content
-                .glassEffect(
-                    .regular,
-                    in: .rect(cornerRadius: cornerRadius)
-                )
-        } else {
-            content
-                .standardCardSurface(cornerRadius: cornerRadius)
-        }
+        content
+            .standardCardSurface(cornerRadius: cornerRadius)
     }
 }
 
 extension View {
     /// Background for selectable cards (e.g. the interaction-style pickers).
     /// The selected state keeps an accent tint + ring so the choice stays
-    /// obvious; the unselected state uses glass on macOS 26 and a material card
-    /// on older systems.
+    /// obvious; the unselected state uses the standard card surface.
     func selectableCardBackground(
         isSelected: Bool,
         cornerRadius: CGFloat = SettingsDesign.Radius.card
@@ -112,9 +95,6 @@ private struct SelectableCardBackgroundModifier: ViewModifier {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(Color.accentColor.opacity(0.4), lineWidth: 2)
                 )
-        } else if #available(macOS 26.0, *) {
-            content
-                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             content
                 .standardCardSurface(cornerRadius: cornerRadius)
@@ -135,8 +115,7 @@ private extension View {
     }
 }
 
-/// Wraps a group of glass surfaces so macOS 26 can blend/morph them together.
-/// On older systems it is a plain passthrough container.
+/// Keeps a single grouping type for settings surfaces.
 struct GlassGroup<Content: View>: View {
     var spacing: CGFloat
     @ViewBuilder let content: Content
@@ -147,12 +126,6 @@ struct GlassGroup<Content: View>: View {
     }
 
     var body: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) {
-                content
-            }
-        } else {
-            content
-        }
+        content
     }
 }
