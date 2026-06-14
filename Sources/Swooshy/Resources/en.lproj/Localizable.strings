@@ -116,7 +116,7 @@
 "guide.page.danger_confirmation.message" = "Some actions, like closing a window or quitting an app, are easy to trigger by accident and hard to undo. Swooshy lets you protect individual gestures so they ask for a second confirmation before running. This is set per gesture in Settings, next to each gesture mapping.";
 "guide.page.danger_confirmation.bullet1" = "In Settings > General, turn on \"Danger gesture confirmation\". A shield button then appears in the \"Confirm\" column next to each Dock and title-bar gesture; tap it so the shield is filled to protect that gesture.";
 "guide.page.danger_confirmation.bullet2" = "When a protected gesture triggers, it does not run right away. A prompt appears asking you to repeat the same gesture to confirm.";
-"guide.page.danger_confirmation.bullet3" = "Repeat the same gesture within a few seconds to run the action. Do nothing and it cancels automatically.";
+"guide.page.danger_confirmation.bullet3" = "Repeat the same gesture before the confirmation window ends to run the action. Do nothing and it cancels automatically.";
 "guide.page.danger_confirmation.bullet4" = "Disabled or excluded gestures never prompt. This setting replaces the old experimental title-bar pinch close confirmation.";
 
 "settings.window.title" = "Settings";
@@ -211,11 +211,12 @@
 "settings.advanced.smart_pinch_exit_full_screen.enabled" = "Smart Pinch In to Exit Full Screen";
 "settings.advanced.smart_pinch_exit_full_screen.footer" = "When the app is in Native Full Screen (with the Title-bar hovering down), Title-bar 'Pinch In' gestures will be intelligently intercepted as 'Exit Full Screen', regardless of their actual mapping in the Settings. This prevents unintended app closure when you actually just meant to leave the Virtual Desktop space.";
 "settings.danger_gesture_confirmation.title" = "Danger gesture confirmation";
-"settings.danger_gesture_confirmation.description" = "Choose which gestures require a second confirmation. When a selected gesture triggers, it does not run right away: a prompt appears, and you repeat the same gesture within a few seconds to confirm. Otherwise it is cancelled.";
+"settings.danger_gesture_confirmation.description" = "Choose which gestures require a second confirmation. When a selected gesture triggers, it does not run right away: a prompt appears, and you repeat the same gesture before the confirmation window ends. Otherwise it is cancelled.";
 "settings.danger_gesture_confirmation.maps_to_format" = "Current action: %@";
 "settings.danger_gesture_confirmation.footer" = "Require a second confirmation for hard-to-undo gestures like Close Window or Quit Application. When on, a shield appears beside each Dock and title-bar gesture mapping so you can choose which ones to protect.";
 "settings.danger_gesture_confirmation.toggle.help" = "Require a second confirmation before this gesture runs";
-"settings.danger_gesture_confirmation.inline_footer" = "Tap the shield in the \"Confirm\" column to protect a gesture. A protected gesture (filled shield) does not run on the first trigger: a prompt appears and you repeat the same gesture within a few seconds to confirm, otherwise it is cancelled. Disabled or excluded gestures never prompt.";
+"settings.danger_gesture_confirmation.duration.label" = "Confirmation window";
+"settings.danger_gesture_confirmation.inline_footer" = "Tap the shield in the \"Confirm\" column to protect a gesture. A protected gesture (filled shield) does not run on the first trigger: a prompt appears and you repeat the same gesture before the confirmation window ends, otherwise it is cancelled. Disabled or excluded gestures never prompt.";
 "settings.danger_gesture_confirmation.mapping_hint" = "Danger gesture confirmation is off. Turn it on in General to protect individual gestures with a shield.";
 "settings.gesture_mappings.column.action" = "Action";
 "settings.gesture_mappings.column.confirmation" = "Confirm";

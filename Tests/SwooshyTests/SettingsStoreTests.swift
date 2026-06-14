@@ -32,6 +32,7 @@ struct SettingsStoreTests {
         store.smartBrowserTabCloseEnabled = true
         store.updateDangerGestureConfirmation(true, for: .swipeUp, on: .dock)
         store.updateDangerGestureConfirmation(true, for: .pinchIn, on: .titleBar)
+        store.dangerGestureConfirmationDuration = 6.5
         store.titleBarTriggerHeight = 42
         store.titleBarCornerDragHoldDuration = 0.9
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
@@ -55,6 +56,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.smartBrowserTabCloseEnabled)
         #expect(reloadedStore.requiresDangerGestureConfirmation(.swipeUp, on: .dock))
         #expect(reloadedStore.requiresDangerGestureConfirmation(.pinchIn, on: .titleBar))
+        #expect(reloadedStore.dangerGestureConfirmationDuration == 6.5)
         #expect(reloadedStore.titleBarTriggerHeight == 42)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == 0.9)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .closeWindow)
@@ -432,6 +434,7 @@ struct SettingsStoreTests {
         store.smartPinchExitFullScreenEnabled = false
         store.smartBrowserTabCloseEnabled = true
         store.updateDangerGestureConfirmation(true, for: .pinchOut, on: .dock)
+        store.dangerGestureConfirmationDuration = 8
         store.titleBarTriggerHeight = 40
         store.titleBarCornerDragHoldDuration = 1.2
         store.statusItemIcon = .windowGrid
@@ -459,6 +462,7 @@ struct SettingsStoreTests {
         #expect(reloadedStore.smartPinchExitFullScreenEnabled)
         #expect(!reloadedStore.smartBrowserTabCloseEnabled)
         #expect(reloadedStore.dangerGestureConfirmationSelections.isEmpty)
+        #expect(reloadedStore.dangerGestureConfirmationDuration == SettingsStore.defaultDangerGestureConfirmationDuration)
         #expect(reloadedStore.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
         #expect(reloadedStore.statusItemIcon == .gale)
@@ -487,6 +491,13 @@ struct SettingsStoreTests {
         let store = makeSettingsStore()
 
         #expect(store.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
+    }
+
+    @Test
+    func dangerGestureConfirmationDurationDefaultsToThreeSeconds() {
+        let store = makeSettingsStore()
+
+        #expect(store.dangerGestureConfirmationDuration == SettingsStore.defaultDangerGestureConfirmationDuration)
     }
 
     @Test
@@ -766,6 +777,24 @@ struct SettingsStoreTests {
 
         let reloadedStore = SettingsStore(userDefaults: defaults)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == SettingsStore.maximumTitleBarCornerDragHoldDuration)
+    }
+
+    @Test
+    func dangerGestureConfirmationDurationClampsPersistedAndAssignedValues() {
+        let defaults = makeUserDefaults()
+        defaults.set(
+            SettingsStore.minimumDangerGestureConfirmationDuration - 0.5,
+            forKey: "settings.dangerGestureConfirmationDuration"
+        )
+
+        let store = SettingsStore(userDefaults: defaults)
+        #expect(store.dangerGestureConfirmationDuration == SettingsStore.minimumDangerGestureConfirmationDuration)
+
+        store.dangerGestureConfirmationDuration = SettingsStore.maximumDangerGestureConfirmationDuration + 1
+        #expect(store.dangerGestureConfirmationDuration == SettingsStore.maximumDangerGestureConfirmationDuration)
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.dangerGestureConfirmationDuration == SettingsStore.maximumDangerGestureConfirmationDuration)
     }
 
     @Test

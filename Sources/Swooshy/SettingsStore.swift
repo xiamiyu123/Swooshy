@@ -165,6 +165,20 @@ final class SettingsStore {
         }
     }
 
+    var dangerGestureConfirmationDuration: Double {
+        didSet {
+            if let clampedValue = clampedAdvancedGestureDouble(
+                currentValue: dangerGestureConfirmationDuration,
+                oldValue: oldValue,
+                clamp: Self.clampDangerGestureConfirmationDuration,
+                forKey: Keys.dangerGestureConfirmationDuration,
+                logLabel: "Danger gesture confirmation duration"
+            ) {
+                dangerGestureConfirmationDuration = clampedValue
+            }
+        }
+    }
+
     var experimentalBrowserTabCloseEnabled: Bool {
         didSet {
             guard oldValue != experimentalBrowserTabCloseEnabled else { return }
@@ -447,6 +461,13 @@ final class SettingsStore {
             defaultValue: !decodedDangerGestureConfirmationSelections.isEmpty,
             in: userDefaults
         )
+        self.dangerGestureConfirmationDuration = Self.clampDangerGestureConfirmationDuration(
+            Self.doubleValue(
+                forKey: Keys.dangerGestureConfirmationDuration,
+                defaultValue: Self.defaultDangerGestureConfirmationDuration,
+                in: userDefaults
+            )
+        )
 
         // Deprecated preview-mode settings still load from UserDefaults so
         // older installs keep behaving consistently until the flow is removed.
@@ -571,6 +592,7 @@ final class SettingsStore {
             Keys.dangerGestureConfirmationSelections,
             Keys.dangerGestureConfirmationEnabled,
             Keys.dangerGestureConfirmationDidSeedDefaults,
+            Keys.dangerGestureConfirmationDuration,
             Keys.executeGestureOnRelease,
             Keys.reverseCancelEnabled,
             Keys.reverseCancelSensitivity,
@@ -1005,6 +1027,9 @@ final class SettingsStore {
     nonisolated static let defaultTitleBarCornerDragHoldDuration: Double = 0.2
     nonisolated static let minimumTitleBarCornerDragHoldDuration: Double = 0.2
     nonisolated static let maximumTitleBarCornerDragHoldDuration: Double = 1.5
+    nonisolated static let defaultDangerGestureConfirmationDuration: Double = 3
+    nonisolated static let minimumDangerGestureConfirmationDuration: Double = 1
+    nonisolated static let maximumDangerGestureConfirmationDuration: Double = 10
 
     nonisolated static func clampTitleBarTriggerHeight(_ value: Double) -> Double {
         min(maximumTitleBarTriggerHeight, max(minimumTitleBarTriggerHeight, value))
@@ -1012,6 +1037,10 @@ final class SettingsStore {
 
     nonisolated static func clampTitleBarCornerDragHoldDuration(_ value: Double) -> Double {
         min(maximumTitleBarCornerDragHoldDuration, max(minimumTitleBarCornerDragHoldDuration, value))
+    }
+
+    nonisolated static func clampDangerGestureConfirmationDuration(_ value: Double) -> Double {
+        min(maximumDangerGestureConfirmationDuration, max(minimumDangerGestureConfirmationDuration, value))
     }
 
     private static func clampSensitivity(_ value: Double) -> Double {
@@ -1320,6 +1349,7 @@ final class SettingsStore {
         static let dangerGestureConfirmationEnabled = "settings.dangerGestureConfirmationEnabled"
         static let dangerGestureConfirmationDidSeedDefaults = "settings.dangerGestureConfirmationDidSeedDefaults"
         static let dangerGestureConfirmationSelections = "settings.dangerGestureConfirmationSelections"
+        static let dangerGestureConfirmationDuration = "settings.dangerGestureConfirmationDuration"
         // Deprecated: superseded by per-gesture dangerGestureConfirmationSelections.
         // Retained for migration and reset cleanup of older installs.
         static let closeAndQuitConfirmationEnabled = "settings.closeAndQuitConfirmationEnabled"
