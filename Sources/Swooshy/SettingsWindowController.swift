@@ -830,6 +830,15 @@ private struct GeneralGestureBehaviorSection: View {
                 isOn: $settingsStore.dangerGestureConfirmationEnabled
             )
 
+            if settingsStore.dangerGestureConfirmationEnabled {
+                DurationSlider(
+                    label: settingsStore.localized("settings.danger_gesture_confirmation.duration.label"),
+                    value: $settingsStore.dangerGestureConfirmationDuration,
+                    range: SettingsStore.minimumDangerGestureConfirmationDuration ... SettingsStore.maximumDangerGestureConfirmationDuration,
+                    step: 0.5
+                )
+            }
+
             SettingsHintGroup {
                 Text(
                     settingsStore.dangerGestureConfirmationEnabled

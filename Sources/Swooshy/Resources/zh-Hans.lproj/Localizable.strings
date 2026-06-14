@@ -116,7 +116,7 @@
 "guide.page.danger_confirmation.message" = "「关闭窗口」「退出应用」等动作很容易误触，而且难以撤销。Swooshy 允许你单独为某个手势开启保护，使其在执行前先要求二次确认。该设置在「设置」中针对每一条手势映射单独配置。";
 "guide.page.danger_confirmation.bullet1" = "在「设置 > 通用」里打开「危险手势二次确认」总开关。开启后，Dock 与标题栏每条手势右侧的「确认」列会出现盾牌按钮；点按使盾牌点亮，即可保护该手势。";
 "guide.page.danger_confirmation.bullet2" = "被保护的手势触发时不会立即执行，而是先弹出提示，请你重复同一个手势进行确认。";
-"guide.page.danger_confirmation.bullet3" = "在数秒内重复同一个手势即可执行动作；不操作则自动取消。";
+"guide.page.danger_confirmation.bullet3" = "在设定时限内重复同一个手势即可执行动作；不操作则自动取消。";
 "guide.page.danger_confirmation.bullet4" = "被停用或被排除的手势不会触发确认。此设置会取代旧的实验性「标题栏捏合关闭二次确认」。";
 
 "settings.window.title" = "设置";
@@ -211,12 +211,13 @@
 "settings.advanced.smart_pinch_exit_full_screen.enabled" = "全屏状态下捏合退出全屏";
 "settings.advanced.smart_pinch_exit_full_screen.footer" = "在原生的 macOS 虚拟桌面全屏状态下（标题栏下拉时），不论你为标题栏的「捏合」手势绑定了什么动作，系统都会将其智能识别拦截为「退出全屏桌面」。这能避免在此直觉操作下不小心触发关闭窗口。";
 "settings.danger_gesture_confirmation.title" = "危险手势二次确认";
-"settings.danger_gesture_confirmation.description" = "勾选需要二次确认的手势。勾选后，触发该手势不会立即执行，而是先显示提示；请在数秒内重复同一个手势来确认，否则自动取消。";
+"settings.danger_gesture_confirmation.description" = "勾选需要二次确认的手势。勾选后，触发该手势不会立即执行，而是先显示提示；请在设定时限内重复同一个手势来确认，否则自动取消。";
 "settings.danger_gesture_confirmation.maps_to_format" = "当前动作：%@";
 "settings.danger_gesture_confirmation.footer" = "开启后，可在「Dock 手势」和「标题栏手势」页面单独为某些手势开启二次确认，适用于「关闭窗口」「退出应用」等不易撤销的动作，避免误触。开启后这些页面的每条手势右侧会显示盾牌按钮。";
 "settings.danger_gesture_confirmation.toggle.help" = "触发这个手势前需要二次确认";
 "settings.danger_gesture_confirmation.mapping_hint" = "二次确认当前已关闭。在「通用」设置中开启后，这里会显示盾牌按钮，可单独保护某些手势。";
-"settings.danger_gesture_confirmation.inline_footer" = "点按「确认」列中的盾牌即可为某个手势开启保护。被保护的手势（盾牌点亮）首次触发时不会立即执行，而是先弹出提示；请在数秒内重复同一个手势来确认，否则自动取消。被停用或被排除的手势不会触发确认。";
+"settings.danger_gesture_confirmation.duration.label" = "二次确认时限";
+"settings.danger_gesture_confirmation.inline_footer" = "点按「确认」列中的盾牌即可为某个手势开启保护。被保护的手势（盾牌点亮）首次触发时不会立即执行，而是先弹出提示；请在设定时限内重复同一个手势来确认，否则自动取消。被停用或被排除的手势不会触发确认。";
 "settings.gesture_mappings.column.action" = "动作";
 "settings.gesture_mappings.column.confirmation" = "确认";
 "settings.debug_logging.enabled" = "启用调试日志";

@@ -112,7 +112,6 @@ final class DockGestureController {
     }
 
     private var pendingDangerGestureConfirmation: PendingDangerGestureConfirmation?
-    private let dangerGestureConfirmationTimeout: UInt64 = 3_000_000_000
 
     private struct MonitoringState: Equatable {
         let dockCornerDragEnabled: Bool
@@ -1759,7 +1758,7 @@ final class DockGestureController {
             preview: nil
         )
 
-        let timeout = dangerGestureConfirmationTimeout
+        let timeout = UInt64(settingsStore.dangerGestureConfirmationDuration * 1_000_000_000)
         let timeoutTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(nanoseconds: timeout)
