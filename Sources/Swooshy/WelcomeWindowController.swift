@@ -432,7 +432,7 @@ final class WelcomeGuideViewModel: ObservableObject {
     }
 
     func requestPermission() {
-        permissionGranted = permissionManager.isTrusted(promptIfNeeded: true)
+        permissionGranted = permissionManager.requestAccess()
         refreshPermissionState()
     }
 

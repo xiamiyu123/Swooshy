@@ -13,6 +13,22 @@ struct WelcomeWindowControllerTests {
         }
     }
 
+    private final class PermissionManagerRecorder: AccessibilityPermissionManaging {
+        var isTrustedValue = false
+        private(set) var requestAccessCallCount = 0
+        var promptRequests: [Bool] = []
+
+        func isTrusted(promptIfNeeded: Bool) -> Bool {
+            promptRequests.append(promptIfNeeded)
+            return isTrustedValue
+        }
+
+        func requestAccess() -> Bool {
+            requestAccessCallCount += 1
+            return isTrustedValue
+        }
+    }
+
     @Test
     func welcomeContentUsesCurrentLanguageOverride() {
         let store = makeSettingsStore()
@@ -150,6 +166,22 @@ struct WelcomeWindowControllerTests {
         #expect(viewModel.canOpenSettings)
     }
 
+    @Test
+    func welcomeGuideGrantPermissionUsesPermissionRequestFlow() {
+        let store = makeSettingsStore()
+        let permissionManager = PermissionManagerRecorder()
+        let viewModel = makeViewModel(
+            settingsStore: store,
+            permissionManager: permissionManager
+        )
+        permissionManager.promptRequests = []
+
+        viewModel.requestPermission()
+
+        #expect(permissionManager.requestAccessCallCount == 1)
+        #expect(permissionManager.promptRequests == [false])
+    }
+
     private func makeSettingsStore() -> SettingsStore {
         SettingsStore(userDefaults: makeDefaults())
     }
@@ -163,7 +195,7 @@ struct WelcomeWindowControllerTests {
 
     private func makeViewModel(
         settingsStore: SettingsStore,
-        permissionManager: PermissionManagerStub = PermissionManagerStub()
+        permissionManager: some AccessibilityPermissionManaging = PermissionManagerStub()
     ) -> WelcomeGuideViewModel {
         WelcomeGuideViewModel(
             settingsStore: settingsStore,
