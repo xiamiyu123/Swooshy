@@ -11,6 +11,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let hotKeyRegistrationStatusStore: HotKeyRegistrationStatusStore
     private let navigationState = SettingsNavigationState()
     private let onPointerInsideChanged: (Bool) -> Void
+    private let windowPresenter: UserFacingWindowPresenter
     private var settingsObserver: NSObjectProtocol?
     private var pointerTrackingArea: NSTrackingArea?
     private var isPointerInsideContentView = false
@@ -23,12 +24,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         showGestureTriggerRegions: @escaping (CGRect?) -> Void = { _ in },
         startGestureTargetCapture: @escaping () -> Void = {},
         cancelGestureTargetCapture: @escaping () -> Void = {},
-        onPointerInsideChanged: @escaping (Bool) -> Void = { _ in }
+        onPointerInsideChanged: @escaping (Bool) -> Void = { _ in },
+        windowPresenter: UserFacingWindowPresenter = .shared
     ) {
         self.settingsStore = settingsStore
         self.gestureTargetCaptureController = gestureTargetCaptureController
         self.hotKeyRegistrationStatusStore = hotKeyRegistrationStatusStore
         self.onPointerInsideChanged = onPointerInsideChanged
+        self.windowPresenter = windowPresenter
 
         let windowReference = WeakWindowReference()
         let rootView = SettingsView(
@@ -110,9 +113,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     func show() {
         updateWindowTitle()
         installPointerTrackingIfNeeded()
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        windowPresenter.present(window: window) {
+            showWindow(nil)
+        }
         updatePointerInsideContentViewState()
     }
 
@@ -140,6 +143,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         setPointerInsideContentView(false)
+        windowPresenter.windowDidClose(window)
     }
 
     private func installPointerTrackingIfNeeded() {

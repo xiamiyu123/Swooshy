@@ -7,6 +7,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     private let settingsStore: SettingsStore
     private let permissionManager: AccessibilityPermissionManaging
     private let onOpenSettings: () -> Void
+    private let windowPresenter: UserFacingWindowPresenter
     private let hostingController: NSHostingController<WelcomeGuideView>
     private var settingsObserver: NSObjectProtocol?
     private var viewModel: WelcomeGuideViewModel
@@ -14,11 +15,13 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     init(
         settingsStore: SettingsStore,
         permissionManager: AccessibilityPermissionManaging,
-        onOpenSettings: @escaping () -> Void
+        onOpenSettings: @escaping () -> Void,
+        windowPresenter: UserFacingWindowPresenter = .shared
     ) {
         self.settingsStore = settingsStore
         self.permissionManager = permissionManager
         self.onOpenSettings = onOpenSettings
+        self.windowPresenter = windowPresenter
 
         let viewModel = WelcomeGuideViewModel(
             settingsStore: settingsStore,
@@ -76,17 +79,17 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     func show() {
         reloadLocalizedContent(preservingPageIndex: 0)
         viewModel.presentWelcome()
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        windowPresenter.present(window: window) {
+            showWindow(nil)
+        }
     }
 
     func showGuide() {
         reloadLocalizedContent(preservingPageIndex: 1)
         viewModel.presentGuide()
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        windowPresenter.present(window: window) {
+            showWindow(nil)
+        }
     }
 
     private func reloadLocalizedContent(preservingPageIndex: Int? = nil) {
@@ -113,6 +116,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         viewModel.endPresentation()
+        windowPresenter.windowDidClose(window)
     }
 }
 
