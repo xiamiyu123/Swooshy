@@ -112,6 +112,40 @@ final class WindowRegistry {
     private var applicationsByBundleURL: [URL: AppIdentity] = [:]
     private var windowsByIdentity: [WindowIdentity: WindowRecord] = [:]
     private var windowIdentitiesByToken: [DockElementToken: WindowIdentity] = [:]
+    // Reverse index: pid -> number of live windows. Lets `applicationQualityScore`
+    // (called from sort comparators) answer "does this app own a window?" in
+    // O(1) instead of scanning every window record. Kept in sync with
+    // `windowsByIdentity` at each mutation site (syncWindows / removeWindows /
+    // shutdown).
+    private var windowCountByPID: [pid_t: Int] = [:]
+
+    private func incrementWindowCount(for processIdentifier: pid_t) {
+        windowCountByPID[processIdentifier, default: 0] += 1
+    }
+
+    private func decrementWindowCount(for processIdentifier: pid_t) {
+        guard let count = windowCountByPID[processIdentifier] else { return }
+        if count <= 1 {
+            windowCountByPID.removeValue(forKey: processIdentifier)
+        } else {
+            windowCountByPID[processIdentifier] = count - 1
+        }
+    }
+
+    #if DEBUG
+    /// Debug-only invariant: the reverse index must agree with a fresh scan of
+    /// `windowsByIdentity`. Catches any mutation site that forgets to update
+    /// the pid→window count, which would silently skew `applicationQualityScore`.
+    private func assertWindowCountIndexConsistent() {
+        var expected: [pid_t: Int] = [:]
+        for record in windowsByIdentity.values {
+            expected[record.ownerProcessIdentifier, default: 0] += 1
+        }
+        assert(expected == windowCountByPID, "windowCountByPID out of sync with windowsByIdentity")
+    }
+    #else
+    @inline(__always) private func assertWindowCountIndexConsistent() {}
+    #endif
 
     init(
         observationCenter: WindowObservationCenter = WindowObservationCenter(),
@@ -165,6 +199,7 @@ final class WindowRegistry {
         windowIdentitiesByToken = [:]
         applicationsByProcessIdentifier = [:]
         applicationsByBundleURL = [:]
+        windowCountByPID = [:]
         observationCenter.shutdown()
     }
 
@@ -268,27 +303,25 @@ final class WindowRegistry {
     }
 
     func appIdentity(forProcessIdentifier processIdentifier: pid_t) -> AppIdentity? {
-        if applicationsByProcessIdentifier[processIdentifier] == nil {
-            refreshRunningApplicationRecords()
-        }
-
-        return applicationsByProcessIdentifier[processIdentifier]?.identity
+        // Pure cache lookup. Do not trigger a refresh here: this method is on
+        // the gesture-capture path and a synchronous AX/table rebuild would
+        // stall input. App records are kept fresh by the workspace observers.
+        applicationsByProcessIdentifier[processIdentifier]?.identity
     }
 
     func appIdentity(forBundleURL bundleURL: URL) -> AppIdentity? {
         let canonicalBundleURL = AppIdentity.canonicalBundleURL(from: bundleURL)
 
-        let matchingApplications = applicationsByProcessIdentifier.values
-            .filter { $0.identity.bundleURL == canonicalBundleURL }
-
         if let appIdentity = applicationsByBundleURL[canonicalBundleURL] {
             return appIdentity
         }
 
-        guard !matchingApplications.isEmpty else {
-            refreshRunningApplicationRecords()
-            return applicationsByBundleURL[canonicalBundleURL]
-        }
+        // Cache miss: fall back to recomputing from the per-pid records that
+        // are already cached, without a blocking refresh. If nothing matches,
+        // callers handle nil (the workspace observers will populate the cache
+        // and the next lookup succeeds).
+        let matchingApplications = applicationsByProcessIdentifier.values
+            .filter { $0.identity.bundleURL == canonicalBundleURL }
 
         return matchingApplications.max(by: {
             applicationQualityScore(for: $0.application) < applicationQualityScore(for: $1.application)
@@ -551,6 +584,11 @@ final class WindowRegistry {
             if let previousRecord, previousRecord.token != token {
                 windowIdentitiesByToken.removeValue(forKey: previousRecord.token)
             }
+            // Index: only a newly-seen identity grows the pid's window count;
+            // overwriting an existing identity for the same pid is in-place.
+            if previousRecord == nil {
+                incrementWindowCount(for: application.processIdentifier)
+            }
             let nextSnapshot = makeSnapshot(
                 for: window,
                 identity: recordIdentity,
@@ -574,11 +612,15 @@ final class WindowRegistry {
         for existingRecord in existingRecords where !liveWindowIdentities.contains(existingRecord.identity) {
             windowsByIdentity.removeValue(forKey: existingRecord.identity)
             windowIdentitiesByToken.removeValue(forKey: existingRecord.token)
+            // Index: an identity we previously tracked is gone for this pid.
+            decrementWindowCount(for: existingRecord.ownerProcessIdentifier)
         }
 
         for existingRecord in existingRecords where !liveWindowTokens.contains(existingRecord.token) {
             windowIdentitiesByToken.removeValue(forKey: existingRecord.token)
         }
+
+        assertWindowCountIndexConsistent()
     }
 
     private func shouldPreserveWindowsAfterEnumerationFailure(_ error: AXError) -> Bool {
@@ -641,6 +683,13 @@ final class WindowRegistry {
             windowsByIdentity.removeValue(forKey: identity)
             windowIdentitiesByToken.removeValue(forKey: token)
         }
+
+        // Index: every window for this pid is gone.
+        if !recordsToRemove.isEmpty {
+            windowCountByPID.removeValue(forKey: processIdentifier)
+        }
+
+        assertWindowCountIndexConsistent()
     }
 
     nonisolated private static func titleBarHoverSnapshotPrecedes(
@@ -692,7 +741,7 @@ final class WindowRegistry {
             score += 0
         }
 
-        if windowsByIdentity.values.contains(where: { $0.ownerProcessIdentifier == application.processIdentifier }) {
+        if (windowCountByPID[application.processIdentifier] ?? 0) > 0 {
             score += 120
         }
 

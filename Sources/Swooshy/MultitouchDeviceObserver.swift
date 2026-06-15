@@ -65,20 +65,50 @@ final class MultitouchDeviceRestartCoordinator {
 final class HIDMultitouchDeviceObserver: MultitouchDeviceObserving {
     var onDeviceConfigurationChanged: (@MainActor () -> Void)?
 
-    private var manager: IOHIDManager?
+    // Wrapped in a Sendable box so a nonisolated `deinit` can read the handle.
+    // The handle itself is only ever touched from the main run-loop (start/stop
+    // are @MainActor, and the manager was scheduled onto the main run loop), so
+    // the unchecked conformance is safe: access is effectively serialized.
+    private var managerBox = HIDManagerBox()
+    private let callbackContext = HIDObserverCallbackContext()
+
+    private var manager: IOHIDManager? {
+        get { managerBox.value }
+        set { managerBox.value = newValue }
+    }
 
     deinit {
-        // deinit is not guaranteed to run on the main thread; assumeIsolated
-        // would crash there. The restart coordinator calls stop() explicitly,
-        // so this is only a best-effort fallback on the main thread.
-        guard Thread.isMainThread else {
-            assertionFailure("HIDMultitouchDeviceObserver deallocated off the main thread without stop()")
-            return
-        }
+        // deinit is not guaranteed to run on the main thread. The restart
+        // coordinator calls stop() explicitly during normal teardown, so this
+        // is a best-effort fallback to avoid leaking the IOHIDManager if an
+        // instance is somehow released without that explicit stop.
+        guard let manager = managerBox.value else { return }
+        let callbackContext = callbackContext
+        callbackContext.invalidate()
 
-        MainActor.assumeIsolated {
-            stop()
+        if Thread.isMainThread {
+            Self.tearDownManager(manager)
+        } else {
+            // Release builds must not silently leak: hop to the main run loop
+            // (where the manager was scheduled) and tear it down there. In
+            // debug, flag the unexpected off-main dealloc loudly.
+            assertionFailure("HIDMultitouchDeviceObserver deallocated off the main thread without stop()")
+            DispatchQueue.main.async {
+                Self.tearDownManager(manager)
+                withExtendedLifetime(callbackContext) {}
+            }
         }
+    }
+
+    // nonisolated so it is callable from `deinit` (which is not main-actor
+    // isolated). It touches only the C IOKit handle, no instance state.
+    private nonisolated static func tearDownManager(_ manager: IOHIDManager) {
+        IOHIDManagerUnscheduleFromRunLoop(
+            manager,
+            CFRunLoopGetMain(),
+            CFRunLoopMode.defaultMode.rawValue
+        )
+        IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     }
 
     func start() {
@@ -92,7 +122,8 @@ final class HIDMultitouchDeviceObserver: MultitouchDeviceObserving {
         )
         IOHIDManagerSetDeviceMatchingMultiple(manager, Self.matchingDictionaries as CFArray)
 
-        let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        callbackContext.activate(observer: self)
+        let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(callbackContext).toOpaque())
         IOHIDManagerRegisterDeviceMatchingCallback(manager, Self.deviceConfigurationChanged, context)
         IOHIDManagerRegisterDeviceRemovalCallback(manager, Self.deviceConfigurationChanged, context)
         IOHIDManagerScheduleWithRunLoop(
@@ -103,6 +134,7 @@ final class HIDMultitouchDeviceObserver: MultitouchDeviceObserving {
 
         let status = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         guard status == kIOReturnSuccess else {
+            callbackContext.invalidate()
             IOHIDManagerUnscheduleFromRunLoop(
                 manager,
                 CFRunLoopGetMain(),
@@ -121,12 +153,8 @@ final class HIDMultitouchDeviceObserver: MultitouchDeviceObserving {
             return
         }
 
-        IOHIDManagerUnscheduleFromRunLoop(
-            manager,
-            CFRunLoopGetMain(),
-            CFRunLoopMode.defaultMode.rawValue
-        )
-        IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        callbackContext.invalidate()
+        Self.tearDownManager(manager)
         self.manager = nil
         DebugLog.info(DebugLog.dock, "Stopped observing multitouch HID device changes")
     }
@@ -148,11 +176,49 @@ final class HIDMultitouchDeviceObserver: MultitouchDeviceObserving {
             return
         }
 
-        let observer = Unmanaged<HIDMultitouchDeviceObserver>
+        let callbackContext = Unmanaged<HIDObserverCallbackContext>
             .fromOpaque(context)
             .takeUnretainedValue()
-        Task { @MainActor [weak observer] in
-            observer?.notifyDeviceConfigurationChanged()
+        Task { @MainActor in
+            callbackContext.observerIfValid()?.notifyDeviceConfigurationChanged()
         }
+    }
+}
+
+// Sendable box around an IOHIDManager so it can be read from a nonisolated
+// `deinit`. The contained handle is only mutated from @MainActor (start/stop)
+// and torn down on the main run loop, so unchecked Sendability is safe here.
+private final class HIDManagerBox: @unchecked Sendable {
+    private var stored: IOHIDManager?
+
+    var value: IOHIDManager? {
+        get { stored }
+        set { stored = newValue }
+    }
+}
+
+private final class HIDObserverCallbackContext: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var observer: HIDMultitouchDeviceObserver?
+    private var isValid = true
+
+    func activate(observer: HIDMultitouchDeviceObserver) {
+        lock.lock()
+        self.observer = observer
+        isValid = true
+        lock.unlock()
+    }
+
+    func invalidate() {
+        lock.lock()
+        isValid = false
+        observer = nil
+        lock.unlock()
+    }
+
+    func observerIfValid() -> HIDMultitouchDeviceObserver? {
+        lock.lock()
+        defer { lock.unlock() }
+        return isValid ? observer : nil
     }
 }
