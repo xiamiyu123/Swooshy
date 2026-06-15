@@ -1179,4 +1179,71 @@ struct DockSwipeGestureRecognizerTests {
 
         #expect(fixture.deliveredFrames.isEmpty)
     }
+
+    @MainActor
+    @Test
+    func multitouchMonitorDropsFramesDeliveredAfterStop() {
+        // Regression: stop() nils the frame handler so any drain that runs
+        // afterwards (e.g. an in-flight callback scheduled before teardown)
+        // must not deliver. This guards the stop/drain race fixed by the
+        // stateLock snapshot in drainPendingFrames.
+        let fixture = MultitouchMonitorFixture()
+
+        fixture.receiveTwoFingerPayload(
+            firstPosition: CGPoint(x: 0.15, y: 0.25),
+            secondPosition: CGPoint(x: 0.35, y: 0.45),
+            timestamp: 1.0
+        )
+
+        fixture.stop()
+
+        // A frame arriving after stop() (simulating an in-flight callback)
+        // should still enqueue a drain, but the drain must deliver nothing.
+        fixture.receiveTwoFingerPayload(
+            firstPosition: CGPoint(x: 0.20, y: 0.30),
+            secondPosition: CGPoint(x: 0.40, y: 0.50),
+            timestamp: 2.0
+        )
+        fixture.runScheduledFrames()
+
+        #expect(fixture.deliveredFrames.isEmpty)
+    }
+
+    @MainActor
+    @Test
+    func multitouchMonitorRestartsAfterStop() {
+        // Regression: a start→stop→start cycle must restore monitoring without
+        // crashing and without crashing on dealloc of the retained callback
+        // context. Exercises the passRetained/release lifecycle added to fix
+        // the use-after-free on in-flight callbacks.
+        var startCount = 0
+        var stopCount = 0
+        let monitor = MultitouchInputMonitor(
+            scheduleDrain: { _ in },
+            startMonitoring: { _ in
+                startCount += 1
+                return true
+            },
+            stopMonitoring: {
+                stopCount += 1
+            }
+        )
+
+        monitor.startIfAvailable()
+        #expect(monitor.isMonitoringActive)
+        #expect(startCount == 1)
+
+        monitor.stop()
+        #expect(!monitor.isMonitoringActive)
+        #expect(stopCount == 1)
+
+        // Restart must re-arm without re-retaining (the context retain is
+        // established once and released only at deinit).
+        monitor.startIfAvailable()
+        #expect(monitor.isMonitoringActive)
+        #expect(startCount == 2)
+
+        monitor.stop()
+        #expect(stopCount == 2)
+    }
 }

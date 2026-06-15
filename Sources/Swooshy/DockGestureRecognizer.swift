@@ -199,6 +199,11 @@ struct TitleBarCornerDragRecognizer {
         var isActive = false
     }
 
+    // Default used when constructing this recognizer directly (notably in unit
+    // tests, whose frame timestamps assume the 1.5s threshold). Production
+    // recognizers are always reconfigured from
+    // SettingsStore.titleBarCornerDragHoldDuration (default 0.2s) before use
+    // via makeConfiguredCornerDragRecognizer/refreshRecognizerConfiguration.
     var holdDurationThreshold: TimeInterval = 1.5
     var stationaryDistanceThreshold: CGFloat = 0.025
     private var session: Session?

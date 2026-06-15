@@ -2743,13 +2743,29 @@ private final class TitleBarAccessibilityProbe {
 }
 
 final class MultitouchInputMonitor: MultitouchMonitoring, @unchecked Sendable {
-    var onFrame: ((TrackpadTouchFrame) -> Void)?
+    // `onFrame` and `isMonitoring` are guarded by `stateLock` because the C
+    // multitouch callback runs on a private MultitouchSupport thread and the
+    // rest of the API is driven from `@MainActor`.
+    var onFrame: ((TrackpadTouchFrame) -> Void)? {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return onFrameHandler
+        }
+        set {
+            stateLock.lock()
+            onFrameHandler = newValue
+            stateLock.unlock()
+        }
+    }
 
     private let frameDeliveryCoalescer = FrameDeliveryCoalescer()
     private let scheduleDrain: (@escaping @MainActor () -> Void) -> Void
     private let startMonitoring: (UnsafeMutableRawPointer) -> Bool
     private let stopMonitoring: () -> Void
+    private let stateLock = NSLock()
     private var isMonitoring = false
+    private var onFrameHandler: ((TrackpadTouchFrame) -> Void)?
 
     init(
         scheduleDrain: @escaping (@escaping @MainActor () -> Void) -> Void = { operation in
@@ -2769,30 +2785,57 @@ final class MultitouchInputMonitor: MultitouchMonitoring, @unchecked Sendable {
         self.stopMonitoring = stopMonitoring
     }
 
+    deinit {
+        if !Thread.isMainThread {
+            assertionFailure("MultitouchInputMonitor deallocated off the main thread without stop()")
+        }
+        if isMonitoringActive {
+            stop()
+        }
+    }
+
     var isMonitoringActive: Bool {
-        isMonitoring
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return isMonitoring
     }
 
     func startIfAvailable() {
-        guard !isMonitoring else { return }
+        stateLock.lock()
+        guard !isMonitoring else {
+            stateLock.unlock()
+            return
+        }
 
         let context = Unmanaged.passUnretained(self).toOpaque()
-        isMonitoring = startMonitoring(context)
+        let didStart = startMonitoring(context)
+        isMonitoring = didStart
         frameDeliveryCoalescer.reset()
-        if !isMonitoring {
+        if !didStart {
             stopMonitoring()
-            DebugLog.error(DebugLog.dock, "MultitouchSupport monitoring unavailable")
-        } else {
+        }
+        stateLock.unlock()
+
+        if didStart {
             DebugLog.info(DebugLog.dock, "MultitouchSupport monitoring active")
+        } else {
+            DebugLog.error(DebugLog.dock, "MultitouchSupport monitoring unavailable")
         }
     }
 
     func stop() {
-        if isMonitoring {
+        stateLock.lock()
+        let wasMonitoring = isMonitoring
+        isMonitoring = false
+        // Drop the frame handler immediately so any drain scheduled after this
+        // point becomes a no-op, and reset the coalescer to flush queued frames.
+        onFrameHandler = nil
+        frameDeliveryCoalescer.reset()
+        if wasMonitoring {
             stopMonitoring()
         }
-        isMonitoring = false
-        frameDeliveryCoalescer.reset()
+        stateLock.unlock()
+
         DebugLog.info(DebugLog.dock, "MultitouchSupport monitoring stopped")
     }
 
@@ -2866,8 +2909,14 @@ final class MultitouchInputMonitor: MultitouchMonitoring, @unchecked Sendable {
 
     @MainActor
     private func drainPendingFrames() {
+        // Snapshot the handler under the lock so a concurrent `stop()` (which
+        // nils `onFrame`) cannot leave us invoking a handler mid-teardown.
+        stateLock.lock()
+        let handler = onFrameHandler
+        stateLock.unlock()
+
         while let frame = frameDeliveryCoalescer.nextFrameForDrain() {
-            onFrame?(frame)
+            handler?(frame)
         }
     }
 }

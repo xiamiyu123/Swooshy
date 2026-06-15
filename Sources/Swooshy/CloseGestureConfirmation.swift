@@ -13,6 +13,13 @@ struct DangerGestureConfirmationSelection: Codable, Hashable, Identifiable, Send
 
 @MainActor
 enum CloseGestureConfirmationPolicy {
+    // Reserved for future per-action confirmation gating (e.g. only require
+    // confirmation for destructive actions like quit, not for close). Today
+    // confirmation is gated solely on `requiresDangerConfirmation`; the
+    // `gesture`/`action`/`application` parameters are intentionally kept on
+    // the API surface so call sites and tests already pass meaningful values,
+    // and a future per-action policy can read them without reshuffling every
+    // caller. Do not remove them thinking they are dead code.
     static func requiresConfirmationForDockGesture(
         gesture: DockGestureKind,
         action: DockGestureAction,

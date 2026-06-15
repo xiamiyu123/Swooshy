@@ -41,6 +41,12 @@ typedef void (*SwooshyMTContactCallback)(
     void *context
 );
 
+// Process-singleton multitouch device list. Not reentrant: Start tears down any
+// existing session first (it calls Stop internally), but concurrent Start/Stop
+// calls from multiple threads are unsafe; these must be driven from a single
+// (main) thread. Stop clears the registered client and waits for callbacks that
+// already entered the shim before returning. MTDeviceStop itself is still
+// asynchronous, so callbacks that enter later observe a NULL client and bail out.
 bool SwooshyMTStartMonitoring(SwooshyMTContactCallback callback, void *context);
 void SwooshyMTStopMonitoring(void);
 

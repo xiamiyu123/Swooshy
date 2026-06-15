@@ -121,7 +121,15 @@ final class SettingsStore {
     var smartBrowserTabCloseEnabled: Bool {
         didSet {
             if smartBrowserTabCloseEnabled, !experimentalBrowserTabCloseEnabled {
+                // The Settings UI disables this toggle while the experimental
+                // feature is off, but UI gating is not a hard guarantee. Drop
+                // the write and log it so a silently-rejected enable is
+                // diagnosable instead of looking like a successful no-op.
                 smartBrowserTabCloseEnabled = false
+                DebugLog.info(
+                    DebugLog.settings,
+                    "Ignored smartBrowserTabCloseEnabled=true while experimental browser tab close is disabled"
+                )
                 return
             }
             guard oldValue != smartBrowserTabCloseEnabled else { return }
