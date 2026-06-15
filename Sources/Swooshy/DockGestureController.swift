@@ -40,16 +40,13 @@ final class DockGestureController {
     private var gestureStateWatchdogState: GestureStateSnapshot?
 
     private var touchSequenceTracker = TwoFingerTouchSequenceTracker()
-    // Deprecated: pending-release state belongs to the legacy preview-mode
+    // Deprecated: release-deferred state belongs to the legacy preview-mode
     // gesture flow. It remains because smooth docking, cancellation, and
     // corner-drag commit logic still branch through release-time execution.
-    private var pendingReleaseAction: PendingReleaseAction?
+    private var releaseDeferredGestureState = ReleaseDeferredGestureState()
     private var globalEscMonitor: Any?
     private var localEscMonitor: Any?
     private var lastTouchCount: Int = 0
-    private var pendingReleaseGestureKind: DockGestureKind?
-    private var pendingReleaseHighWaterMark: CGFloat?
-    private var pendingReleasePinchHighWaterMark: CGFloat?
     private var titleBarSessionHoverSource: TitleBarHoverSource?
     private var activeCornerDragApplication: InteractionTarget?
     private var activeCornerDragSource: CornerDragSource?
@@ -67,23 +64,6 @@ final class DockGestureController {
     // session object. Incremented on every restore teardown.
     private var finishingSmoothDockingGeneration: UInt64 = 0
     private let cornerDragTranslationThreshold: CGFloat = 0.06
-
-    // Deprecated: legacy preview-mode actions are staged here until release.
-    private enum PendingReleaseAction {
-        case dock(action: DockGestureAction, application: InteractionTarget)
-        case titleBar(
-            action: WindowAction,
-            event: DockGestureEvent,
-            anchorPoint: CGPoint,
-            replacesWithTabClose: Bool
-        )
-        case cornerDrag(
-            action: WindowAction,
-            application: InteractionTarget,
-            anchorPoint: CGPoint,
-            source: CornerDragSource
-        )
-    }
 
     private struct PendingDangerGestureConfirmation {
         enum Source {
@@ -557,16 +537,16 @@ final class DockGestureController {
         if let interruption = gestureSessionTouchInterruption(
             touchCount: touchCount,
             previousTouchCount: previousTouchCount,
-            hasPendingReleaseAction: pendingReleaseAction != nil,
+            hasPendingReleaseAction: releaseDeferredGestureState.hasAction,
             hasActiveCornerDrag: activeCornerDragApplication != nil
         ) {
             if dockCornerDragRecognizer.isActive || titleBarCornerDragRecognizer.isActive {
-                if pendingReleaseAction == nil {
+                if !releaseDeferredGestureState.hasAction {
                     endSmoothDockingSession(restore: true)
                 }
-                resetCornerDragSession(dismissFeedback: pendingReleaseAction == nil)
+                resetCornerDragSession(dismissFeedback: !releaseDeferredGestureState.hasAction)
             }
-            if pendingReleaseAction != nil {
+            if releaseDeferredGestureState.hasAction {
                 switch interruption {
                 case .release:
                     executePendingReleaseAction()
@@ -596,7 +576,7 @@ final class DockGestureController {
         }
 
         // Check for reverse swipe cancellation while fingers are still down.
-        if pendingReleaseGestureKind != nil {
+        if releaseDeferredGestureState.hasGestureAnchor {
             checkReverseCancellation(frame: frame)
             return
         }
@@ -865,8 +845,7 @@ final class DockGestureController {
                 titleBarRecognizer.reset()
                 titleBarSessionHoverSource = nil
             }
-            pendingReleaseAction = nil
-            clearTouchAnchor()
+            releaseDeferredGestureState.clear()
             endSmoothDockingSession(restore: false)
             gestureFeedbackPresenter.dismiss()
             activeCornerDragApplication = application
@@ -974,8 +953,12 @@ final class DockGestureController {
         )
 
         if persistent {
-            pendingReleaseAction = .dock(action: action, application: application)
-            storeTouchAnchor(gesture: event.gesture, touches: touches)
+            releaseDeferredGestureState.stageDockAction(
+                action,
+                application: application,
+                gesture: event.gesture,
+                touches: touches
+            )
             installEscMonitor()
             DebugLog.info(DebugLog.dock, "Deferred dock action \(action.rawValue) until finger release")
         } else {
@@ -1225,11 +1208,12 @@ final class DockGestureController {
         )
 
         if persistent {
-            pendingReleaseAction = .titleBar(
-                action: action,
+            releaseDeferredGestureState.stageTitleBarAction(
+                action,
                 event: event,
                 anchorPoint: anchorPoint,
-                replacesWithTabClose: replacesWithTabClose
+                replacesWithTabClose: replacesWithTabClose,
+                touches: touches
             )
             if action.supportsSmoothDocking {
                 startOrUpdateSmoothDockingSession(
@@ -1240,7 +1224,6 @@ final class DockGestureController {
             } else {
                 endSmoothDockingSession(restore: true)
             }
-            storeTouchAnchor(gesture: event.gesture, touches: touches)
             installEscMonitor()
             DebugLog.info(DebugLog.dock, "Deferred title-bar action \(String(describing: action)) until finger release")
         } else {
@@ -1359,14 +1342,14 @@ final class DockGestureController {
         }
 
         if let nextAction {
-            pendingReleaseAction = .cornerDrag(
-                action: nextAction,
+            releaseDeferredGestureState.stageCornerDragAction(
+                nextAction,
                 application: application,
                 anchorPoint: anchorPoint,
                 source: source
             )
-        } else if case .cornerDrag = pendingReleaseAction {
-            pendingReleaseAction = nil
+        } else {
+            releaseDeferredGestureState.clearCornerDragAction()
         }
 
         guard forcePresentation || nextAction != previousAction else {
@@ -1426,8 +1409,8 @@ final class DockGestureController {
     }
 
     private var hasActiveGestureState: Bool {
-        pendingReleaseAction != nil ||
-            pendingReleaseGestureKind != nil ||
+        releaseDeferredGestureState.hasAction ||
+            releaseDeferredGestureState.hasGestureAnchor ||
             !dockRecognizer.requiresHoveredApplication ||
             !titleBarRecognizer.requiresHoveredApplication ||
             activeCornerDragApplication != nil ||
@@ -1480,8 +1463,7 @@ final class DockGestureController {
             DebugLog.info(DebugLog.dock, "Resetting gesture state by rebuilding recognizers for watchdog recovery")
         }
         clearDangerGestureConfirmation()
-        pendingReleaseAction = nil
-        clearTouchAnchor()
+        releaseDeferredGestureState.clear()
         resetStandardRecognizers(rebuildRecognizers: rebuildRecognizers)
         endSmoothDockingSession(restore: true)
         resetCornerDragSession(
@@ -1499,7 +1481,7 @@ final class DockGestureController {
         }
 
         let pendingActionKind: GestureStateSnapshot.PendingActionKind?
-        switch pendingReleaseAction {
+        switch releaseDeferredGestureState.actionKind {
         case .dock:
             pendingActionKind = .dock
         case .titleBar:
@@ -1512,7 +1494,7 @@ final class DockGestureController {
 
         return GestureStateSnapshot(
             pendingActionKind: pendingActionKind,
-            pendingGestureKind: pendingReleaseGestureKind,
+            pendingGestureKind: releaseDeferredGestureState.gestureKind,
             dockRecognizerCaptured: !dockRecognizer.requiresHoveredApplication,
             titleBarRecognizerCaptured: !titleBarRecognizer.requiresHoveredApplication,
             dockCornerDragActive: dockCornerDragRecognizer.isActive,
@@ -1671,7 +1653,7 @@ final class DockGestureController {
     // Deprecated: cancellation here only exists for the legacy preview-mode
     // flow that can still back out before finger release.
     private func cancelPendingReleaseAction() {
-        guard pendingReleaseAction != nil || activeCornerDragApplication != nil else {
+        guard releaseDeferredGestureState.hasAction || activeCornerDragApplication != nil else {
             endSmoothDockingSession(restore: true)
             removeEscMonitor()
             return
@@ -1772,10 +1754,9 @@ final class DockGestureController {
     // Deprecated: once preview mode is fully removed, actions should no longer
     // need this release-time commit path.
     private func executePendingReleaseAction() {
-        guard let action = pendingReleaseAction else { return }
-        let releasedGesture = pendingReleaseGestureKind
-        pendingReleaseAction = nil
-        clearTouchAnchor()
+        guard let pendingAction = releaseDeferredGestureState.takeAction() else { return }
+        let action = pendingAction.action
+        let releasedGesture = pendingAction.gesture
         removeEscMonitor()
         gestureFeedbackPresenter.scheduleDismiss()
 
@@ -1864,96 +1845,20 @@ final class DockGestureController {
         }
     }
 
-    // Deprecated preview-mode helper: tracks gesture progress so reverse motion
-    // can cancel a pending action before finger release.
-    private func storeTouchAnchor(gesture: DockGestureKind, touches: [TrackpadTouchSample]) {
-        pendingReleaseGestureKind = gesture
-        guard touches.count >= 2 else {
-            pendingReleaseHighWaterMark = nil
-            pendingReleasePinchHighWaterMark = nil
-            return
-        }
-        let p0 = touches[0].position
-        let p1 = touches[1].position
-        let avg = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
-        // Initialize the high water mark with the gesture-direction component at trigger time.
-        pendingReleaseHighWaterMark = gestureDirectionComponent(for: gesture, point: avg)
-        pendingReleasePinchHighWaterMark = hypot(p1.x - p0.x, p1.y - p0.y)
-    }
-
-    private func clearTouchAnchor() {
-        pendingReleaseGestureKind = nil
-        pendingReleaseHighWaterMark = nil
-        pendingReleasePinchHighWaterMark = nil
-    }
-
-    /// Returns the scalar component along the gesture direction.
-    /// For swipe gestures this is the signed position along the swipe axis,
-    /// oriented so that "further into the gesture" is a larger value.
-    private func gestureDirectionComponent(for gesture: DockGestureKind, point: CGPoint) -> CGFloat {
-        switch gesture {
-        case .swipeLeft:  return -point.x  // moving left = decreasing x → negate so further = larger
-        case .swipeRight: return  point.x
-        case .swipeUp:    return  point.y  // trackpad y increases upward
-        case .swipeDown:  return -point.y
-        case .pinchIn, .pinchOut: return 0 // handled separately via finger distance
-        }
-    }
-
     private func computeReverseCancelThreshold() -> CGFloat {
-        let sensitivity = settingsStore.reverseCancelSensitivity
-        // sensitivity 0.0 → threshold 0.06 (hard to cancel), 1.0 → threshold 0.005 (easy to cancel)
-        let minThreshold: CGFloat = 0.005
-        let maxThreshold: CGFloat = 0.06
-        return CGFloat(maxThreshold - sensitivity * (maxThreshold - minThreshold))
+        ReleaseDeferredGestureState.reverseCancelThreshold(
+            sensitivity: settingsStore.reverseCancelSensitivity
+        )
     }
 
     // Deprecated preview-mode helper: reverse cancellation only applies while a
     // release-deferred gesture is pending.
     private func checkReverseCancellation(frame: TrackpadTouchFrame) {
         guard settingsStore.reverseCancelEnabled else { return }
-        guard
-            let gestureKind = pendingReleaseGestureKind,
-            let highWater = pendingReleaseHighWaterMark,
-            frame.touches.count == 2
-        else { return }
-
-        let p0 = frame.touches[0].position
-        let p1 = frame.touches[1].position
-        let avg = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
-        let threshold = computeReverseCancelThreshold()
-
-        var shouldCancel = false
-
-        if gestureKind == .pinchIn {
-            // For pinch in: track the minimum finger distance (most pinched) as high water mark.
-            let currentDist = hypot(p1.x - p0.x, p1.y - p0.y)
-            let pinchHighWater = pendingReleasePinchHighWaterMark ?? currentDist
-            if currentDist < pinchHighWater {
-                pendingReleasePinchHighWaterMark = currentDist
-            }
-            let retreat = currentDist - (pendingReleasePinchHighWaterMark ?? currentDist)
-            shouldCancel = retreat > threshold
-        } else if gestureKind == .pinchOut {
-            // For pinch out: track the maximum finger distance (most spread) as high water mark.
-            let currentDist = hypot(p1.x - p0.x, p1.y - p0.y)
-            let pinchHighWater = pendingReleasePinchHighWaterMark ?? currentDist
-            if currentDist > pinchHighWater {
-                pendingReleasePinchHighWaterMark = currentDist
-            }
-            let retreat = (pendingReleasePinchHighWaterMark ?? currentDist) - currentDist
-            shouldCancel = retreat > threshold
-        } else {
-            // For swipe gestures: track the furthest progress along gesture direction.
-            let current = gestureDirectionComponent(for: gestureKind, point: avg)
-            if current > highWater {
-                pendingReleaseHighWaterMark = current
-            }
-            let retreat = (pendingReleaseHighWaterMark ?? current) - current
-            shouldCancel = retreat > threshold
-        }
-
-        if shouldCancel {
+        if let gestureKind = releaseDeferredGestureState.reverseCancellationGesture(
+            for: frame,
+            threshold: computeReverseCancelThreshold()
+        ) {
             DebugLog.info(DebugLog.dock, "Reverse movement detected for \(gestureKind.rawValue), cancelling pending action")
             cancelPendingReleaseAction()
         }
@@ -2098,19 +2003,7 @@ final class DockGestureController {
 
 #if DEBUG
     private func gestureStateDebugDescription() -> String {
-        let pendingActionDescription: String
-        switch pendingReleaseAction {
-        case .dock:
-            pendingActionDescription = "dock"
-        case .titleBar:
-            pendingActionDescription = "titleBar"
-        case .cornerDrag:
-            pendingActionDescription = "cornerDrag"
-        case .none:
-            pendingActionDescription = "none"
-        }
-
-        return "pendingAction=\(pendingActionDescription), pendingGesture=\(pendingReleaseGestureKind?.rawValue ?? "nil"), dockSession=\(dockRecognizer.requiresHoveredApplication ? "idle" : "captured"), titleSession=\(titleBarRecognizer.requiresHoveredApplication ? "idle" : "captured"), dockCornerActive=\(dockCornerDragRecognizer.isActive), titleCornerActive=\(titleBarCornerDragRecognizer.isActive), activeCornerApp=\(activeCornerDragApplication?.logDescription ?? "nil")"
+        return "pendingAction=\(releaseDeferredGestureState.actionDebugDescription), pendingGesture=\(releaseDeferredGestureState.gestureKind?.rawValue ?? "nil"), dockSession=\(dockRecognizer.requiresHoveredApplication ? "idle" : "captured"), titleSession=\(titleBarRecognizer.requiresHoveredApplication ? "idle" : "captured"), dockCornerActive=\(dockCornerDragRecognizer.isActive), titleCornerActive=\(titleBarCornerDragRecognizer.isActive), activeCornerApp=\(activeCornerDragApplication?.logDescription ?? "nil")"
     }
 
     private func shouldLogFrame(
