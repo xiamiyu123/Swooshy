@@ -13,9 +13,11 @@ struct DebugLogTests {
 
         let sink = DebugLogFileSink(logDirectoryURL: directory)
         await sink.append(level: "INFO", channel: "tests", message: "hello")
+        await sink.append(level: "INFO", channel: "tests", message: "still-current")
 
         let currentLogContents = try String(contentsOf: currentLogURL, encoding: .utf8)
         #expect(currentLogContents.contains("hello"))
+        #expect(currentLogContents.contains("still-current"))
 
         let archives = archivedLogURLs(in: directory)
         #expect(archives.count == 1)

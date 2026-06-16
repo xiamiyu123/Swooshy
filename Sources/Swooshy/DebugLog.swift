@@ -360,8 +360,12 @@ actor DebugLogFileSink {
     }
 
     private func currentLogFileSize() -> Int64? {
-        let values = try? currentLogFileURL.resourceValues(forKeys: [.fileSizeKey])
-        return values?.fileSize.map(Int64.init)
+        var status = stat()
+        guard stat(currentLogFileURL.path, &status) == 0 else {
+            return nil
+        }
+
+        return status.st_size
     }
 
     private func archivedLogURLs() -> [URL] {
@@ -380,8 +384,8 @@ actor DebugLogFileSink {
     }
 
     private func modificationDate(for url: URL) -> Date? {
-        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-        return values?.contentModificationDate
+        let attributes = try? fileManager.attributesOfItem(atPath: url.path)
+        return attributes?[.modificationDate] as? Date
     }
 
     private func uniqueArchivedLogURL() throws -> URL {
