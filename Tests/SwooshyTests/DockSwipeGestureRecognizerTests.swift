@@ -34,12 +34,20 @@ struct DockSwipeGestureRecognizerTests {
         init() {
             let scheduler = DeferredDrainScheduler()
             self.scheduler = scheduler
-            monitor = MultitouchInputMonitor(scheduleDrain: { operation in
-                scheduler.schedule(operation)
-            })
+            monitor = MultitouchInputMonitor(
+                scheduleDrain: { operation in
+                    scheduler.schedule(operation)
+                },
+                startMonitoring: { _ in true },
+                stopMonitoring: {}
+            )
             monitor.onFrame = { [weak self] frame in
                 self?.deliveredFrames.append(frame)
             }
+            // Frames only drain while monitoring is active, mirroring the live
+            // hardware path. Start here so the delivery tests exercise the
+            // monitoring=true state.
+            monitor.startIfAvailable()
         }
 
         var scheduledCount: Int {
@@ -48,6 +56,10 @@ struct DockSwipeGestureRecognizerTests {
 
         func runScheduledFrames() {
             scheduler.runAll()
+        }
+
+        func start() {
+            monitor.startIfAvailable()
         }
 
         func stop() {
@@ -1183,10 +1195,10 @@ struct DockSwipeGestureRecognizerTests {
     @MainActor
     @Test
     func multitouchMonitorDropsFramesDeliveredAfterStop() {
-        // Regression: stop() nils the frame handler so any drain that runs
+        // Regression: stop() flips monitoring off so any drain that runs
         // afterwards (e.g. an in-flight callback scheduled before teardown)
-        // must not deliver. This guards the stop/drain race fixed by the
-        // stateLock snapshot in drainPendingFrames.
+        // must not deliver, even though the handler is left intact. This guards
+        // the stop/drain race via the isMonitoring gate in drainPendingFrames.
         let fixture = MultitouchMonitorFixture()
 
         fixture.receiveTwoFingerPayload(
@@ -1207,6 +1219,31 @@ struct DockSwipeGestureRecognizerTests {
         fixture.runScheduledFrames()
 
         #expect(fixture.deliveredFrames.isEmpty)
+    }
+
+    @MainActor
+    @Test
+    func multitouchMonitorResumesDeliveryAfterRestart() {
+        // Regression: the restart paths (workspace wake, device change, watchdog
+        // recovery) call stop() then startIfAvailable() while reusing the same
+        // controller-owned handler. Frame delivery must resume after the
+        // restart; previously stop() nilled the handler, leaving monitoring
+        // "active" but silently dropping every frame until process relaunch.
+        let fixture = MultitouchMonitorFixture()
+
+        fixture.stop()
+        fixture.start()
+
+        fixture.receiveTwoFingerPayload(
+            firstPosition: CGPoint(x: 0.15, y: 0.25),
+            secondPosition: CGPoint(x: 0.35, y: 0.45),
+            timestamp: 1.0
+        )
+        fixture.runScheduledFrames()
+
+        #expect(fixture.deliveredFrames.count == 1)
+        #expect(fixture.deliveredFrames.first?.timestamp == 1.0)
+        #expect(fixture.deliveredFrames.first?.touches.count == 2)
     }
 
     @MainActor

@@ -95,9 +95,14 @@ final class MultitouchInputMonitor: MultitouchMonitoring, @unchecked Sendable {
         stateLock.lock()
         let wasMonitoring = isMonitoring
         isMonitoring = false
-        // Drop the frame handler immediately so any drain scheduled after this
-        // point becomes a no-op, and reset the coalescer to flush queued frames.
-        onFrameHandler = nil
+        // Reset the coalescer so any drain scheduled before this point becomes a
+        // no-op (it finds an empty queue). The frame handler is intentionally
+        // left intact: `stop()` is reused by restart paths (workspace wake,
+        // device change, watchdog recovery) that immediately call
+        // `startIfAvailable()` again, and clearing the handler here would leave
+        // monitoring "active" but silently dropping every frame until the next
+        // process launch. The handler's lifetime is owned by the controller,
+        // which nils it in `shutdown()` before the final `stop()`.
         frameDeliveryCoalescer.reset()
         if wasMonitoring {
             stopMonitoring()
@@ -177,10 +182,15 @@ final class MultitouchInputMonitor: MultitouchMonitoring, @unchecked Sendable {
 
     @MainActor
     private func drainPendingFrames() {
-        // Snapshot the handler under the lock so a concurrent `stop()` (which
-        // nils `onFrame`) cannot leave us invoking a handler mid-teardown.
+        // Snapshot the handler and monitoring flag under the lock. Gating on
+        // `isMonitoring` means an in-flight callback that lands after `stop()`
+        // (the C callback runs on a private MultitouchSupport thread) drains to
+        // nothing, while a restart (`stop()` → `startIfAvailable()`) restores
+        // delivery without the controller having to re-assign `onFrame`. The
+        // handler snapshot also guards against the controller niling `onFrame`
+        // during `shutdown()` mid-drain.
         stateLock.lock()
-        let handler = onFrameHandler
+        let handler = isMonitoring ? onFrameHandler : nil
         stateLock.unlock()
 
         while let frame = frameDeliveryCoalescer.nextFrameForDrain() {
