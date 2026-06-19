@@ -1119,6 +1119,16 @@ final class WindowManager: WindowManaging {
         of target: InteractionTarget,
         preferredAppKitPoint: CGPoint? = nil
     ) throws -> Bool {
+        try minimizeVisibleWindowWithResult(
+            of: target,
+            preferredAppKitPoint: preferredAppKitPoint
+        ).performed
+    }
+
+    func minimizeVisibleWindowWithResult(
+        of target: InteractionTarget,
+        preferredAppKitPoint: CGPoint? = nil
+    ) throws -> MinimizeVisibleWindowResult {
         try requireAccessibilityPermission()
 
         DebugLog.info(DebugLog.windows, "Attempting to minimize a visible window for \(target.logDescription)")
@@ -1133,16 +1143,21 @@ final class WindowManager: WindowManaging {
             let targetWindow = try preferredWindowActionTarget(for: target, preferredAppKitPoint: preferredAppKitPoint)
 
             do {
+                let reference = minimizedWindowReference(
+                    for: targetWindow,
+                    application: resolvedApplication.application,
+                    fallbackIdentity: resolvedApplication.identity
+                )
                 try setMinimized(true, for: targetWindow)
                 cycleSessions.invalidate(for: resolvedApplication.application.processIdentifier)
                 DebugLog.info(DebugLog.windows, "Minimized pointed window for \(target.logDescription)")
-                return true
+                return MinimizeVisibleWindowResult(performed: true, reference: reference)
             } catch {
                 DebugLog.debug(
                     DebugLog.windows,
                     "Pointed window was not minimizable for \(target.logDescription): \(windowSummary([targetWindow]))"
                 )
-                return false
+                return MinimizeVisibleWindowResult(performed: false, reference: nil)
             }
         }
 
@@ -1157,15 +1172,20 @@ final class WindowManager: WindowManaging {
 
         guard !windows.isEmpty else {
             DebugLog.debug(DebugLog.windows, "No visible window found to minimize for \(target.logDescription)")
-            return false
+            return MinimizeVisibleWindowResult(performed: false, reference: nil)
         }
 
         for targetWindow in windows {
             do {
+                let reference = minimizedWindowReference(
+                    for: targetWindow,
+                    application: resolvedApplication.application,
+                    fallbackIdentity: resolvedApplication.identity
+                )
                 try setMinimized(true, for: targetWindow)
                 cycleSessions.invalidate(for: resolvedApplication.application.processIdentifier)
                 DebugLog.info(DebugLog.windows, "Minimized one visible window for \(target.logDescription)")
-                return true
+                return MinimizeVisibleWindowResult(performed: true, reference: reference)
             } catch {
                 DebugLog.debug(
                     DebugLog.windows,
@@ -1175,7 +1195,22 @@ final class WindowManager: WindowManaging {
         }
 
         DebugLog.debug(DebugLog.windows, "No minimizable visible window found for \(target.logDescription)")
-        return false
+        return MinimizeVisibleWindowResult(performed: false, reference: nil)
+    }
+
+    private func minimizedWindowReference(
+        for window: AXUIElement,
+        application: NSRunningApplication,
+        fallbackIdentity: AppIdentity
+    ) -> MinimizedWindowReference? {
+        guard let windowIdentity = registry.windowIdentity(for: window, in: application) else {
+            return nil
+        }
+
+        return MinimizedWindowReference(
+            appIdentity: AppIdentity(application: application) ?? fallbackIdentity,
+            windowIdentity: windowIdentity
+        )
     }
 
     func restoreMinimizedWindow(of application: AppIdentity) throws -> Bool {

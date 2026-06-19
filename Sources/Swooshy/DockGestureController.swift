@@ -38,6 +38,7 @@ final class DockGestureController {
     private let gestureStateTimeout: TimeInterval = 30
     private var gestureStateWatchdog: Timer?
     private var gestureStateWatchdogState: GestureStateSnapshot?
+    private var dockRestoreHandoffRouter = DockRestoreHandoffRouter()
 
     private var touchSequenceTracker = TwoFingerTouchSequenceTracker()
     // Deprecated: release-deferred state belongs to the legacy preview-mode
@@ -1003,8 +1004,10 @@ final class DockGestureController {
         runWindowAction(failureMessage: "Dock gesture action failed") {
             switch action {
             case .minimizeWindow:
+                let result = try windowManager.minimizeVisibleWindowWithResult(of: application)
+                recordDockRestoreHandoffIfNeeded(result, for: application)
                 try requireWindowActionPerformed(
-                    try windowManager.minimizeVisibleWindow(of: application)
+                    result.performed
                 )
             case .restoreWindow:
                 switch application {
@@ -1018,7 +1021,10 @@ final class DockGestureController {
                     )
                 case .application(let appIdentity, _), .window(_, let appIdentity, _):
                     try requireWindowActionPerformed(
-                        try windowManager.restoreMinimizedWindow(of: appIdentity)
+                        try restoreMinimizedWindowUsingHandoffIfAvailable(
+                            appIdentity,
+                            target: application
+                        )
                     )
                 }
             case .cycleWindowsForward:
@@ -1068,6 +1074,55 @@ final class DockGestureController {
                 )
             }
         }
+    }
+
+    private func recordDockRestoreHandoffIfNeeded(
+        _ result: MinimizeVisibleWindowResult,
+        for target: InteractionTarget
+    ) {
+        guard
+            result.performed,
+            target.source?.isDockAppItem == true,
+            let reference = result.reference
+        else {
+            return
+        }
+
+        dockRestoreHandoffRouter.record(reference)
+        DebugLog.debug(
+            DebugLog.dock,
+            "Recorded Dock restore handoff for \(reference.appIdentity.logDescription)"
+        )
+    }
+
+    private func restoreMinimizedWindowUsingHandoffIfAvailable(
+        _ appIdentity: AppIdentity,
+        target: InteractionTarget
+    ) throws -> Bool {
+        if let windowIdentity = dockRestoreHandoffRouter.consumeRestoreWindow(for: target) {
+            do {
+                let performed = try windowManager.restoreWindow(windowIdentity)
+                if performed {
+                    DebugLog.debug(
+                        DebugLog.dock,
+                        "Restored Dock handoff window for \(appIdentity.logDescription)"
+                    )
+                    return true
+                }
+
+                DebugLog.debug(
+                    DebugLog.dock,
+                    "Dock handoff restore returned false for \(appIdentity.logDescription); falling back to app restore"
+                )
+            } catch {
+                DebugLog.debug(
+                    DebugLog.dock,
+                    "Dock handoff restore failed for \(appIdentity.logDescription): \(error.localizedDescription); falling back to app restore"
+                )
+            }
+        }
+
+        return try windowManager.restoreMinimizedWindow(of: appIdentity)
     }
 
     private func handleTitleBarGestureEvent(
