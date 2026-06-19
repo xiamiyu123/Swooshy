@@ -146,6 +146,108 @@ struct ObservedWindowConstraintStoreTests {
     }
 
     @Test
+    func duplicatePersistedObservationActionsAreTreatedAsCorruptCache() {
+        let defaults = makeDefaults()
+        defaults.set(
+            Data(
+                """
+                {
+                  "applications": [
+                    {
+                      "applicationKey": "\(appKey)",
+                      "sharedSizeBounds": {
+                        "minimumWidth": 860,
+                        "maximumWidth": null,
+                        "minimumHeight": null,
+                        "maximumHeight": null
+                      },
+                      "observations": [
+                        {
+                          "action": 0,
+                          "observation": {
+                            "sizeBounds": {
+                              "minimumWidth": 860,
+                              "maximumWidth": null,
+                              "minimumHeight": null,
+                              "maximumHeight": null
+                            },
+                            "horizontalAnchor": "leadingEdge",
+                            "verticalAnchor": "leadingEdge"
+                          }
+                        },
+                        {
+                          "action": 0,
+                          "observation": {
+                            "sizeBounds": {
+                              "minimumWidth": 900,
+                              "maximumWidth": null,
+                              "minimumHeight": null,
+                              "maximumHeight": null
+                            },
+                            "horizontalAnchor": "trailingEdge",
+                            "verticalAnchor": "trailingEdge"
+                          }
+                        }
+                      ],
+                      "lastUsedAt": 1000000
+                    }
+                  ]
+                }
+                """.utf8
+            ),
+            forKey: "windowManager.observedWindowConstraintStore"
+        )
+
+        let store = makePersistedStore(userDefaults: defaults, now: { testDate(1_000_000) })
+
+        #expect(store.observation(for: appKey, action: .leftHalf) == nil)
+        #expect(defaults.data(forKey: "windowManager.observedWindowConstraintStore") == nil)
+    }
+
+    @Test
+    func duplicatePersistedApplicationKeysAreTreatedAsCorruptCache() {
+        let defaults = makeDefaults()
+        defaults.set(
+            Data(
+                """
+                {
+                  "applications": [
+                    {
+                      "applicationKey": "\(appKey)",
+                      "sharedSizeBounds": {
+                        "minimumWidth": 860,
+                        "maximumWidth": null,
+                        "minimumHeight": null,
+                        "maximumHeight": null
+                      },
+                      "observations": [],
+                      "lastUsedAt": 1000000
+                    },
+                    {
+                      "applicationKey": "\(appKey)",
+                      "sharedSizeBounds": {
+                        "minimumWidth": 1000,
+                        "maximumWidth": null,
+                        "minimumHeight": null,
+                        "maximumHeight": null
+                      },
+                      "observations": [],
+                      "lastUsedAt": 1000000
+                    }
+                  ]
+                }
+                """.utf8
+            ),
+            forKey: "windowManager.observedWindowConstraintStore"
+        )
+
+        let store = makePersistedStore(userDefaults: defaults, now: { testDate(1_000_000) })
+
+        #expect(store.sharedSizeBounds(for: appKey) == nil)
+        #expect(defaults.data(forKey: "windowManager.observedWindowConstraintStore") == nil)
+    }
+
+    @Test
     func discardsPersistedConstraintsUnusedForMoreThanSevenDays() {
         let defaults = makeDefaults()
         var currentDate = testDate(2_000_000)

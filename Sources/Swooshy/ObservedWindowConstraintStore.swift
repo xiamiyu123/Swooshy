@@ -34,6 +34,20 @@ final class ObservedWindowConstraintStore {
         var lastUsedAt: Date
     }
 
+    private enum PersistedStoreValidationError: LocalizedError {
+        case duplicateApplicationKey(String)
+        case duplicateObservationAction(WindowAction, applicationKey: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .duplicateApplicationKey(let key):
+                return "duplicate application key \(key)"
+            case .duplicateObservationAction(let action, let applicationKey):
+                return "duplicate observation action \(action.rawValue) for \(applicationKey)"
+            }
+        }
+    }
+
     private let userDefaults: UserDefaults
     private let now: () -> Date
     private let autosaveInterval: TimeInterval
@@ -176,20 +190,7 @@ final class ObservedWindowConstraintStore {
 
         do {
             let snapshot = try JSONDecoder().decode(PersistedSnapshot.self, from: data)
-            constraintsByApplicationKey = Dictionary(
-                uniqueKeysWithValues: snapshot.applications.map { application in
-                    (
-                        application.applicationKey,
-                        ApplicationConstraints(
-                            sharedSizeBounds: application.sharedSizeBounds,
-                            observationsByAction: Dictionary(
-                                uniqueKeysWithValues: application.observations.map { ($0.action, $0.observation) }
-                            ),
-                            lastUsedAt: application.lastUsedAt
-                        )
-                    )
-                }
-            )
+            constraintsByApplicationKey = try Self.applicationConstraintsByKey(from: snapshot)
             pruneExpiredConstraints()
             if hasPendingPersistence {
                 persistIfNeeded(force: true)
@@ -203,6 +204,49 @@ final class ObservedWindowConstraintStore {
             hasPendingPersistence = false
             userDefaults.removeObject(forKey: Self.persistenceKey)
         }
+    }
+
+    private static func applicationConstraintsByKey(
+        from snapshot: PersistedSnapshot
+    ) throws -> [String: ApplicationConstraints] {
+        var constraintsByApplicationKey: [String: ApplicationConstraints] = [:]
+
+        for application in snapshot.applications {
+            guard constraintsByApplicationKey[application.applicationKey] == nil else {
+                throw PersistedStoreValidationError.duplicateApplicationKey(application.applicationKey)
+            }
+
+            constraintsByApplicationKey[application.applicationKey] = ApplicationConstraints(
+                sharedSizeBounds: application.sharedSizeBounds,
+                observationsByAction: try observationsByAction(
+                    from: application.observations,
+                    applicationKey: application.applicationKey
+                ),
+                lastUsedAt: application.lastUsedAt
+            )
+        }
+
+        return constraintsByApplicationKey
+    }
+
+    private static func observationsByAction(
+        from persistedObservations: [PersistedActionObservation],
+        applicationKey: String
+    ) throws -> [WindowAction: WindowActionPreview.Observation] {
+        var observationsByAction: [WindowAction: WindowActionPreview.Observation] = [:]
+
+        for persistedObservation in persistedObservations {
+            guard observationsByAction[persistedObservation.action] == nil else {
+                throw PersistedStoreValidationError.duplicateObservationAction(
+                    persistedObservation.action,
+                    applicationKey: applicationKey
+                )
+            }
+
+            observationsByAction[persistedObservation.action] = persistedObservation.observation
+        }
+
+        return observationsByAction
     }
 
     private func scheduleAutosaveIfNeeded() {

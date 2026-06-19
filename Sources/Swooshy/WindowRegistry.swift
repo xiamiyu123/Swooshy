@@ -424,7 +424,21 @@ final class WindowRegistry {
     }
 
     func orderedVisibleWindowSnapshots(for identity: AppIdentity) -> [WindowRecordSnapshot] {
-        visibleWindowSnapshots(for: identity)
+        Self.visibleWindowSnapshotsInStableOrder(visibleWindowSnapshots(for: identity))
+    }
+
+    func minimizedWindowSnapshotsEligibleForDockBinding() -> [WindowRecordSnapshot] {
+        Self.minimizedWindowSnapshotsEligibleForDockBinding(
+            windowsByIdentity.values
+            .map(\.snapshot)
+        )
+    }
+
+    nonisolated static func visibleWindowSnapshotsInStableOrder(
+        _ snapshots: [WindowRecordSnapshot]
+    ) -> [WindowRecordSnapshot] {
+        snapshots
+            .filter { !$0.isMinimized }
             .sorted { lhs, rhs in
                 if lhs.isFocused != rhs.isFocused {
                     return lhs.isFocused
@@ -434,13 +448,14 @@ final class WindowRegistry {
                     return lhs.isMain
                 }
 
-                return lhs.identity.hashValue < rhs.identity.hashValue
+                return lhs.identity.stableSortKey < rhs.identity.stableSortKey
             }
     }
 
-    func minimizedWindowSnapshotsEligibleForDockBinding() -> [WindowRecordSnapshot] {
-        windowsByIdentity.values
-            .map(\.snapshot)
+    nonisolated static func minimizedWindowSnapshotsEligibleForDockBinding(
+        _ snapshots: [WindowRecordSnapshot]
+    ) -> [WindowRecordSnapshot] {
+        snapshots
             .filter {
                 $0.isMinimized &&
                     $0.lastMinimizedAt != nil &&
@@ -450,7 +465,7 @@ final class WindowRegistry {
                 let lhsDate = lhs.lastMinimizedAt ?? .distantPast
                 let rhsDate = rhs.lastMinimizedAt ?? .distantPast
                 if lhsDate == rhsDate {
-                    return lhs.identity.hashValue < rhs.identity.hashValue
+                    return lhs.identity.stableSortKey < rhs.identity.stableSortKey
                 }
 
                 return lhsDate < rhsDate
