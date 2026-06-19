@@ -136,6 +136,31 @@ struct TitleBarHoverSnapshotTests {
         #expect(stableHit.target.application.windowIdentity == plain.identity)
     }
 
+    @Test
+    func visibleWindowSnapshotsUseStableIdentityAsTieBreaker() {
+        let earlierStableIdentity = WindowIdentity(
+            rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        )
+        let laterStableIdentity = WindowIdentity(
+            rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        )
+        let laterSnapshot = windowSnapshot(
+            identity: laterStableIdentity,
+            appKitFrame: CGRect(x: 100, y: 200, width: 500, height: 300)
+        )
+        let earlierSnapshot = windowSnapshot(
+            identity: earlierStableIdentity,
+            appKitFrame: CGRect(x: 100, y: 200, width: 500, height: 300)
+        )
+
+        let ordered = WindowRegistry.visibleWindowSnapshotsInStableOrder([
+            laterSnapshot,
+            earlierSnapshot,
+        ])
+
+        #expect(ordered.map(\.identity) == [earlierStableIdentity, laterStableIdentity])
+    }
+
     private func windowSnapshot(
         identity: WindowIdentity = WindowIdentity(rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000010")!),
         appKitFrame: CGRect,

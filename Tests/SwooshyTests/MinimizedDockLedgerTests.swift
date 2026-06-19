@@ -18,8 +18,9 @@ struct MinimizedDockLedgerTests {
         }
 
         func minimizedWindowSnapshotsEligibleForDockBinding() -> [WindowRecordSnapshot] {
-            orderedIdentities.compactMap { snapshotsByIdentity[$0] }
-                .filter { $0.boundDockMinimizedHandle == nil }
+            WindowRegistry.minimizedWindowSnapshotsEligibleForDockBinding(
+                orderedIdentities.compactMap { snapshotsByIdentity[$0] }
+            )
         }
 
         func bindDockMinimizedHandle(_ handle: DockMinimizedItemHandle, to windowIdentity: WindowIdentity) {
@@ -117,6 +118,45 @@ struct MinimizedDockLedgerTests {
 
         expectWindowTarget(firstTarget, identity: firstWindow, handle: firstHandle)
         expectWindowTarget(secondTarget, identity: secondWindow, handle: secondHandle)
+    }
+
+    @Test
+    func bindOrderUsesStableWindowIdentityWhenMinimizedTimesTie() throws {
+        let ledger = MinimizedDockLedger()
+        let earlierStableIdentity = WindowIdentity(
+            rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        )
+        let laterStableIdentity = WindowIdentity(
+            rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        )
+        let store = FakeDockBindingStore(
+            eligibleSnapshots: [
+                snapshot(
+                    name: "Second",
+                    processIdentifier: 101,
+                    windowIdentity: laterStableIdentity,
+                    lastMinimizedAt: minimizedAt(10)
+                ),
+                snapshot(
+                    name: "First",
+                    processIdentifier: 100,
+                    windowIdentity: earlierStableIdentity,
+                    lastMinimizedAt: minimizedAt(10)
+                ),
+            ]
+        )
+
+        let firstItem = dockItem(processIdentifier: 700)
+        let secondItem = dockItem(processIdentifier: 701)
+        ledger.reconcile(with: [firstItem, secondItem], registry: store)
+
+        let firstHandle = try #require(ledger.handle(for: firstItem.token))
+        let secondHandle = try #require(ledger.handle(for: secondItem.token))
+        let firstTarget = try #require(ledger.target(for: firstHandle, registry: store))
+        let secondTarget = try #require(ledger.target(for: secondHandle, registry: store))
+
+        expectWindowTarget(firstTarget, identity: earlierStableIdentity, handle: firstHandle)
+        expectWindowTarget(secondTarget, identity: laterStableIdentity, handle: secondHandle)
     }
 
     @Test
