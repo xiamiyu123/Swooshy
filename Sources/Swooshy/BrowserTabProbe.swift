@@ -328,6 +328,7 @@ enum BrowserTabProbe {
         let maxDepth = 10
         var ancestry: [TabAncestryNode] = []
         let includeTitlesInLog = DebugLog.isEnabled
+        var interruptionReason: String?
 
         for _ in 0..<maxDepth {
             guard let node = current else { break }
@@ -341,7 +342,8 @@ enum BrowserTabProbe {
                 node,
                 role: role,
                 subrole: subrole,
-                at: axPoint
+                at: axPoint,
+                hostFamily: hostFamily
             )
             ancestry.append(
                 TabAncestryNode(
@@ -353,24 +355,47 @@ enum BrowserTabProbe {
             )
 
             guard let parent = AXAttributeReader.element(kAXParentAttribute as CFString, from: node) else {
-                return logAndReturnAncestryVerdict(
-                    ancestry,
-                    hostFamily: hostFamily,
-                    axPoint: axPoint,
-                    appKitPoint: appKitPoint,
-                    interruptionReason: "stopped parent walk"
-                )
+                interruptionReason = "stopped parent walk"
+                break
             }
 
             current = parent
         }
 
-        return logAndReturnAncestryVerdict(
+        if logAndReturnAncestryVerdict(
             ancestry,
             hostFamily: hostFamily,
             axPoint: axPoint,
-            appKitPoint: appKitPoint
+            appKitPoint: appKitPoint,
+            interruptionReason: interruptionReason
+        ) {
+            return true
+        }
+
+        guard let window = AXAttributeReader.window(containing: element) else {
+            DebugLog.debug(
+                DebugLog.dock,
+                "BrowserTabProbe could not resolve a window for subtree fallback at AX point \(NSStringFromPoint(axPoint))"
+            )
+            return false
+        }
+
+        let subtreeMatched = containsTab(
+            at: axPoint,
+            in: window,
+            hostFamily: hostFamily,
+            frame: { AXAttributeReader.rect("AXFrame" as CFString, from: $0) },
+            role: { AXAttributeReader.string(kAXRoleAttribute as CFString, from: $0) ?? "<nil>" },
+            subrole: { AXAttributeReader.string(kAXSubroleAttribute as CFString, from: $0) ?? "<nil>" },
+            title: { AXAttributeReader.string(kAXTitleAttribute as CFString, from: $0) ?? "" },
+            supportsPressAction: { AXAttributeReader.actionNames(of: $0).contains("AXPress") },
+            children: { AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: $0) }
         )
+        DebugLog.debug(
+            DebugLog.dock,
+            "BrowserTabProbe window subtree fallback at AX point \(NSStringFromPoint(axPoint)) => \(subtreeMatched ? "tab" : "not-tab")"
+        )
+        return subtreeMatched
     }
 
     static func acceptsMatchedTabAncestry(
@@ -391,6 +416,68 @@ enum BrowserTabProbe {
 
         return hostFamily == .webKit ||
             ancestry.contains(where: isBrowserChromeContainer)
+    }
+
+    static func containsTab<Node>(
+        at point: CGPoint,
+        in root: Node,
+        hostFamily: TabHostFamily,
+        maxDepth: Int = 12,
+        frame: (Node) -> CGRect?,
+        role: (Node) -> String,
+        subrole: (Node) -> String,
+        title: (Node) -> String = { _ in "" },
+        supportsPressAction: (Node) -> Bool = { _ in false },
+        children: (Node) -> [Node]
+    ) -> Bool {
+        var queue: [(node: Node, depth: Int, ancestors: [TabAncestryNode])] = [
+            (root, 0, []),
+        ]
+        var nextIndex = 0
+
+        while nextIndex < queue.count {
+            let (node, depth, ancestors) = queue[nextIndex]
+            nextIndex += 1
+
+            let nodeRole = role(node)
+            let nodeSubrole = subrole(node)
+            let matchedTabElement = isTabElement(
+                role: nodeRole,
+                subrole: nodeSubrole
+            ) || (
+                nodeRole == "AXGroup" &&
+                    ancestors.contains { $0.role == "AXTabGroup" } &&
+                    !title(node).isEmpty &&
+                    supportsPressAction(node)
+            )
+            let ancestry = [
+                TabAncestryNode(
+                    role: nodeRole,
+                    subrole: nodeSubrole,
+                    title: "",
+                    matchedTabElement: matchedTabElement
+                ),
+            ] + ancestors
+
+            if matchedTabElement,
+               acceptsMatchedTabAncestry(ancestry, hostFamily: hostFamily)
+            {
+                return true
+            }
+
+            guard depth < maxDepth else {
+                continue
+            }
+
+            for child in children(node) {
+                if let childFrame = frame(child), !childFrame.contains(point) {
+                    continue
+                }
+                queue.append((child, depth + 1, ancestry))
+            }
+        }
+
+        return false
     }
 
     private static func logAndReturnAncestryVerdict(
@@ -454,7 +541,8 @@ enum BrowserTabProbe {
         _ element: AXUIElement,
         role: String,
         subrole: String,
-        at axPoint: CGPoint
+        at axPoint: CGPoint,
+        hostFamily: TabHostFamily
     ) -> Bool {
         guard role != "<nil>" else {
             return false
@@ -463,9 +551,23 @@ enum BrowserTabProbe {
         // Chromium may expose a top-level AXTabGroup for the full strip, so we
         // only treat it as a tab hit when a point-contained child looks like a tab.
         if role == "AXTabGroup" {
-            return tabGroupContainsTab(at: axPoint, within: element)
+            return tabGroupContainsTab(
+                at: axPoint,
+                within: element,
+                hostFamily: hostFamily
+            )
         }
 
+        return isTabElement(
+            role: role,
+            subrole: subrole
+        )
+    }
+
+    static func isTabElement(
+        role: String,
+        subrole: String
+    ) -> Bool {
         // Direct tab role match (Chrome, Chromium-based).
         if tabRoles.contains(role) {
             // For AXRadioButton, further verify the subrole is AXTabButton (Safari).
@@ -479,47 +581,23 @@ enum BrowserTabProbe {
         return tabSubroles.contains(subrole)
     }
 
-    private static func tabGroupContainsTab(at axPoint: CGPoint, within tabGroup: AXUIElement) -> Bool {
-        var queue: [(AXUIElement, Int)] = [(tabGroup, 0)]
-        var nextIndex = 0
-        let maxDepth = 3
-
-        while nextIndex < queue.count {
-            let (node, depth) = queue[nextIndex]
-            nextIndex += 1
-            guard depth < maxDepth else { continue }
-
-            for child in AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: node) {
-                if let frame = AXAttributeReader.rect("AXFrame" as CFString, from: child), !frame.contains(axPoint) {
-                    continue
-                }
-
-                let role = AXAttributeReader.string(kAXRoleAttribute as CFString, from: child) ?? ""
-                let subrole = AXAttributeReader.string(kAXSubroleAttribute as CFString, from: child) ?? ""
-                let title = AXAttributeReader.string(kAXTitleAttribute as CFString, from: child) ?? ""
-
-                if role == "AXTab" {
-                    return true
-                }
-
-                if tabSubroles.contains(subrole) {
-                    return true
-                }
-
-                // Chromium fallback: tabs can appear as AXGroup with title + press action.
-                if role == "AXGroup", !title.isEmpty, supportsPressAction(child) {
-                    return true
-                }
-
-                queue.append((child, depth + 1))
-            }
-        }
-
-        return false
-    }
-
-    private static func supportsPressAction(_ element: AXUIElement) -> Bool {
-        AXAttributeReader.actionNames(of: element).contains("AXPress")
+    private static func tabGroupContainsTab(
+        at axPoint: CGPoint,
+        within tabGroup: AXUIElement,
+        hostFamily: TabHostFamily
+    ) -> Bool {
+        containsTab(
+            at: axPoint,
+            in: tabGroup,
+            hostFamily: hostFamily,
+            maxDepth: 3,
+            frame: { AXAttributeReader.rect("AXFrame" as CFString, from: $0) },
+            role: { AXAttributeReader.string(kAXRoleAttribute as CFString, from: $0) ?? "" },
+            subrole: { AXAttributeReader.string(kAXSubroleAttribute as CFString, from: $0) ?? "" },
+            title: { AXAttributeReader.string(kAXTitleAttribute as CFString, from: $0) ?? "" },
+            supportsPressAction: { AXAttributeReader.actionNames(of: $0).contains("AXPress") },
+            children: { AXAttributeReader.elements(kAXChildrenAttribute as CFString, from: $0) }
+        )
     }
 
     // MARK: - Cache Maintenance
