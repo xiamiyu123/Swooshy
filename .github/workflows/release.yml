@@ -28,7 +28,7 @@ permissions:
 jobs:
   publish:
     name: Build And Publish Release
-    runs-on: macos-latest
+    runs-on: macos-15
     env:
       HOMEBREW_TAP_REPO: git@github.com:xiamiyu123/homebrew-swooshy.git
       HOMEBREW_TAP_BRANCH: main
