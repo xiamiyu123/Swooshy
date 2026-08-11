@@ -296,8 +296,6 @@ final class GestureFeedbackController: GestureFeedbackPresenting {
     private var hideGeneration: UInt64 = 0
     private var currentPanelSize = GestureHUDRenderView.panelSize(for: .elegant)
 
-    private let verticalOffset: CGFloat = 18
-    private let sideMargin: CGFloat = 10
     private let hideAnimationDuration: TimeInterval = 0.12
     private let hideAnimationDelayNanoseconds: UInt64 = 120_000_000
     private let dismissalDelay: UInt64 = 700_000_000
@@ -423,20 +421,12 @@ final class GestureFeedbackController: GestureFeedbackPresenting {
         let screen = NSScreen.screens.first(where: { $0.frame.contains(anchorPoint) }) ?? NSScreen.main ?? NSScreen.screens.first
         let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
 
-        let width = currentPanelSize.width
-        let height = currentPanelSize.height
-        let desiredX = anchorPoint.x - (width / 2)
-        let desiredY = anchorPoint.y + verticalOffset
-
-        let minX = visibleFrame.minX + sideMargin
-        let maxX = visibleFrame.maxX - width - sideMargin
-        let minY = visibleFrame.minY + sideMargin
-        let maxY = visibleFrame.maxY - height - sideMargin
-
-        let clampedX = min(max(desiredX, minX), maxX)
-        let clampedY = min(max(desiredY, minY), maxY)
-
-        return NSRect(x: clampedX, y: clampedY, width: width, height: height)
+        return GestureHUDPlacementResolver.frame(
+            anchorPoint: anchorPoint,
+            visibleFrame: visibleFrame,
+            panelSize: currentPanelSize,
+            placement: GestureHUDPlacement(position: .followPointer)
+        )
     }
 
     private func hide(expectedGeneration: UInt64) {
