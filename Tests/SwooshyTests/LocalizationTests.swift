@@ -84,6 +84,20 @@ struct LocalizationTests {
     }
 
     @Test
+    func gestureHUDPositionTitlesResolveFromModuleBundle() {
+        let cases: [(position: GestureHUDPosition, english: String, simplifiedChinese: String)] = [
+            (.followPointer, "Follow pointer", "跟随指针"),
+            (.topCenter, "Top center of current display", "当前屏幕顶部居中"),
+            (.customOffset, "Custom pointer offset", "自定义指针偏移"),
+        ]
+
+        for (position, english, simplifiedChinese) in cases {
+            #expect(position.title(localeIdentifier: "en") == english)
+            #expect(position.title(localeIdentifier: "zh-Hans") == simplifiedChinese)
+        }
+    }
+
+    @Test
     func localizableStringKeysAreUniquePerLocale() throws {
         for relativePath in localeResourcePaths {
             let fileURL = packageRoot.appending(path: relativePath)

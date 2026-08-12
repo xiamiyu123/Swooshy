@@ -35,6 +35,10 @@ struct SettingsStoreTests {
         store.dangerGestureConfirmationDuration = 6.5
         store.titleBarTriggerHeight = 42
         store.titleBarCornerDragHoldDuration = 0.9
+        store.gestureHUDStyle = .minimal
+        store.gestureHUDPosition = .customOffset
+        store.gestureHUDHorizontalOffset = 120
+        store.gestureHUDVerticalOffset = -120
         store.updateDockGestureAction(.closeWindow, for: .pinchIn)
         store.updateDockGestureEnabled(false, for: .pinchIn)
         store.updateTitleBarGestureAction(.maximize, for: .swipeLeft)
@@ -59,6 +63,10 @@ struct SettingsStoreTests {
         #expect(reloadedStore.dangerGestureConfirmationDuration == 6.5)
         #expect(reloadedStore.titleBarTriggerHeight == 42)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == 0.9)
+        #expect(reloadedStore.gestureHUDStyle == .minimal)
+        #expect(reloadedStore.gestureHUDPosition == .customOffset)
+        #expect(reloadedStore.gestureHUDHorizontalOffset == 120)
+        #expect(reloadedStore.gestureHUDVerticalOffset == -120)
         #expect(reloadedStore.dockGestureAction(for: .pinchIn) == .closeWindow)
         #expect(!reloadedStore.dockGestureIsEnabled(for: .pinchIn))
         #expect(reloadedStore.titleBarGestureAction(for: .swipeLeft) == .maximize)
@@ -437,6 +445,9 @@ struct SettingsStoreTests {
         store.dangerGestureConfirmationDuration = 8
         store.titleBarTriggerHeight = 40
         store.titleBarCornerDragHoldDuration = 1.2
+        store.gestureHUDPosition = .customOffset
+        store.gestureHUDHorizontalOffset = 120
+        store.gestureHUDVerticalOffset = -120
         store.statusItemIcon = .windowGrid
         store.debugLoggingEnabled = true
         _ = store.consumeWelcomeGuidePresentationFlag()
@@ -465,6 +476,9 @@ struct SettingsStoreTests {
         #expect(reloadedStore.dangerGestureConfirmationDuration == SettingsStore.defaultDangerGestureConfirmationDuration)
         #expect(reloadedStore.titleBarTriggerHeight == SettingsStore.defaultTitleBarTriggerHeight)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
+        #expect(reloadedStore.gestureHUDPosition == .followPointer)
+        #expect(reloadedStore.gestureHUDHorizontalOffset == SettingsStore.defaultGestureHUDOffset)
+        #expect(reloadedStore.gestureHUDVerticalOffset == SettingsStore.defaultGestureHUDOffset)
         #expect(reloadedStore.statusItemIcon == .gale)
         #expect(!reloadedStore.debugLoggingEnabled)
         #expect(!reloadedStore.hasSeenWelcomeGuide)
@@ -491,6 +505,76 @@ struct SettingsStoreTests {
         let store = makeSettingsStore()
 
         #expect(store.titleBarCornerDragHoldDuration == SettingsStore.defaultTitleBarCornerDragHoldDuration)
+    }
+
+    @Test
+    func gestureHUDPositionDefaultsToFollowingThePointer() {
+        let store = makeSettingsStore()
+
+        #expect(store.gestureHUDPosition == .followPointer)
+        #expect(store.gestureHUDHorizontalOffset == SettingsStore.defaultGestureHUDOffset)
+        #expect(store.gestureHUDVerticalOffset == SettingsStore.defaultGestureHUDOffset)
+    }
+
+    @Test
+    func gestureHUDPositionFallsBackForUnknownPersistedValue() {
+        let defaults = makeUserDefaults()
+        defaults.set("futurePosition", forKey: "settings.gestureHUDPosition")
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.gestureHUDPosition == .followPointer)
+    }
+
+    @Test
+    func gestureHUDOffsetsClampPersistedAndAssignedValues() {
+        let defaults = makeUserDefaults()
+        #expect(SettingsStore.minimumGestureHUDOffset == -150)
+        #expect(SettingsStore.maximumGestureHUDOffset == 150)
+        #expect(SettingsStore.gestureHUDOffsetStep == 10)
+        defaults.set(
+            600,
+            forKey: "settings.gestureHUDHorizontalOffset"
+        )
+        defaults.set(
+            -600,
+            forKey: "settings.gestureHUDVerticalOffset"
+        )
+
+        let store = SettingsStore(userDefaults: defaults)
+
+        #expect(store.gestureHUDHorizontalOffset == SettingsStore.maximumGestureHUDOffset)
+        #expect(store.gestureHUDVerticalOffset == SettingsStore.minimumGestureHUDOffset)
+
+        store.gestureHUDHorizontalOffset = -175
+        store.gestureHUDVerticalOffset = 175
+
+        #expect(store.gestureHUDHorizontalOffset == SettingsStore.minimumGestureHUDOffset)
+        #expect(store.gestureHUDVerticalOffset == SettingsStore.maximumGestureHUDOffset)
+
+        store.gestureHUDHorizontalOffset = 119
+        store.gestureHUDVerticalOffset = -119
+
+        #expect(store.gestureHUDHorizontalOffset == 120)
+        #expect(store.gestureHUDVerticalOffset == -120)
+
+        let reloadedStore = SettingsStore(userDefaults: defaults)
+        #expect(reloadedStore.gestureHUDHorizontalOffset == 120)
+        #expect(reloadedStore.gestureHUDVerticalOffset == -120)
+    }
+
+    @Test
+    func gestureHUDPositionChangesCoalesceIntoOneHUDNotification() async {
+        let store = makeSettingsStore()
+
+        let recorder = await recordSettingsChanges(from: store) {
+            store.gestureHUDPosition = .customOffset
+            store.gestureHUDHorizontalOffset = 120
+            store.gestureHUDVerticalOffset = -120
+        }
+
+        #expect(recorder.count == 1)
+        #expect(recorder.categories == [.gestureHUD])
     }
 
     @Test

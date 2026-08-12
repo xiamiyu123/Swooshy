@@ -116,6 +116,7 @@ struct GeneralGestureBehaviorSection: View {
 struct GestureSettingsSection: View {
     @Bindable var settingsStore: SettingsStore
     let gestureHUDStyleOptions: [SettingsPickerOption<GestureHUDStyle>]
+    let gestureHUDPositionOptions: [SettingsPickerOption<GestureHUDPosition>]
     let previewItems: [GestureHUDPreviewItem]
 
     var body: some View {
@@ -168,8 +169,39 @@ struct GestureSettingsSection: View {
             }
             .pickerStyle(.menu)
 
+            Picker(
+                settingsStore.localized("settings.gesture_hud.position.label"),
+                selection: $settingsStore.gestureHUDPosition
+            ) {
+                ForEach(gestureHUDPositionOptions) { option in
+                    Text(option.title).tag(option.value)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if settingsStore.gestureHUDPosition == .customOffset {
+                PointOffsetSlider(
+                    label: settingsStore.localized("settings.gesture_hud.offset.horizontal.label"),
+                    value: $settingsStore.gestureHUDHorizontalOffset,
+                    range: SettingsStore.minimumGestureHUDOffset ... SettingsStore.maximumGestureHUDOffset,
+                    step: SettingsStore.gestureHUDOffsetStep
+                )
+
+                PointOffsetSlider(
+                    label: settingsStore.localized("settings.gesture_hud.offset.vertical.label"),
+                    value: $settingsStore.gestureHUDVerticalOffset,
+                    range: SettingsStore.minimumGestureHUDOffset ... SettingsStore.maximumGestureHUDOffset,
+                    step: SettingsStore.gestureHUDOffsetStep
+                )
+
+                SettingsHintGroup {
+                    Text(settingsStore.localized("settings.gesture_hud.offset.footer"))
+                }
+            }
+
             SettingsHintGroup {
                 Text(settingsStore.localized("settings.gesture_hud.footer"))
+                Text(settingsStore.localized("settings.gesture_hud.position.footer"))
                 Text(settingsStore.localized("settings.gesture_execute_on_release.footer"))
             }
 

@@ -23,6 +23,26 @@ enum GestureHUDPosition: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
+    func title(
+        localeIdentifier: String? = nil,
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> String {
+        let localizationKey = switch self {
+        case .followPointer:
+            "settings.gesture_hud.position.follow_pointer"
+        case .topCenter:
+            "settings.gesture_hud.position.top_center"
+        case .customOffset:
+            "settings.gesture_hud.position.custom_offset"
+        }
+
+        return L10n.string(
+            localizationKey,
+            localeIdentifier: localeIdentifier,
+            preferredLanguages: preferredLanguages
+        )
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         self = GestureHUDPosition(storageValue: try container.decode(String.self))

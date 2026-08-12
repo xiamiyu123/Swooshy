@@ -418,14 +418,18 @@ final class GestureFeedbackController: GestureFeedbackPresenting {
     }
 
     private func frame(for anchorPoint: CGPoint) -> NSRect {
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(anchorPoint) }) ?? NSScreen.main ?? NSScreen.screens.first
-        let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(anchorPoint) })
+        let visibleFrame = screen?.visibleFrame ?? .zero
 
         return GestureHUDPlacementResolver.frame(
             anchorPoint: anchorPoint,
             visibleFrame: visibleFrame,
             panelSize: currentPanelSize,
-            placement: GestureHUDPlacement(position: .followPointer)
+            placement: GestureHUDPlacement(
+                position: settingsStore.gestureHUDPosition,
+                horizontalOffset: CGFloat(settingsStore.gestureHUDHorizontalOffset),
+                verticalOffset: CGFloat(settingsStore.gestureHUDVerticalOffset)
+            )
         )
     }
 

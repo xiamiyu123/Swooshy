@@ -63,6 +63,12 @@ struct GestureSettingsPage: View {
         }
     }
 
+    private var gestureHUDPositionOptions: [SettingsPickerOption<GestureHUDPosition>] {
+        GestureHUDPosition.allCases.map { position in
+            SettingsPickerOption(value: position, title: position.title(preferredLanguages: preferredLanguages))
+        }
+    }
+
     private var gesturePreviewItems: [GestureHUDPreviewItem] {
         [DockGestureKind.pinchIn, .swipeUp].map { gesture in
             GestureHUDPreviewItem(
@@ -84,6 +90,7 @@ struct GestureSettingsPage: View {
             GestureSettingsSection(
                 settingsStore: settingsStore,
                 gestureHUDStyleOptions: gestureHUDStyleOptions,
+                gestureHUDPositionOptions: gestureHUDPositionOptions,
                 previewItems: gesturePreviewItems
             )
 

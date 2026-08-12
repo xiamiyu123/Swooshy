@@ -152,6 +152,14 @@
 "settings.title_bar_gestures.enabled" = "Enable title-bar gestures";
 "settings.gesture_hud.style.label" = "Gesture HUD style";
 "settings.gesture_hud.footer" = "Dock and title-bar gestures share the same trackpad monitor. Choose how the on-screen gesture HUD should look.";
+"settings.gesture_hud.position.label" = "Gesture HUD position";
+"settings.gesture_hud.position.follow_pointer" = "Follow pointer";
+"settings.gesture_hud.position.top_center" = "Top center of current display";
+"settings.gesture_hud.position.custom_offset" = "Custom pointer offset";
+"settings.gesture_hud.position.footer" = "The HUD stays within the usable area of the display under the pointer.";
+"settings.gesture_hud.offset.horizontal.label" = "Horizontal offset (right +)";
+"settings.gesture_hud.offset.vertical.label" = "Vertical offset (up +)";
+"settings.gesture_hud.offset.footer" = "Custom offsets are applied to the follow-pointer position.";
 "settings.gesture_execute_on_release.enabled" = "Execute gesture on release";
 "settings.gesture_execute_on_release.footer" = "When enabled, supported snap gestures start moving the real window immediately, but the action is only committed after you lift your fingers. Press Esc to cancel a pending gesture and return the window.";
 "settings.gesture_hud.style.classic" = "Detailed";

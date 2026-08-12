@@ -325,6 +325,41 @@ final class SettingsStore {
         }
     }
 
+    var gestureHUDPosition: GestureHUDPosition {
+        didSet {
+            guard oldValue != gestureHUDPosition else { return }
+            userDefaults.set(gestureHUDPosition.storageValue, forKey: Keys.gestureHUDPosition)
+            DebugLog.info(DebugLog.settings, "Gesture HUD position set to \(gestureHUDPosition.storageValue)")
+            notifyDidChange(.gestureHUD)
+        }
+    }
+
+    var gestureHUDHorizontalOffset: Double {
+        didSet {
+            if let clampedValue = clampedGestureHUDOffset(
+                currentValue: gestureHUDHorizontalOffset,
+                oldValue: oldValue,
+                forKey: Keys.gestureHUDHorizontalOffset,
+                logLabel: "Gesture HUD horizontal offset"
+            ) {
+                gestureHUDHorizontalOffset = clampedValue
+            }
+        }
+    }
+
+    var gestureHUDVerticalOffset: Double {
+        didSet {
+            if let clampedValue = clampedGestureHUDOffset(
+                currentValue: gestureHUDVerticalOffset,
+                oldValue: oldValue,
+                forKey: Keys.gestureHUDVerticalOffset,
+                logLabel: "Gesture HUD vertical offset"
+            ) {
+                gestureHUDVerticalOffset = clampedValue
+            }
+        }
+    }
+
     var statusItemIcon: StatusItemIcon {
         didSet {
             guard oldValue != statusItemIcon else { return }
@@ -527,6 +562,23 @@ final class SettingsStore {
         self.gestureHUDStyle = GestureHUDStyle(
             storageValue: userDefaults.string(forKey: Keys.gestureHUDStyle)
         )
+        self.gestureHUDPosition = GestureHUDPosition(
+            storageValue: userDefaults.string(forKey: Keys.gestureHUDPosition)
+        )
+        self.gestureHUDHorizontalOffset = Self.clampGestureHUDOffset(
+            Self.doubleValue(
+                forKey: Keys.gestureHUDHorizontalOffset,
+                defaultValue: Self.defaultGestureHUDOffset,
+                in: userDefaults
+            )
+        )
+        self.gestureHUDVerticalOffset = Self.clampGestureHUDOffset(
+            Self.doubleValue(
+                forKey: Keys.gestureHUDVerticalOffset,
+                defaultValue: Self.defaultGestureHUDOffset,
+                in: userDefaults
+            )
+        )
         self.statusItemIcon = StatusItemIcon(
             storageValue: userDefaults.string(forKey: Keys.statusItemIcon)
         )
@@ -609,6 +661,9 @@ final class SettingsStore {
             Keys.titleBarTriggerHeight,
             Keys.titleBarCornerDragHoldDuration,
             Keys.gestureHUDStyle,
+            Keys.gestureHUDPosition,
+            Keys.gestureHUDHorizontalOffset,
+            Keys.gestureHUDVerticalOffset,
             Keys.statusItemIcon,
             Keys.collapseStatusItemWindowActions,
             Keys.debugLoggingEnabled,
@@ -1038,6 +1093,10 @@ final class SettingsStore {
     nonisolated static let defaultDangerGestureConfirmationDuration: Double = 3
     nonisolated static let minimumDangerGestureConfirmationDuration: Double = 1
     nonisolated static let maximumDangerGestureConfirmationDuration: Double = 10
+    nonisolated static let defaultGestureHUDOffset: Double = 0
+    nonisolated static let minimumGestureHUDOffset: Double = -150
+    nonisolated static let maximumGestureHUDOffset: Double = 150
+    nonisolated static let gestureHUDOffsetStep: Double = 10
 
     nonisolated static func clampTitleBarTriggerHeight(_ value: Double) -> Double {
         min(maximumTitleBarTriggerHeight, max(minimumTitleBarTriggerHeight, value))
@@ -1049,6 +1108,15 @@ final class SettingsStore {
 
     nonisolated static func clampDangerGestureConfirmationDuration(_ value: Double) -> Double {
         min(maximumDangerGestureConfirmationDuration, max(minimumDangerGestureConfirmationDuration, value))
+    }
+
+    nonisolated static func clampGestureHUDOffset(_ value: Double) -> Double {
+        guard value.isFinite else {
+            return defaultGestureHUDOffset
+        }
+
+        let clampedValue = min(maximumGestureHUDOffset, max(minimumGestureHUDOffset, value))
+        return (clampedValue / gestureHUDOffsetStep).rounded() * gestureHUDOffsetStep
     }
 
     private static func clampSensitivity(_ value: Double) -> Double {
@@ -1238,6 +1306,28 @@ final class SettingsStore {
         return nil
     }
 
+    private func clampedGestureHUDOffset(
+        currentValue: Double,
+        oldValue: Double,
+        forKey key: String,
+        logLabel: String
+    ) -> Double? {
+        let clampedValue = Self.clampGestureHUDOffset(currentValue)
+
+        guard currentValue == clampedValue else {
+            return clampedValue
+        }
+
+        guard oldValue != clampedValue else {
+            return nil
+        }
+
+        userDefaults.set(clampedValue, forKey: key)
+        DebugLog.info(DebugLog.settings, "\(logLabel) set to \(clampedValue)")
+        notifyDidChange(.gestureHUD)
+        return nil
+    }
+
     private func persistHotKeyBindings() {
         persistEncoded(hotKeyBindings, key: Keys.hotKeyBindings, description: "hot key bindings")
     }
@@ -1373,6 +1463,9 @@ final class SettingsStore {
         static let titleBarTriggerHeight = "settings.titleBarTriggerHeight"
         static let titleBarCornerDragHoldDuration = "settings.titleBarCornerDragHoldDuration"
         static let gestureHUDStyle = "settings.gestureHUDStyle"
+        static let gestureHUDPosition = "settings.gestureHUDPosition"
+        static let gestureHUDHorizontalOffset = "settings.gestureHUDHorizontalOffset"
+        static let gestureHUDVerticalOffset = "settings.gestureHUDVerticalOffset"
         static let statusItemIcon = "settings.statusItemIcon"
         static let collapseStatusItemWindowActions = "settings.collapseStatusItemWindowActions"
         static let hasSeenWelcomeGuide = "settings.hasSeenWelcomeGuide"

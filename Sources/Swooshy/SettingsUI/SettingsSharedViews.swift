@@ -132,6 +132,32 @@ struct PixelSlider: View {
     }
 }
 
+struct PointOffsetSlider: View {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label)
+                    .font(.body)
+
+                Spacer()
+
+                Text(String(format: "%+d pt", Int(value.rounded())))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Slider(value: $value, in: range, step: step)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 struct DurationSlider: View {
     let label: String
     @Binding var value: Double

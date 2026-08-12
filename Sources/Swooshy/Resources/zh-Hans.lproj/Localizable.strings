@@ -152,6 +152,14 @@
 "settings.title_bar_gestures.enabled" = "启用标题栏手势";
 "settings.gesture_hud.style.label" = "手势 HUD 风格";
 "settings.gesture_hud.footer" = "Dock 和标题栏手势共用同一个触控板监控。你可以在这里切换屏幕上的手势提示风格。";
+"settings.gesture_hud.position.label" = "手势 HUD 位置";
+"settings.gesture_hud.position.follow_pointer" = "跟随指针";
+"settings.gesture_hud.position.top_center" = "当前屏幕顶部居中";
+"settings.gesture_hud.position.custom_offset" = "自定义指针偏移";
+"settings.gesture_hud.position.footer" = "HUD 会保持在指针所在屏幕的可用区域内。";
+"settings.gesture_hud.offset.horizontal.label" = "水平偏移（向右为正）";
+"settings.gesture_hud.offset.vertical.label" = "垂直偏移（向上为正）";
+"settings.gesture_hud.offset.footer" = "自定义偏移会叠加在跟随指针的位置上。";
 "settings.gesture_execute_on_release.enabled" = "松手后执行手势";
 "settings.gesture_execute_on_release.footer" = "开启后，支持停靠的手势会立即开始平滑移动真实窗口，但只有在你松手后才会正式提交。松手前按 Esc 可取消已识别的手势并让窗口回到原位置。";
 "settings.gesture_hud.style.classic" = "详细";
