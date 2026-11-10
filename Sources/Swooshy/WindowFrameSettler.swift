@@ -25,7 +25,7 @@ struct WindowFrameSettler {
     func apply(
         _ target: CGRect,
         writePosition: (CGPoint) throws -> Void,
-        writeSize: (CGSize) throws -> Void,
+        writeSize: ((CGSize) throws -> Void)?,
         read: () -> CGRect?,
         readPresentedFrame: (() -> CGRect?)? = nil
     ) async throws -> CGRect {
@@ -38,6 +38,7 @@ struct WindowFrameSettler {
         }
 
         if !Component.size.matches(actual, target) {
+            guard let writeSize else { throw WindowManagerError.unableToSetFrame }
             var candidate: CGRect?
             var confirmed = false
             for _ in 0..<2 {

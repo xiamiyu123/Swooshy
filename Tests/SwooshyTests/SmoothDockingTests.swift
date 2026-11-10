@@ -9,6 +9,19 @@ struct SmoothDockingTests {
     private let desktopFrame = CGRect(x: 0, y: 85, width: 1408, height: 766)
 
     @Test
+    func fixedSizeLargerThanDesktopIsPreservedWhenAnchoring() {
+        let size = CGSize(width: 1600, height: 1000)
+        let desktop = CGRect(x: -1408, y: 83, width: 1408, height: 768)
+        let plan = resolver.plan(
+            for: .bottomRightQuarter, in: desktop,
+            sizeConstraints: .init(maximumWidth: 900, maximumHeight: 600), fixedSize: size
+        )
+        #expect(plan.frame.size == size)
+        #expect(plan.frame.maxX == desktop.maxX)
+        #expect(plan.frame.minY == desktop.minY)
+    }
+
+    @Test
     func smoothDockingSupportStaysLimitedToLayoutActions() {
         for action in WindowAction.gestureCases {
             #expect(action.supportsSmoothDocking == action.supportsSnapPreview)

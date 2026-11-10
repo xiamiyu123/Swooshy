@@ -57,8 +57,15 @@ intermediate frames do not recompute the layout or learn size bounds. The final
 frame goes through the confirmation below. Completion leaves no animation task
 polling or writing the same target.
 
-Position and size writes are confirmed separately. Expansion moves first so
-resizing uses the new origin; shrinking resizes before moving. Each phase reads
+The session checks whether `AXSize` is writable once at setup. An explicit
+read-only result preserves the window's original size and anchors it to the
+requested edge or corner. Intermediate frames and final corrections write only
+position, even if the original size exceeds the desktop. These operations do not
+learn or invalidate cached size bounds. An unavailable capability query keeps
+the existing resize path. The session log includes `sizeWritable` and query errors.
+
+Final frame corrections confirm position and size separately. Expansion moves
+first so resizing uses the new origin; shrinking resizes before moving. Each phase reads
 on absolute deadlines through 500 ms. When a CG window can be pinned, both AX
 and its fresh CG bounds must agree on that component. Otherwise confirmation
 requires separated, stable AX reads. These checks work with logging disabled.
@@ -76,9 +83,12 @@ scopes. Superseding targets cancel old confirmations. Release-time failure does
 not start another docking action, and restore teardown awaits the same operation
 before finishing the session.
 
-When `AXEnhancedUserInterface` is already enabled and the CG identity is pinned,
-the operation reuses native AX transitions through the confirmed phases instead
-of sending interpolated frames. Other windows use the finite Swooshy transition.
-This attribute is not a documented animation API, and Swooshy does not enable
-it. The session log records its value (`unknown` if unavailable) and the selected
-`transition` (`nativeAX` or `interpolated`) for verification.
+All windows use one eased transition that interpolates position and size together.
+When `AXEnhancedUserInterface` is already enabled, the operation temporarily
+disables it to prevent native AX animations from interrupting the joint frames.
+It restores the original value after final confirmation, failure, or cancellation.
+Overlapping operations in the same application share this scope; only the last
+one restores the value. Shutdown also restores active scopes. If disabling fails,
+the operation fails before writing any geometry. An already disabled or unavailable
+attribute is left untouched. This attribute is not a documented animation API.
+The session log records its value (`unknown` if unavailable) and `transition=joint`.

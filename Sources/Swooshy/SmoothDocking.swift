@@ -187,7 +187,8 @@ struct SmoothDockingResolver {
     func plan(
         for action: WindowAction,
         in desktopFrame: CGRect,
-        sizeConstraints: SmoothDockingSizeConstraints
+        sizeConstraints: SmoothDockingSizeConstraints,
+        fixedSize: CGSize? = nil
     ) -> SmoothDockingPlan {
         let normalizedDesktopFrame = desktopFrame.integral
         let idealFrame = layoutEngine.targetFrame(
@@ -195,7 +196,7 @@ struct SmoothDockingResolver {
             currentWindowFrame: normalizedDesktopFrame,
             currentVisibleFrame: normalizedDesktopFrame
         )
-        let resolvedSize = sizeConstraints.resolvedSize(
+        let resolvedSize = fixedSize ?? sizeConstraints.resolvedSize(
             for: idealFrame.size,
             within: normalizedDesktopFrame.size
         )
@@ -277,11 +278,14 @@ final class SmoothDockingSession {
     private let diagnosticContext: String
     private let originalFrame: CGRect
     private let desktopFrame: CGRect
+    private let canResize: Bool
     private let baseSizeConstraints: SmoothDockingSizeConstraints
     private let observedSizeConstraints: SmoothDockingSizeConstraints
     private let loadCurrentFrame: () -> CGRect?
     private let animateFrame: ((CGRect) throws -> Void)?
     private let animationSleep: () async throws -> Void
+    private let beginTransition: () throws -> Void
+    private let endTransition: () -> Void
     private let applyFrame: (CGRect) async throws -> CGRect
     private let recordConstraintObservation: @MainActor (WindowAction, CGRect, CGRect) -> Void
     private let recordAcceptedFrame: @MainActor (CGRect) -> Void
@@ -297,10 +301,13 @@ final class SmoothDockingSession {
         originalFrame: CGRect,
         desktopFrame: CGRect,
         baseSizeConstraints: SmoothDockingSizeConstraints,
+        canResize: Bool = true,
         observedSizeConstraints: SmoothDockingSizeConstraints = .init(),
         loadCurrentFrame: @escaping () -> CGRect? = { nil },
         animateFrame: ((CGRect) throws -> Void)? = nil,
         animationSleep: @escaping () async throws -> Void = { try await Task.sleep(for: .milliseconds(16)) },
+        beginTransition: @escaping () throws -> Void = {},
+        endTransition: @escaping () -> Void = {},
         applyFrame: @escaping (CGRect) async throws -> CGRect,
         recordConstraintObservation: @escaping @MainActor (WindowAction, CGRect, CGRect) -> Void = { _, _, _ in },
         recordAcceptedFrame: @escaping @MainActor (CGRect) -> Void = { _ in },
@@ -309,11 +316,14 @@ final class SmoothDockingSession {
         self.diagnosticContext = diagnosticContext
         self.originalFrame = originalFrame.integral
         self.desktopFrame = desktopFrame.integral
+        self.canResize = canResize
         self.baseSizeConstraints = baseSizeConstraints
         self.observedSizeConstraints = observedSizeConstraints
         self.loadCurrentFrame = loadCurrentFrame
         self.animateFrame = animateFrame
         self.animationSleep = animationSleep
+        self.beginTransition = beginTransition
+        self.endTransition = endTransition
         self.applyFrame = applyFrame
         self.recordConstraintObservation = recordConstraintObservation
         self.recordAcceptedFrame = recordAcceptedFrame
@@ -339,6 +349,9 @@ final class SmoothDockingSession {
         )
         operation = Task { @MainActor in
             do {
+                try Task.checkCancellation()
+                try self.beginTransition()
+                defer { self.endTransition() }
                 if let animateFrame = self.animateFrame {
                     for frame in frames {
                         try Task.checkCancellation()
@@ -349,9 +362,11 @@ final class SmoothDockingSession {
                 let applied = try await self.settle(at: resolved, action: action, constraints: bounds)
                 try Task.checkCancellation()
                 guard self.generation == generation else { throw CancellationError() }
-                self.adaptiveSizeConstraints.incorporateObservation(
-                    requestedFrame: requested, appliedFrame: applied, tolerance: 1
-                )
+                if self.canResize {
+                    self.adaptiveSizeConstraints.incorporateObservation(
+                        requestedFrame: requested, appliedFrame: applied, tolerance: 1
+                    )
+                }
                 DebugLog.debug(
                     DebugLog.windows,
                     "Docking [\(self.diagnosticContext)] settled: requested=\(NSStringFromRect(resolved)), applied=\(NSStringFromRect(applied))"
@@ -379,7 +394,7 @@ final class SmoothDockingSession {
         }
         try Task.checkCancellation()
         guard !isFinished, self.generation == generation else { throw CancellationError() }
-        if committedGeneration != generation {
+        if canResize, committedGeneration != generation {
             recordAcceptedFrame(result.applied)
             if let currentAction,
                abs(result.requested.width - result.applied.width) > 1 ||
@@ -408,7 +423,7 @@ final class SmoothDockingSession {
             let applied = try await applyFrame(requested).integral
             try Task.checkCancellation()
             if framesAreClose(applied, requested) { return applied }
-            guard let action else { throw WindowManagerError.unableToSetFrame }
+            guard canResize, let action else { throw WindowManagerError.unableToSetFrame }
             confirmedBounds.incorporateObservation(requestedFrame: requested, appliedFrame: applied, tolerance: 1)
             requested = target(for: action, constraints: confirmedBounds)
         }
@@ -417,7 +432,10 @@ final class SmoothDockingSession {
 
     private func target(for action: WindowAction?, constraints: SmoothDockingSizeConstraints) -> CGRect {
         guard let action else { return originalFrame }
-        return resolver.plan(for: action, in: desktopFrame, sizeConstraints: constraints).frame
+        return resolver.plan(
+            for: action, in: desktopFrame, sizeConstraints: constraints,
+            fixedSize: canResize ? nil : originalFrame.size
+        ).frame
     }
 
     private func transitionFrames(from start: CGRect, to target: CGRect) -> [CGRect] {

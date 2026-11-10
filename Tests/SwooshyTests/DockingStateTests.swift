@@ -7,6 +7,61 @@ import Testing
 struct DockingStateTests {
     private let desktop = CGRect(x: 0, y: 83, width: 1408, height: 768)
 
+    @Test(arguments: [
+        (WindowAction.leftHalf, CGPoint(x: 0, y: 179)),
+        (.rightHalf, CGPoint(x: 548, y: 179)),
+        (.topLeftQuarter, CGPoint(x: 0, y: 179)),
+        (.topRightQuarter, CGPoint(x: 548, y: 179)),
+        (.bottomLeftQuarter, CGPoint(x: 0, y: 83)),
+        (.bottomRightQuarter, CGPoint(x: 548, y: 83)),
+        (.maximize, CGPoint(x: 0, y: 179)),
+        (.center, CGPoint(x: 0, y: 179))
+    ])
+    func nonResizableWindowMovesToAnchorWithoutResizingOrChangingCache(
+        action: WindowAction, origin: CGPoint
+    ) async throws {
+        let original = CGRect(x: 301, y: 99, width: 860, height: 672)
+        var current = original
+        var frames: [CGRect] = []
+        var confirmations = 0
+        var cacheWrites = 0
+        let session = SmoothDockingSession(
+            originalFrame: original, desktopFrame: desktop, baseSizeConstraints: .init(),
+            canResize: false,
+            observedSizeConstraints: .init(minimumWidth: 1000, maximumHeight: 500),
+            loadCurrentFrame: { current },
+            animateFrame: { frame in
+                guard frame.size == original.size else { throw WindowManagerError.unableToSetFrame }
+                current.origin = frame.origin
+                frames.append(current)
+            },
+            animationSleep: { await Task.yield() },
+            applyFrame: { frame in
+                confirmations += 1
+                return try await WindowFrameSettler().apply(
+                    frame, writePosition: { current.origin = $0 },
+                    writeSize: nil,
+                    read: { current }, readPresentedFrame: { current }
+                )
+            },
+            recordConstraintObservation: { _, _, _ in cacheWrites += 1 },
+            recordAcceptedFrame: { _ in cacheWrites += 1 }
+        )
+        session.update(action: action)
+        #expect(try await session.commit() == CGRect(origin: origin, size: original.size))
+        let framesAtArrival = frames
+        for _ in 0..<20 { session.update(action: action) }
+        _ = try await session.commit()
+        #expect(frames == framesAtArrival)
+        #expect(confirmations == 1)
+        #expect(frames.count > 2)
+        #expect(frames.allSatisfy { $0.size == original.size })
+        session.restore()
+        #expect(try await session.commit() == original)
+        session.finish()
+        #expect(cacheWrites == 0)
+    }
+
     @Test
     func repeatedTargetKeepsOneProgressiveTransitionAndReleaseReusesIt() async throws {
         let original = CGRect(x: 120, y: 150, width: 900, height: 650)
@@ -50,11 +105,20 @@ struct DockingStateTests {
         var frames: [CGRect] = []
         var confirmations = 0
         var retargeted = false
+        var enhancedUI = true
+        let animationControl = WindowFrameAnimationControl(
+            readEnabled: { _ in enhancedUI },
+            writeEnabled: { _, enabled in enhancedUI = enabled; return .success }
+        )
         var session: SmoothDockingSession!
         session = SmoothDockingSession(
             originalFrame: original, desktopFrame: desktop, baseSizeConstraints: .init(),
             loadCurrentFrame: { current },
-            animateFrame: { frames.append($0); current = $0 },
+            animateFrame: {
+                #expect(!enhancedUI)
+                frames.append($0)
+                current = $0
+            },
             animationSleep: {
                 if !retargeted {
                     retargeted = true
@@ -62,7 +126,14 @@ struct DockingStateTests {
                 }
                 await Task.yield()
             },
-            applyFrame: { confirmations += 1; current = $0; return $0 }
+            beginTransition: { try animationControl.begin(for: 42) },
+            endTransition: { animationControl.end(for: 42) },
+            applyFrame: {
+                #expect(!enhancedUI)
+                confirmations += 1
+                current = $0
+                return $0
+            }
         )
         session.update(action: .bottomRightQuarter)
         await #expect(throws: CancellationError.self) { try await session.commit() }
@@ -72,6 +143,7 @@ struct DockingStateTests {
         #expect(confirmations == 1)
         #expect(frames.count > 2)
         #expect(frames.dropFirst().allSatisfy { $0.minX <= frames[0].minX })
+        #expect(enhancedUI)
     }
 
     @Test

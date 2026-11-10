@@ -51,6 +51,7 @@ final class WindowManager: WindowManaging {
     private let observedWindowConstraintStore = ObservedWindowConstraintStore()
     private let windowOrderingSnapshotCache = CGWindowOrderingSnapshotCache()
     private let frameDiagnostics = WindowFrameDiagnostics()
+    private let frameAnimationControl = WindowFrameAnimationControl()
     private struct DockingSessionEntry {
         let window: AXUIElement
         weak var session: SmoothDockingSession?
@@ -77,6 +78,7 @@ final class WindowManager: WindowManaging {
         isShuttingDown = true
         dockingSessions.forEach { $0.session?.finish() }
         dockingSessions.removeAll()
+        frameAnimationControl.shutdown()
         frameDiagnostics.cancel()
         observedWindowConstraintStore.shutdown()
         registry.shutdown()
@@ -898,18 +900,20 @@ final class WindowManager: WindowManaging {
         let observedBounds = observedWindowConstraintStore.sharedSizeBounds(for: constraintKey)
         let observedConstraints = observedWindowConstraintStore.dockingSizeBounds(for: constraintKey)
             .map(SmoothDockingSizeConstraints.init(sizeBounds:)) ?? .init()
+        var sizeWritable = DarwinBoolean(false)
+        let sizeWritableError = AXUIElementIsAttributeSettable(window, kAXSizeAttribute as CFString, &sizeWritable)
+        let canResize = sizeWritableError != .success || sizeWritable.boolValue
         let enhancedUI = AXAttributeReader.bool(
             "AXEnhancedUserInterface" as CFString,
             from: AXAttributeReader.applicationElement(for: application.processIdentifier)
         )
-        let usesNativeTransition = enhancedUI == true && binding.match.windowID != nil
         DebugLog.debug(
             DebugLog.windows,
             "Smooth docking [\(diagnosticContext)] constraint sources: scope=\(constraintKey), AX=\(smoothDockingSizeConstraintDescription(axConstraints)), cached=\(observedBounds.map(constraintBoundsDescription) ?? "none")"
         )
         DebugLog.debug(
             DebugLog.windows,
-            "Prepared smooth docking [\(diagnosticContext)] windowID=\(String(describing: AXAttributeReader.windowIdentifier(of: window))), fullScreen=\(isFullScreen(window)), enhancedUI=\(enhancedUI.map(String.init) ?? "unknown"), transition=\(usesNativeTransition ? "nativeAX" : "interpolated"): currentFrame = \(NSStringFromRect(currentFrame)), desktopFrame = \(NSStringFromRect(desktopFrame)), sizeConstraints = \(smoothDockingSizeConstraintDescription(axConstraints.merged(with: observedConstraints)))"
+            "Prepared smooth docking [\(diagnosticContext)] windowID=\(String(describing: AXAttributeReader.windowIdentifier(of: window))), fullScreen=\(isFullScreen(window)), sizeWritable=\(sizeWritableError == .success ? String(sizeWritable.boolValue) : "unknown(\(sizeWritableError.rawValue))"), enhancedUI=\(enhancedUI.map(String.init) ?? "unknown"), transition=joint: currentFrame = \(NSStringFromRect(currentFrame)), desktopFrame = \(NSStringFromRect(desktopFrame)), sizeConstraints = \(smoothDockingSizeConstraintDescription(axConstraints.merged(with: observedConstraints)))"
         )
 
         cancelDockingSessions(for: window)
@@ -918,21 +922,25 @@ final class WindowManager: WindowManaging {
             originalFrame: currentFrame,
             desktopFrame: desktopFrame,
             baseSizeConstraints: axConstraints,
+            canResize: canResize,
             observedSizeConstraints: observedConstraints,
             loadCurrentFrame: {
                 let frame = binding.frame() ?? self.readFrameBestEffort(of: window, context: "starting docking transition")
                 if let frame { lastAnimationAXFrame = frame }
                 return frame.map(screenGeometry.appKitFrame(fromAXFrame:))
             },
-            animateFrame: usesNativeTransition ? nil : { target in
+            animateFrame: { target in
                 let frame = screenGeometry.axFrame(fromAppKitFrame: target)
-                try self.writeAnimationFrame(frame, from: lastAnimationAXFrame, for: window)
+                try self.writeAnimationFrame(frame, from: lastAnimationAXFrame, for: window, canResize: canResize)
                 lastAnimationAXFrame = frame
             },
+            beginTransition: { try self.frameAnimationControl.begin(for: application.processIdentifier) },
+            endTransition: { self.frameAnimationControl.end(for: application.processIdentifier) },
             applyFrame: { [window] targetAppKitFrame in
                 let targetAXFrame = screenGeometry.axFrame(fromAppKitFrame: targetAppKitFrame.integral)
                 let appliedAXFrame = try await self.settleFrame(
-                    targetAXFrame, for: window, binding: binding, diagnosticTarget: diagnosticTarget
+                    targetAXFrame, for: window, binding: binding, diagnosticTarget: diagnosticTarget,
+                    canResize: canResize
                 )
 
                 return screenGeometry.appKitFrame(fromAXFrame: appliedAXFrame)
@@ -2046,11 +2054,17 @@ final class WindowManager: WindowManaging {
         return child
     }
 
-    private func writeAnimationFrame(_ frame: CGRect, from previous: CGRect, for window: AXUIElement) throws {
+    private func writeAnimationFrame(
+        _ frame: CGRect, from previous: CGRect, for window: AXUIElement, canResize: Bool
+    ) throws {
         var origin = frame.origin
+        guard let originValue = AXValueCreate(.cgPoint, &origin) else { throw WindowManagerError.unableToSetFrame }
+        if !canResize {
+            try writeFrameAttribute(kAXPositionAttribute as CFString, value: originValue, window: window)
+            return
+        }
         var size = frame.size
-        guard let originValue = AXValueCreate(.cgPoint, &origin),
-              let sizeValue = AXValueCreate(.cgSize, &size)
+        guard let sizeValue = AXValueCreate(.cgSize, &size)
         else { throw WindowManagerError.unableToSetFrame }
         let result = applyFrame(
             window: window, originValue: originValue, sizeValue: sizeValue,
@@ -2062,7 +2076,8 @@ final class WindowManager: WindowManaging {
     private func settleFrame(
         _ frame: CGRect, for window: AXUIElement,
         binding: WindowFrameSnapshot.Binding,
-        diagnosticTarget: WindowFrameDiagnostics.Target?
+        diagnosticTarget: WindowFrameDiagnostics.Target?,
+        canResize: Bool
     ) async throws -> CGRect {
         var size = frame.size
         var origin = frame.origin
@@ -2077,9 +2092,9 @@ final class WindowManager: WindowManaging {
                 writePosition: { _ in
                     try self.writeFrameAttribute(kAXPositionAttribute as CFString, value: positionValue, window: window)
                 },
-                writeSize: { _ in
+                writeSize: canResize ? { _ in
                     try self.writeFrameAttribute(kAXSizeAttribute as CFString, value: sizeValue, window: window)
-                },
+                } : nil,
                 read: { self.readFrameBestEffort(of: window, context: "confirming smooth frame write") },
                 readPresentedFrame: readPresentedFrame
             )
