@@ -16,6 +16,8 @@ final class ObservedWindowConstraintStore {
         var sharedSizeBounds: WindowActionPreview.SizeBounds
         var observations: [PersistedActionObservation]
         var lastUsedAt: Date
+        var verifiedMaximumWidth: CGFloat?
+        var verifiedMaximumHeight: CGFloat?
     }
 
     private struct PersistedActionObservation: Codable {
@@ -32,6 +34,8 @@ final class ObservedWindowConstraintStore {
         )
         var observationsByAction: [WindowAction: WindowActionPreview.Observation] = [:]
         var lastUsedAt: Date
+        var verifiedMaximumWidth: CGFloat? = nil
+        var verifiedMaximumHeight: CGFloat? = nil
     }
 
     private enum PersistedStoreValidationError: LocalizedError {
@@ -123,6 +127,17 @@ final class ObservedWindowConstraintStore {
         return applicationConstraints.sharedSizeBounds
     }
 
+    func dockingSizeBounds(for applicationKey: String) -> WindowActionPreview.SizeBounds? {
+        guard var bounds = sharedSizeBounds(for: applicationKey),
+              let entry = constraintsByApplicationKey[applicationKey]
+        else { return nil }
+        // Legacy maxima were learned from immediate readback. Keep the cache,
+        // but only confirmed maxima may prevent a larger docking request.
+        if bounds.maximumWidth != entry.verifiedMaximumWidth { bounds.maximumWidth = nil }
+        if bounds.maximumHeight != entry.verifiedMaximumHeight { bounds.maximumHeight = nil }
+        return bounds.hasConstraints ? bounds : nil
+    }
+
     func record(
         sizeBounds: WindowActionPreview.SizeBounds,
         horizontalAnchor: WindowActionPreview.AxisAnchor?,
@@ -142,6 +157,13 @@ final class ObservedWindowConstraintStore {
                 applicationConstraints.sharedSizeBounds,
                 with: sizeBounds
             )
+        }
+
+        if sizeBounds.maximumWidth != nil {
+            applicationConstraints.verifiedMaximumWidth = applicationConstraints.sharedSizeBounds.maximumWidth
+        }
+        if sizeBounds.maximumHeight != nil {
+            applicationConstraints.verifiedMaximumHeight = applicationConstraints.sharedSizeBounds.maximumHeight
         }
 
         if var existingObservation = applicationConstraints.observationsByAction[action] {
@@ -166,6 +188,18 @@ final class ObservedWindowConstraintStore {
 
         applicationConstraints.lastUsedAt = currentDate
         constraintsByApplicationKey[applicationKey] = applicationConstraints
+        hasPendingPersistence = true
+    }
+
+    func discardBoundsContradicted(by size: CGSize, for applicationKey: String) {
+        guard var constraints = constraintsByApplicationKey[applicationKey] else { return }
+        constraints.sharedSizeBounds = constraints.sharedSizeBounds.removingBoundsContradicted(by: size)
+        constraints.observationsByAction = constraints.observationsByAction.mapValues { observation in
+            var updated = observation
+            updated.sizeBounds = observation.sizeBounds.removingBoundsContradicted(by: size)
+            return updated
+        }
+        constraintsByApplicationKey[applicationKey] = constraints
         hasPendingPersistence = true
     }
 
@@ -222,7 +256,9 @@ final class ObservedWindowConstraintStore {
                     from: application.observations,
                     applicationKey: application.applicationKey
                 ),
-                lastUsedAt: application.lastUsedAt
+                lastUsedAt: application.lastUsedAt,
+                verifiedMaximumWidth: application.verifiedMaximumWidth,
+                verifiedMaximumHeight: application.verifiedMaximumHeight
             )
         }
 
@@ -307,7 +343,9 @@ final class ObservedWindowConstraintStore {
                     applicationKey: applicationKey,
                     sharedSizeBounds: constraints.sharedSizeBounds,
                     observations: observations,
-                    lastUsedAt: constraints.lastUsedAt
+                    lastUsedAt: constraints.lastUsedAt,
+                    verifiedMaximumWidth: constraints.verifiedMaximumWidth,
+                    verifiedMaximumHeight: constraints.verifiedMaximumHeight
                 )
             }
 
@@ -321,6 +359,17 @@ final class ObservedWindowConstraintStore {
                 "Failed to persist observed window constraint store: \(error.localizedDescription)"
             )
         }
+    }
+}
+
+private extension WindowActionPreview.SizeBounds {
+    func removingBoundsContradicted(by size: CGSize) -> Self {
+        Self(
+            minimumWidth: minimumWidth.flatMap { size.width < $0 - 1 ? nil : $0 },
+            maximumWidth: maximumWidth.flatMap { size.width > $0 + 1 ? nil : $0 },
+            minimumHeight: minimumHeight.flatMap { size.height < $0 - 1 ? nil : $0 },
+            maximumHeight: maximumHeight.flatMap { size.height > $0 + 1 ? nil : $0 }
+        )
     }
 }
 

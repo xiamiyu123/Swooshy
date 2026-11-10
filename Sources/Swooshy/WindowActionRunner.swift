@@ -1,6 +1,6 @@
 @MainActor
 protocol WindowActionRunning {
-    func run(_ action: WindowAction) throws
+    func run(_ action: WindowAction) async throws
 }
 
 @MainActor
@@ -16,7 +16,7 @@ struct WindowActionRunner: WindowActionRunning {
         self.layoutEngine = layoutEngine
     }
 
-    func run(_ action: WindowAction) throws {
-        try windowManager.perform(action, layoutEngine: layoutEngine)
+    func run(_ action: WindowAction) async throws {
+        try await windowManager.perform(action, layoutEngine: layoutEngine)
     }
 }

@@ -56,7 +56,7 @@ final class DockGestureController {
     private var activeCornerDragTouchOrigin: CGPoint?
     private var activeCornerDragTouchReferencePoint: CGPoint?
     private var smoothDockingSession: SmoothDockingSession?
-    // A session that has begun its restore animation and is awaiting delayed
+    // A session that has begun its restore operation and is awaiting delayed
     // teardown. Kept separate from `smoothDockingSession` so an in-flight
     // gesture update can't revive a session that is already ending.
     private var finishingSmoothDockingSession: SmoothDockingSession?
@@ -1001,7 +1001,7 @@ final class DockGestureController {
             return
         }
 
-        runWindowAction(failureMessage: "Dock gesture action failed") {
+        runAsyncWindowAction(failureMessage: "Dock gesture action failed") { [self] in
             switch action {
             case .minimizeWindow:
                 let result = try windowManager.minimizeVisibleWindowWithResult(of: application)
@@ -1059,14 +1059,14 @@ final class DockGestureController {
                     try windowManager.exitFullScreenWindow(of: application)
                 )
             case .moveWindowToNextDisplay:
-                try windowManager.perform(
+                try await windowManager.perform(
                     .moveToNextDisplay,
                     on: application,
                     layoutEngine: layoutEngine,
                     preferredAppKitPoint: nil
                 )
             case .moveWindowToPreviousDisplay:
-                try windowManager.perform(
+                try await windowManager.perform(
                     .moveToPreviousDisplay,
                     on: application,
                     layoutEngine: layoutEngine,
@@ -1308,7 +1308,7 @@ final class DockGestureController {
             return
         }
 
-        runWindowAction(failureMessage: "Title-bar gesture action failed") {
+        runAsyncWindowAction(failureMessage: "Title-bar gesture action failed") { [self] in
             if replacesWithTabClose {
                 if BrowserTabProbe.simulateMiddleClick(at: anchorPoint) {
                     DebugLog.info(
@@ -1335,7 +1335,7 @@ final class DockGestureController {
                 return
             }
 
-            try windowManager.perform(
+            try await windowManager.perform(
                 action,
                 on: event.application,
                 layoutEngine: layoutEngine,
@@ -1890,8 +1890,8 @@ final class DockGestureController {
             return
         }
 
-        runWindowAction(failureMessage: "Corner drag action failed") {
-            try windowManager.perform(
+        runAsyncWindowAction(failureMessage: "Corner drag action failed") { [self] in
+            try await windowManager.perform(
                 action,
                 on: application,
                 layoutEngine: layoutEngine,
@@ -1929,15 +1929,16 @@ final class DockGestureController {
             return
         }
 
-        // A session may be mid-teardown: it has begun its restore animation and
+        if smoothDockingSession?.isFinished == true { smoothDockingSession = nil }
+        // A session may be mid-teardown: it has begun its restore operation and
         // is awaiting the delayed finish task. Reclaim it instead of starting a
         // second session that would fight over the same window. Niling
         // finishingSmoothDockingSession makes the pending finish task's identity
         // guard fail, so it returns early and won't finish the session out from
-        // under us. The update(action:) below redirects its animation.
+        // under us. The update(action:) below redirects its operation.
         if smoothDockingSession == nil, let reclaimed = finishingSmoothDockingSession {
             finishingSmoothDockingSession = nil
-            smoothDockingSession = reclaimed
+            if !reclaimed.isFinished { smoothDockingSession = reclaimed }
         }
 
         if smoothDockingSession == nil {
@@ -1965,24 +1966,18 @@ final class DockGestureController {
     }
 
     private func commitSmoothDockingSessionIfNeeded(for action: WindowAction) -> Bool {
-        guard action.supportsSmoothDocking, let smoothDockingSession else {
+        guard action.supportsSmoothDocking, let smoothDockingSession, !smoothDockingSession.isFinished else {
             endSmoothDockingSession(restore: false)
             return false
         }
 
-        if runWindowAction(failureMessage: "Smooth docking commit failed", {
-            _ = try smoothDockingSession.commit()
-            smoothDockingSession.finish()
-            self.smoothDockingSession = nil
-            applyTrackpadMonitoringState()
-        }) {
-            return true
-        }
-
-        smoothDockingSession.finish()
         self.smoothDockingSession = nil
         applyTrackpadMonitoringState()
-        return false
+        runAsyncWindowAction(failureMessage: "Smooth docking commit failed") {
+            defer { smoothDockingSession.finish() }
+            _ = try await smoothDockingSession.commit()
+        }
+        return true
     }
 
     private func endSmoothDockingSession(restore: Bool) {
@@ -1998,17 +1993,12 @@ final class DockGestureController {
             // that is already restoring/ending during the delayed teardown.
             self.smoothDockingSession = nil
             finishingSmoothDockingSession = session
-            // Tag this teardown with a monotonic generation. The delayed task
-            // only finishes the session if this exact generation is still the
-            // one pending. An object-identity check is insufficient: reclaiming
-            // and re-ending the same session object within 160ms would let an
-            // earlier task's `=== session` guard pass again and prematurely
-            // finish (truncating) the second restore animation.
+            // The same session can be reclaimed and restored again while an
+            // earlier confirmation is pending; identity alone cannot detect it.
             finishingSmoothDockingGeneration &+= 1
             let generation = finishingSmoothDockingGeneration
             applyTrackpadMonitoringState()
             Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 160_000_000)
                 guard let self,
                     self.finishingSmoothDockingGeneration == generation,
                     self.finishingSmoothDockingSession === session
@@ -2016,6 +2006,16 @@ final class DockGestureController {
                     return
                 }
 
+                do {
+                    _ = try await session.commit()
+                } catch is CancellationError {
+                    // A reclaimed session belongs to the newer gesture.
+                } catch {
+                    DebugLog.debug(DebugLog.dock, "Smooth docking restore failed: \(error.localizedDescription)")
+                }
+                guard self.finishingSmoothDockingGeneration == generation,
+                      self.finishingSmoothDockingSession === session
+                else { return }
                 session.finish()
                 self.finishingSmoothDockingSession = nil
                 self.applyTrackpadMonitoringState()
@@ -2082,22 +2082,22 @@ final class DockGestureController {
     }
 #endif
 
-    @discardableResult
-    private func runWindowAction(
+    private func runAsyncWindowAction(
         failureMessage: String,
-        _ action: () throws -> Void
-    ) -> Bool {
-        do {
-            try action()
-            return true
-        } catch let error as WindowManagerError {
-            handleWindowManagerError(error)
-        } catch {
-            NSSound.beep()
-            DebugLog.error(DebugLog.dock, "\(failureMessage): \(error.localizedDescription)")
+        _ action: @escaping @MainActor () async throws -> Void
+    ) {
+        Task { @MainActor [self] in
+            do {
+                try await action()
+            } catch is CancellationError {
+                return
+            } catch let error as WindowManagerError {
+                handleWindowManagerError(error)
+            } catch {
+                NSSound.beep()
+                DebugLog.error(DebugLog.dock, "\(failureMessage): \(error.localizedDescription)")
+            }
         }
-
-        return false
     }
 
     private func requireWindowActionPerformed(_ didPerform: Bool) throws {

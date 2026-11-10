@@ -161,14 +161,18 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
         DebugLog.info(DebugLog.app, "Menu triggered action \(actionTitle)")
 
-        do {
-            try windowActionRunner.run(action)
-        } catch {
-            DebugLog.error(DebugLog.app, "Menu action failed: \(error.localizedDescription)")
-            alertPresenter.show(
-                title: settingsStore.localized("alert.window_action_failed.title"),
-                message: error.localizedDescription
-            )
+        Task { @MainActor [self] in
+            do {
+                try await windowActionRunner.run(action)
+            } catch is CancellationError {
+                return
+            } catch {
+                DebugLog.error(DebugLog.app, "Menu action failed: \(error.localizedDescription)")
+                alertPresenter.show(
+                    title: settingsStore.localized("alert.window_action_failed.title"),
+                    message: error.localizedDescription
+                )
+            }
         }
     }
 

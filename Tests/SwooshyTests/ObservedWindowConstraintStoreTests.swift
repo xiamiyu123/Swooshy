@@ -51,6 +51,73 @@ struct ObservedWindowConstraintStoreTests {
     }
 
     @Test
+    func confirmedMaximumBoundsRemainUsableAfterReload() {
+        let defaults = makeDefaults()
+        let store = makePersistedStore(userDefaults: defaults, now: { testDate(100) })
+        let bounds = sizeBounds(minimumWidth: 500, maximumWidth: 820, minimumHeight: 580, maximumHeight: 700)
+        store.record(
+            sizeBounds: bounds, horizontalAnchor: nil, verticalAnchor: nil, action: .center, for: appKey
+        )
+        #expect(store.dockingSizeBounds(for: appKey) == bounds)
+        store.shutdown()
+        let reloaded = makePersistedStore(userDefaults: defaults, now: { testDate(101) })
+        #expect(reloaded.dockingSizeBounds(for: appKey) == bounds)
+        reloaded.shutdown()
+    }
+
+    @Test
+    func legacyCacheRetainsMinimumsAndRevalidatesUnconfirmedMaximums() throws {
+        let defaults = makeDefaults()
+        let store = makePersistedStore(userDefaults: defaults, now: { testDate(100) })
+        let bounds = sizeBounds(minimumWidth: 500, maximumWidth: 704, minimumHeight: 580, maximumHeight: 600)
+        store.record(sizeBounds: bounds, horizontalAnchor: nil, verticalAnchor: nil, action: .center, for: appKey)
+        store.shutdown()
+        let key = "windowManager.observedWindowConstraintStore"
+        let data = try #require(defaults.data(forKey: key))
+        let object = try JSONSerialization.jsonObject(with: data)
+        var snapshot = try #require(object as? [String: Any])
+        var entries = try #require(snapshot["applications"] as? [[String: Any]])
+        entries[0].removeValue(forKey: "verifiedMaximumWidth")
+        entries[0].removeValue(forKey: "verifiedMaximumHeight")
+        snapshot["applications"] = entries
+        defaults.set(try JSONSerialization.data(withJSONObject: snapshot), forKey: key)
+        let legacy = makePersistedStore(userDefaults: defaults, now: { testDate(101) })
+        #expect(legacy.sharedSizeBounds(for: appKey) == bounds)
+        #expect(legacy.dockingSizeBounds(for: appKey) == sizeBounds(minimumWidth: 500, minimumHeight: 580))
+        legacy.shutdown()
+    }
+
+    @Test
+    func acceptedSizeRemovesOnlyContradictedBoundsAcrossActionsAndPersistence() {
+        let defaults = makeDefaults()
+        let store = makePersistedStore(userDefaults: defaults, now: { testDate(100) })
+        for action in [WindowAction.topRightQuarter, .center] {
+            store.record(
+                sizeBounds: sizeBounds(minimumWidth: 500, maximumWidth: 704, minimumHeight: 900, maximumHeight: 1000),
+                horizontalAnchor: .trailingEdge, verticalAnchor: .leadingEdge,
+                action: action, for: appKey
+            )
+        }
+        store.record(
+            sizeBounds: sizeBounds(maximumWidth: 560), horizontalAnchor: nil, verticalAnchor: nil,
+            action: .center, for: dialogKey
+        )
+        store.discardBoundsContradicted(by: CGSize(width: 1408, height: 768), for: appKey)
+        store.shutdown()
+
+        let reloaded = makePersistedStore(userDefaults: defaults, now: { testDate(101) })
+        #expect(reloaded.sharedSizeBounds(for: appKey) == sizeBounds(minimumWidth: 500, maximumHeight: 1000))
+        for action in [WindowAction.topRightQuarter, .center] {
+            let observation = reloaded.observation(for: appKey, action: action)
+            #expect(observation?.sizeBounds == sizeBounds(minimumWidth: 500, maximumHeight: 1000))
+            #expect(observation?.horizontalAnchor == .trailingEdge)
+            #expect(observation?.verticalAnchor == .leadingEdge)
+        }
+        #expect(reloaded.sharedSizeBounds(for: dialogKey)?.maximumWidth == 560)
+        reloaded.shutdown()
+    }
+
+    @Test
     func sharedMaximumBoundsApplyAcrossActions() {
         let store = ObservedWindowConstraintStore()
 

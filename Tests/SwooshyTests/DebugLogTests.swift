@@ -4,6 +4,23 @@ import Testing
 
 struct DebugLogTests {
     @Test
+    func distinguishesSubsecondEventsAndIdentifiesWriterProcess() async throws {
+        let directory = try makeTemporaryLogDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let sink = DebugLogFileSink(logDirectoryURL: directory)
+        let second = Date(timeIntervalSince1970: 1_800_000_000)
+        await sink.append(level: "DEBUG", channel: "windows", message: "first", date: second.addingTimeInterval(0.125))
+        await sink.append(level: "DEBUG", channel: "windows", message: "second", date: second.addingTimeInterval(0.875))
+
+        let contents = try String(contentsOf: directory.appendingPathComponent("debug.log"), encoding: .utf8)
+        let lines = contents.split(separator: "\n")
+        #expect(lines.count == 2)
+        #expect(lines[0].contains(".125Z [DEBUG] [windows] [pid=\(ProcessInfo.processInfo.processIdentifier)] first"))
+        #expect(lines[1].contains(".875Z [DEBUG] [windows] [pid=\(ProcessInfo.processInfo.processIdentifier)] second"))
+    }
+
+    @Test
     func rotatesOversizedCurrentLogBeforeWriting() async throws {
         let directory = try makeTemporaryLogDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

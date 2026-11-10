@@ -244,7 +244,7 @@ private struct FakeHotKeyEventHandling: HotKeyEventHandling {
 
 @MainActor
 private struct NoOpWindowActionRunner: WindowActionRunning {
-    func run(_ action: WindowAction) throws {}
+    func run(_ action: WindowAction) async throws {}
 }
 
 @MainActor

@@ -268,13 +268,17 @@ final class GlobalHotKeyController {
         }
         DebugLog.info(DebugLog.hotkeys, "Triggered hotkey for action \(actionTitle)")
 
-        do {
-            try windowActionRunner.run(action)
-        } catch let error as WindowManagerError {
-            handleWindowManagerError(error)
-        } catch {
-            NSSound.beep()
-            DebugLog.error(DebugLog.hotkeys, "Hot key action failed: \(error.localizedDescription)")
+        Task { @MainActor [self] in
+            do {
+                try await windowActionRunner.run(action)
+            } catch is CancellationError {
+                return
+            } catch let error as WindowManagerError {
+                handleWindowManagerError(error)
+            } catch {
+                NSSound.beep()
+                DebugLog.error(DebugLog.hotkeys, "Hot key action failed: \(error.localizedDescription)")
+            }
         }
     }
 

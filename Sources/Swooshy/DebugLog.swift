@@ -179,6 +179,7 @@ actor DebugLogFileSink {
         .appendingPathComponent("Library/Logs/Swooshy", isDirectory: true)) {
         self.logDirectoryURL = logDirectoryURL
         self.currentLogFileURL = logDirectoryURL.appendingPathComponent("debug.log")
+        timestampFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -197,7 +198,7 @@ actor DebugLogFileSink {
 
     func append(level: String, channel: String, message: String, date: Date = Date()) {
         do {
-            let line = "\(timestampFormatter.string(from: date)) [\(level)] [\(channel)] \(message)\n"
+            let line = "\(timestampFormatter.string(from: date)) [\(level)] [\(channel)] [pid=\(ProcessInfo.processInfo.processIdentifier)] \(message)\n"
             try performMaintenanceIfNeeded()
             try closeStaleFileHandleIfNeeded()
             try rotateCurrentLogIfNeeded(projectedAdditionalBytes: Int64(line.utf8.count))

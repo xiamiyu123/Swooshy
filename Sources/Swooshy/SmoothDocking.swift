@@ -269,215 +269,180 @@ private extension SmoothDockingAnchor {
 
 @MainActor
 final class SmoothDockingSession {
+    private struct Result {
+        let requested: CGRect
+        let applied: CGRect
+    }
+
+    private let diagnosticContext: String
     private let originalFrame: CGRect
     private let desktopFrame: CGRect
     private let baseSizeConstraints: SmoothDockingSizeConstraints
+    private let observedSizeConstraints: SmoothDockingSizeConstraints
     private let loadCurrentFrame: () -> CGRect?
-    private let applyFrame: (CGRect) throws -> CGRect
+    private let animateFrame: ((CGRect) throws -> Void)?
+    private let animationSleep: () async throws -> Void
+    private let applyFrame: (CGRect) async throws -> CGRect
     private let recordConstraintObservation: @MainActor (WindowAction, CGRect, CGRect) -> Void
-    private let animationStepDuration: UInt64
-    private let animationFactor: CGFloat
-    private let snapThreshold: CGFloat
+    private let recordAcceptedFrame: @MainActor (CGRect) -> Void
     private let resolver = SmoothDockingResolver()
-
     private var adaptiveSizeConstraints = SmoothDockingSizeConstraints()
     private var currentAction: WindowAction?
-    private var currentTargetFrame: CGRect?
-    private var animationTask: Task<Void, Never>?
+    private var operation: Task<Result, Error>?
+    private var generation: UInt64 = 0
+    private var committedGeneration: UInt64?
+    private(set) var isFinished = false
 
     init(
         originalFrame: CGRect,
         desktopFrame: CGRect,
         baseSizeConstraints: SmoothDockingSizeConstraints,
-        loadCurrentFrame: @escaping () -> CGRect?,
-        applyFrame: @escaping (CGRect) throws -> CGRect,
+        observedSizeConstraints: SmoothDockingSizeConstraints = .init(),
+        loadCurrentFrame: @escaping () -> CGRect? = { nil },
+        animateFrame: ((CGRect) throws -> Void)? = nil,
+        animationSleep: @escaping () async throws -> Void = { try await Task.sleep(for: .milliseconds(16)) },
+        applyFrame: @escaping (CGRect) async throws -> CGRect,
         recordConstraintObservation: @escaping @MainActor (WindowAction, CGRect, CGRect) -> Void = { _, _, _ in },
-        animationStepDuration: UInt64 = 16_000_000,
-        animationFactor: CGFloat = 0.32,
-        snapThreshold: CGFloat = 0.5
+        recordAcceptedFrame: @escaping @MainActor (CGRect) -> Void = { _ in },
+        diagnosticContext: String = UUID().uuidString
     ) {
+        self.diagnosticContext = diagnosticContext
         self.originalFrame = originalFrame.integral
         self.desktopFrame = desktopFrame.integral
         self.baseSizeConstraints = baseSizeConstraints
+        self.observedSizeConstraints = observedSizeConstraints
         self.loadCurrentFrame = loadCurrentFrame
+        self.animateFrame = animateFrame
+        self.animationSleep = animationSleep
         self.applyFrame = applyFrame
         self.recordConstraintObservation = recordConstraintObservation
-        self.animationStepDuration = animationStepDuration
-        self.animationFactor = animationFactor
-        self.snapThreshold = snapThreshold
+        self.recordAcceptedFrame = recordAcceptedFrame
     }
 
-    deinit {
-        animationTask?.cancel()
-    }
+    deinit { operation?.cancel() }
 
     func update(action: WindowAction?) {
-        let nextTargetFrame = resolvedTargetFrame(for: action)
-        let targetChanged = currentAction != action || currentTargetFrame != nextTargetFrame
+        guard !isFinished, operation == nil || action != currentAction else { return }
+        operation?.cancel()
+        generation &+= 1
+        let generation = generation
         currentAction = action
-        currentTargetFrame = nextTargetFrame
-
-        guard targetChanged else {
-            return
+        let bounds = baseSizeConstraints.merged(with: observedSizeConstraints)
+        let requested = target(for: action, constraints: bounds)
+        let resolved = target(for: action, constraints: bounds.merged(with: adaptiveSizeConstraints))
+        let frames = animateFrame == nil ? [] : transitionFrames(
+            from: loadCurrentFrame() ?? originalFrame, to: resolved
+        )
+        DebugLog.debug(
+            DebugLog.windows,
+            "Docking [\(diagnosticContext)] target: action=\(String(describing: action)), requested=\(NSStringFromRect(requested)), resolved=\(NSStringFromRect(resolved))"
+        )
+        operation = Task { @MainActor in
+            do {
+                if let animateFrame = self.animateFrame {
+                    for frame in frames {
+                        try Task.checkCancellation()
+                        try animateFrame(frame)
+                        try await self.animationSleep()
+                    }
+                }
+                let applied = try await self.settle(at: resolved, action: action, constraints: bounds)
+                try Task.checkCancellation()
+                guard self.generation == generation else { throw CancellationError() }
+                self.adaptiveSizeConstraints.incorporateObservation(
+                    requestedFrame: requested, appliedFrame: applied, tolerance: 1
+                )
+                DebugLog.debug(
+                    DebugLog.windows,
+                    "Docking [\(self.diagnosticContext)] settled: requested=\(NSStringFromRect(resolved)), applied=\(NSStringFromRect(applied))"
+                )
+                return Result(requested: requested, applied: applied)
+            } catch {
+                if !(error is CancellationError) {
+                    DebugLog.debug(DebugLog.windows, "Docking [\(self.diagnosticContext)] failed: \(error.localizedDescription)")
+                }
+                throw error
+            }
         }
-
-        startAnimationLoopIfNeeded()
     }
 
-    func restore() {
-        update(action: nil)
-    }
+    func restore() { update(action: nil) }
 
-    func commit() throws -> CGRect {
-        animationTask?.cancel()
-        animationTask = nil
-
-        guard let targetFrame = currentTargetFrame else {
-            return originalFrame
+    func commit() async throws -> CGRect {
+        guard !isFinished else { throw CancellationError() }
+        guard let operation else { return originalFrame }
+        let generation = generation
+        let result = try await withTaskCancellationHandler {
+            try await operation.value
+        } onCancel: {
+            operation.cancel()
         }
-
-        let appliedFrame = try settle(at: targetFrame, maxIterations: 4)
-        currentTargetFrame = appliedFrame.integral
-        return appliedFrame
+        try Task.checkCancellation()
+        guard !isFinished, self.generation == generation else { throw CancellationError() }
+        if committedGeneration != generation {
+            recordAcceptedFrame(result.applied)
+            if let currentAction,
+               abs(result.requested.width - result.applied.width) > 1 ||
+               abs(result.requested.height - result.applied.height) > 1 {
+                recordConstraintObservation(currentAction, result.requested, result.applied)
+            }
+            committedGeneration = generation
+        }
+        return result.applied
     }
 
     func finish() {
-        animationTask?.cancel()
-        animationTask = nil
-        currentTargetFrame = nil
-        currentAction = nil
-    }
-
-    private func startAnimationLoopIfNeeded() {
-        guard animationTask == nil, let targetFrame = currentTargetFrame else {
-            return
-        }
-
-        let currentFrame = loadCurrentFrame() ?? originalFrame
-        guard !framesAreClose(currentFrame, targetFrame, tolerance: snapThreshold) else {
-            return
-        }
-
-        animationTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            var previousFrame = currentFrame
-
-            while !Task.isCancelled {
-                guard let targetFrame = self.currentTargetFrame else {
-                    break
-                }
-
-                let currentFrame = self.loadCurrentFrame() ?? previousFrame
-                if self.framesAreClose(currentFrame, targetFrame, tolerance: self.snapThreshold) {
-                    if currentFrame.integral != targetFrame {
-                        do {
-                            previousFrame = try self.applyAndObserve(targetFrame)
-                        } catch {
-                            DebugLog.debug(
-                                DebugLog.windows,
-                                "Smooth docking snap failed: \(error.localizedDescription)"
-                            )
-                        }
-                    }
-                    break
-                }
-
-                // Move part of the remaining distance each tick so the preview stays
-                // responsive even when the target keeps shifting after new observations.
-                let interpolatedFrame = CGRect(
-                    x: currentFrame.minX + (targetFrame.minX - currentFrame.minX) * self.animationFactor,
-                    y: currentFrame.minY + (targetFrame.minY - currentFrame.minY) * self.animationFactor,
-                    width: currentFrame.width + (targetFrame.width - currentFrame.width) * self.animationFactor,
-                    height: currentFrame.height + (targetFrame.height - currentFrame.height) * self.animationFactor
-                ).integral
-
-                do {
-                    previousFrame = try self.applyAndObserve(interpolatedFrame)
-                } catch {
-                    DebugLog.debug(
-                        DebugLog.windows,
-                        "Smooth docking move failed: \(error.localizedDescription)"
-                    )
-                    break
-                }
-
-                try? await Task.sleep(nanoseconds: self.animationStepDuration)
-            }
-
-            self.animationTask = nil
-        }
-    }
-
-    private func applyAndObserve(_ requestedFrame: CGRect) throws -> CGRect {
-        let normalizedRequestedFrame = requestedFrame.integral
-        let appliedFrame = try applyFrame(normalizedRequestedFrame).integral
-        let previousAdaptiveSizeConstraints = adaptiveSizeConstraints
-        adaptiveSizeConstraints.incorporateObservation(
-            requestedFrame: normalizedRequestedFrame,
-            appliedFrame: appliedFrame
-        )
-        if
-            let currentAction,
-            adaptiveSizeConstraints != previousAdaptiveSizeConstraints
-        {
-            recordConstraintObservation(currentAction, normalizedRequestedFrame, appliedFrame)
-        }
-
-        // Retarget immediately after each write so later steps chase the frame
-        // the app can actually honor instead of the original ideal geometry.
-        let recalculatedTarget = resolvedTargetFrame(for: currentAction)
-        if recalculatedTarget != currentTargetFrame {
-            DebugLog.debug(
-                DebugLog.windows,
-                "Adjusted smooth docking target from \(currentTargetFrame.map(NSStringFromRect) ?? "nil") to \(NSStringFromRect(recalculatedTarget))"
-            )
-            currentTargetFrame = recalculatedTarget
-        }
-
-        return appliedFrame
+        operation?.cancel()
+        operation = nil
+        generation &+= 1
+        isFinished = true
     }
 
     private func settle(
-        at targetFrame: CGRect,
-        maxIterations: Int
-    ) throws -> CGRect {
-        var latestFrame = loadCurrentFrame() ?? originalFrame
-        var requestedFrame = targetFrame.integral
-
-        // A few synchronous retries help after the user releases the gesture,
-        // when some apps only expose their final size constraints one write later.
-        for _ in 0..<maxIterations {
-            latestFrame = try applyAndObserve(requestedFrame)
-            let correctedTargetFrame = currentTargetFrame ?? requestedFrame
-            if framesAreClose(latestFrame, correctedTargetFrame, tolerance: 1) {
-                return correctedTargetFrame
-            }
-
-            requestedFrame = correctedTargetFrame.integral
+        at frame: CGRect, action: WindowAction?, constraints: SmoothDockingSizeConstraints
+    ) async throws -> CGRect {
+        var requested = frame
+        var confirmedBounds = constraints.merged(with: adaptiveSizeConstraints)
+        for _ in 0..<3 {
+            try Task.checkCancellation()
+            let applied = try await applyFrame(requested).integral
+            try Task.checkCancellation()
+            if framesAreClose(applied, requested) { return applied }
+            guard let action else { throw WindowManagerError.unableToSetFrame }
+            confirmedBounds.incorporateObservation(requestedFrame: requested, appliedFrame: applied, tolerance: 1)
+            requested = target(for: action, constraints: confirmedBounds)
         }
-
-        latestFrame = try applyAndObserve(requestedFrame)
-        return latestFrame.integral
+        throw WindowManagerError.unableToSetFrame
     }
 
-    private func resolvedTargetFrame(for action: WindowAction?) -> CGRect {
-        guard let action else {
-            return originalFrame.integral
-        }
-
-        let plan = resolver.plan(
-            for: action,
-            in: desktopFrame,
-            sizeConstraints: baseSizeConstraints.merged(with: adaptiveSizeConstraints)
-        )
-        return plan.frame.integral
+    private func target(for action: WindowAction?, constraints: SmoothDockingSizeConstraints) -> CGRect {
+        guard let action else { return originalFrame }
+        return resolver.plan(for: action, in: desktopFrame, sizeConstraints: constraints).frame
     }
 
-    private func framesAreClose(_ lhs: CGRect, _ rhs: CGRect, tolerance: CGFloat) -> Bool {
-        abs(lhs.minX - rhs.minX) <= tolerance &&
-            abs(lhs.minY - rhs.minY) <= tolerance &&
-            abs(lhs.width - rhs.width) <= tolerance &&
-            abs(lhs.height - rhs.height) <= tolerance
+    private func transitionFrames(from start: CGRect, to target: CGRect) -> [CGRect] {
+        guard !framesAreClose(start, target) else { return [] }
+        var previous = start.integral
+        // Build one finite transition per target; intermediate writes never
+        // resolve the layout again or teach size constraints.
+        return (1...15).compactMap { step in
+            let progress = CGFloat(step) / 15
+            let eased = 1 - pow(1 - progress, 3)
+            let frame = CGRect(
+                x: (start.minX + (target.minX - start.minX) * eased).rounded(),
+                y: (start.minY + (target.minY - start.minY) * eased).rounded(),
+                width: (start.width + (target.width - start.width) * eased).rounded(),
+                height: (start.height + (target.height - start.height) * eased).rounded()
+            )
+            guard frame != previous else { return nil }
+            previous = frame
+            return frame
+        }
+    }
+
+    private func framesAreClose(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        abs(lhs.minX - rhs.minX) <= 1 && abs(lhs.minY - rhs.minY) <= 1 &&
+            abs(lhs.width - rhs.width) <= 1 && abs(lhs.height - rhs.height) <= 1
     }
 }
 
