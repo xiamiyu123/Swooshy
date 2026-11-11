@@ -58,6 +58,18 @@ final class SettingsStore {
         }
     }
 
+    var dockingAnimationDurationMilliseconds: Double {
+        didSet {
+            let duration = Self.clampDockingAnimationDuration(dockingAnimationDurationMilliseconds)
+            if dockingAnimationDurationMilliseconds != duration {
+                dockingAnimationDurationMilliseconds = duration
+            }
+            guard oldValue != duration else { return }
+            userDefaults.set(duration, forKey: Keys.dockingAnimationDurationMilliseconds)
+            notifyDidChange()
+        }
+    }
+
     var dockGesturesEnabled: Bool {
         didSet {
             guard oldValue != dockGesturesEnabled else { return }
@@ -447,6 +459,13 @@ final class SettingsStore {
             defaultValue: true,
             in: userDefaults
         )
+        self.dockingAnimationDurationMilliseconds = Self.clampDockingAnimationDuration(
+            Self.doubleValue(
+                forKey: Keys.dockingAnimationDurationMilliseconds,
+                defaultValue: Self.defaultDockingAnimationDurationMilliseconds,
+                in: userDefaults
+            )
+        )
         self.dockGesturesEnabled = Self.boolValue(
             forKey: Keys.dockGesturesEnabled,
             defaultValue: true,
@@ -641,6 +660,7 @@ final class SettingsStore {
         let keysToReset = [
             Keys.languageOverride,
             Keys.hotKeysEnabled,
+            Keys.dockingAnimationDurationMilliseconds,
             Keys.dockGesturesEnabled,
             Keys.titleBarGesturesEnabled,
             Keys.dockCornerDragSnapEnabled,
@@ -1084,6 +1104,7 @@ final class SettingsStore {
         experimentalDisplayMoveActionsEnabled = false
     }
 
+    nonisolated static let defaultDockingAnimationDurationMilliseconds = DockingAnimationSpeed.standard.rawValue
     nonisolated static let defaultTitleBarTriggerHeight: Double = 32
     nonisolated static let minimumTitleBarTriggerHeight: Double = 24
     nonisolated static let maximumTitleBarTriggerHeight: Double = 56
@@ -1100,6 +1121,13 @@ final class SettingsStore {
 
     nonisolated static func clampTitleBarTriggerHeight(_ value: Double) -> Double {
         min(maximumTitleBarTriggerHeight, max(minimumTitleBarTriggerHeight, value))
+    }
+
+    nonisolated static func clampDockingAnimationDuration(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultDockingAnimationDurationMilliseconds }
+        return DockingAnimationSpeed.allCases.reduce(.standard) { nearest, speed in
+            abs(speed.rawValue - value) < abs(nearest.rawValue - value) ? speed : nearest
+        }.rawValue
     }
 
     nonisolated static func clampTitleBarCornerDragHoldDuration(_ value: Double) -> Double {
@@ -1435,6 +1463,7 @@ final class SettingsStore {
     private enum Keys {
         static let languageOverride = "settings.languageOverride"
         static let hotKeysEnabled = "settings.hotKeysEnabled"
+        static let dockingAnimationDurationMilliseconds = "settings.dockingAnimationDurationMilliseconds"
         static let dockGesturesEnabled = "settings.dockGesturesEnabled"
         static let titleBarGesturesEnabled = "settings.titleBarGesturesEnabled"
         static let dockCornerDragSnapEnabled = "settings.dockCornerDragSnapEnabled"

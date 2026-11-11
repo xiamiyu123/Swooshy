@@ -18,6 +18,8 @@ struct GeneralSettingsSection: View {
             }
             .pickerStyle(.menu)
 
+            AnimationSpeedSelector(settingsStore: settingsStore)
+
             Toggle(
                 settingsStore.localized("settings.hotkeys.enabled"),
                 isOn: $settingsStore.hotKeysEnabled

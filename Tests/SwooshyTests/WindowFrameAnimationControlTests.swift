@@ -50,7 +50,6 @@ struct WindowFrameAnimationControlTests {
             desktopFrame: CGRect(x: 0, y: 83, width: 1408, height: 768),
             baseSizeConstraints: .init(),
             animateFrame: { _ in frameWrites += 1 },
-            animationSleep: {},
             beginTransition: { try control.begin(for: 42) },
             endTransition: { control.end(for: 42) },
             applyFrame: { frameWrites += 1; return $0 }

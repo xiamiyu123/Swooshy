@@ -283,7 +283,9 @@ final class SmoothDockingSession {
     private let observedSizeConstraints: SmoothDockingSizeConstraints
     private let loadCurrentFrame: () -> CGRect?
     private let animateFrame: ((CGRect) throws -> Void)?
-    private let animationSleep: () async throws -> Void
+    private let animationDuration: () -> Duration
+    private let animationNow: () -> ContinuousClock.Instant
+    private let animationSleep: (ContinuousClock.Instant) async throws -> Void
     private let beginTransition: () throws -> Void
     private let endTransition: () -> Void
     private let applyFrame: (CGRect) async throws -> CGRect
@@ -305,7 +307,13 @@ final class SmoothDockingSession {
         observedSizeConstraints: SmoothDockingSizeConstraints = .init(),
         loadCurrentFrame: @escaping () -> CGRect? = { nil },
         animateFrame: ((CGRect) throws -> Void)? = nil,
-        animationSleep: @escaping () async throws -> Void = { try await Task.sleep(for: .milliseconds(16)) },
+        animationDuration: @escaping () -> Duration = {
+            .milliseconds(SettingsStore.defaultDockingAnimationDurationMilliseconds)
+        },
+        animationNow: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
+        animationSleep: @escaping (ContinuousClock.Instant) async throws -> Void = {
+            try await ContinuousClock().sleep(until: $0, tolerance: .zero)
+        },
         beginTransition: @escaping () throws -> Void = {},
         endTransition: @escaping () -> Void = {},
         applyFrame: @escaping (CGRect) async throws -> CGRect,
@@ -321,6 +329,8 @@ final class SmoothDockingSession {
         self.observedSizeConstraints = observedSizeConstraints
         self.loadCurrentFrame = loadCurrentFrame
         self.animateFrame = animateFrame
+        self.animationDuration = animationDuration
+        self.animationNow = animationNow
         self.animationSleep = animationSleep
         self.beginTransition = beginTransition
         self.endTransition = endTransition
@@ -340,9 +350,8 @@ final class SmoothDockingSession {
         let bounds = baseSizeConstraints.merged(with: observedSizeConstraints)
         let requested = target(for: action, constraints: bounds)
         let resolved = target(for: action, constraints: bounds.merged(with: adaptiveSizeConstraints))
-        let frames = animateFrame == nil ? [] : transitionFrames(
-            from: loadCurrentFrame() ?? originalFrame, to: resolved
-        )
+        let start = animateFrame == nil ? originalFrame : (loadCurrentFrame() ?? originalFrame)
+        let duration = animationDuration()
         DebugLog.debug(
             DebugLog.windows,
             "Docking [\(diagnosticContext)] target: action=\(String(describing: action)), requested=\(NSStringFromRect(requested)), resolved=\(NSStringFromRect(resolved))"
@@ -352,13 +361,7 @@ final class SmoothDockingSession {
                 try Task.checkCancellation()
                 try self.beginTransition()
                 defer { self.endTransition() }
-                if let animateFrame = self.animateFrame {
-                    for frame in frames {
-                        try Task.checkCancellation()
-                        try animateFrame(frame)
-                        try await self.animationSleep()
-                    }
-                }
+                try await self.animate(from: start, to: resolved, duration: duration)
                 let applied = try await self.settle(at: resolved, action: action, constraints: bounds)
                 try Task.checkCancellation()
                 guard self.generation == generation else { throw CancellationError() }
@@ -438,24 +441,47 @@ final class SmoothDockingSession {
         ).frame
     }
 
-    private func transitionFrames(from start: CGRect, to target: CGRect) -> [CGRect] {
-        guard !framesAreClose(start, target) else { return [] }
+    private func animate(from start: CGRect, to target: CGRect, duration: Duration) async throws {
+        guard let animateFrame, !framesAreClose(start, target) else { return }
+        let interval = Duration.nanoseconds(16_666_667)
+        let startedAt = animationNow()
+        let deadline = startedAt.advanced(by: duration)
+        var nextFrameAt = startedAt.advanced(by: interval)
         var previous = start.integral
-        // Build one finite transition per target; intermediate writes never
-        // resolve the layout again or teach size constraints.
-        return (1...15).compactMap { step in
-            let progress = CGFloat(step) / 15
-            let eased = 1 - pow(1 - progress, 3)
-            let frame = CGRect(
-                x: (start.minX + (target.minX - start.minX) * eased).rounded(),
-                y: (start.minY + (target.minY - start.minY) * eased).rounded(),
-                width: (start.width + (target.width - start.width) * eased).rounded(),
-                height: (start.height + (target.height - start.height) * eased).rounded()
+        while animationNow() < deadline {
+            try Task.checkCancellation()
+            if animationNow() < nextFrameAt {
+                try await animationSleep(nextFrameAt)
+            } else {
+                await Task.yield()
+            }
+            try Task.checkCancellation()
+            let now = animationNow()
+            guard now < deadline else { break }
+            let elapsed = startedAt.duration(to: now)
+            let frame = transitionFrame(from: start, to: target, progress: CGFloat(elapsed / duration))
+            if frame != previous {
+                try animateFrame(frame)
+                previous = frame
+            }
+            // Anchor ticks to the start time; a slow write resumes at current
+            // progress instead of replaying expired frames or adding a delay.
+            nextFrameAt = min(
+                startedAt.advanced(by: interval * (Int(elapsed / interval) + 1)), deadline
             )
-            guard frame != previous else { return nil }
-            previous = frame
-            return frame
         }
+        try Task.checkCancellation()
+        if previous != target { try animateFrame(target) }
+    }
+
+    private func transitionFrame(from start: CGRect, to target: CGRect, progress: CGFloat) -> CGRect {
+        let eased = 1 - pow(1 - progress, 3)
+        return CGRect(
+            x: (start.minX + (target.minX - start.minX) * eased).rounded(),
+            y: (start.minY + (target.minY - start.minY) * eased).rounded(),
+            width: (start.width + (target.width - start.width) * eased).rounded(),
+            height: (start.height + (target.height - start.height) * eased).rounded()
+        )
     }
 
     private func framesAreClose(_ lhs: CGRect, _ rhs: CGRect) -> Bool {

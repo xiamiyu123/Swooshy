@@ -132,6 +132,12 @@
 "settings.language.english" = "English";
 "settings.language.simplified_chinese" = "简体中文";
 "settings.hotkeys.enabled" = "启用全局快捷键";
+"settings.animation_speed.label" = "动画速度";
+"settings.animation_speed.slow" = "较慢";
+"settings.animation_speed.relaxed" = "平缓";
+"settings.animation_speed.standard" = "标准";
+"settings.animation_speed.quick" = "轻快";
+"settings.animation_speed.fast" = "极速";
 "settings.launch_at_login.enabled" = "登录时自动启动";
 "settings.launch_at_login.footer" = "启用后，Swooshy 会在你登录 macOS 时自动启动。";
 "settings.launch_at_login.requires_approval" = "系统需要你在“系统设置”中确认该登录项后才能生效。";

@@ -20,6 +20,7 @@ struct SettingsStoreTests {
         let store = SettingsStore(userDefaults: defaults)
         store.languageOverride = .simplifiedChinese
         store.hotKeysEnabled = false
+        store.dockingAnimationDurationMilliseconds = 180
         store.statusItemIcon = .windowGrid
         store.dockGesturesEnabled = false
         store.titleBarGesturesEnabled = false
@@ -48,6 +49,7 @@ struct SettingsStoreTests {
 
         #expect(reloadedStore.languageOverride == .simplifiedChinese)
         #expect(!reloadedStore.hotKeysEnabled)
+        #expect(reloadedStore.dockingAnimationDurationMilliseconds == 180)
         #expect(reloadedStore.statusItemIcon == .windowGrid)
         #expect(!reloadedStore.dockGesturesEnabled)
         #expect(!reloadedStore.titleBarGesturesEnabled)
@@ -433,6 +435,7 @@ struct SettingsStoreTests {
         let store = SettingsStore(userDefaults: defaults)
         store.languageOverride = .simplifiedChinese
         store.hotKeysEnabled = false
+        store.dockingAnimationDurationMilliseconds = 400
         store.dockGesturesEnabled = false
         store.titleBarGesturesEnabled = false
         store.dockCornerDragSnapEnabled = false
@@ -464,6 +467,7 @@ struct SettingsStoreTests {
 
         #expect(reloadedStore.languageOverride == .system)
         #expect(reloadedStore.hotKeysEnabled)
+        #expect(reloadedStore.dockingAnimationDurationMilliseconds == 240)
         #expect(reloadedStore.dockGesturesEnabled)
         #expect(reloadedStore.titleBarGesturesEnabled)
         #expect(reloadedStore.dockCornerDragSnapEnabled)
@@ -861,6 +865,36 @@ struct SettingsStoreTests {
 
         let reloadedStore = SettingsStore(userDefaults: defaults)
         #expect(reloadedStore.titleBarCornerDragHoldDuration == SettingsStore.maximumTitleBarCornerDragHoldDuration)
+    }
+
+    @Test
+    func dockingAnimationDurationDefaultsTo240Milliseconds() {
+        #expect(makeSettingsStore().dockingAnimationDurationMilliseconds == 240)
+    }
+
+    @Test(arguments: [
+        (-1.0, 120.0), (160.0, 180.0), (230.0, 240.0), (300.0, 320.0), (390.0, 400.0),
+        (500.0, 400.0), (Double.nan, 240.0), (Double.infinity, 240.0)
+    ])
+    func dockingAnimationDurationSelectsNearestPresetWhenLoadedOrAssigned(input: Double, expected: Double) {
+        let defaults = makeUserDefaults()
+        defaults.set(input, forKey: "settings.dockingAnimationDurationMilliseconds")
+        let store = SettingsStore(userDefaults: defaults)
+        #expect(store.dockingAnimationDurationMilliseconds == expected)
+        store.dockingAnimationDurationMilliseconds = 400
+        store.dockingAnimationDurationMilliseconds = input
+        #expect(store.dockingAnimationDurationMilliseconds == expected)
+        #expect(SettingsStore(userDefaults: defaults).dockingAnimationDurationMilliseconds == expected)
+    }
+
+    @Test
+    func animationSpeedChangesDoNotRestartGestureMonitoring() async {
+        let store = makeSettingsStore()
+        let recorder = await recordSettingsChanges(from: store) {
+            store.dockingAnimationDurationMilliseconds = 120
+        }
+        #expect(recorder.count == 1)
+        #expect(recorder.categories.isEmpty)
     }
 
     @Test

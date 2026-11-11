@@ -132,6 +132,12 @@
 "settings.language.english" = "English";
 "settings.language.simplified_chinese" = "Simplified Chinese";
 "settings.hotkeys.enabled" = "Enable global hotkeys";
+"settings.animation_speed.label" = "Animation speed";
+"settings.animation_speed.slow" = "Slow";
+"settings.animation_speed.relaxed" = "Relaxed";
+"settings.animation_speed.standard" = "Standard";
+"settings.animation_speed.quick" = "Quick";
+"settings.animation_speed.fast" = "Fast";
 "settings.launch_at_login.enabled" = "Launch at login";
 "settings.launch_at_login.footer" = "When enabled, Swooshy will start automatically after you sign in to macOS.";
 "settings.launch_at_login.requires_approval" = "macOS still needs approval for this login item in System Settings.";

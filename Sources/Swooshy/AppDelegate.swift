@@ -34,7 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dockTargetResolver = DockTargetResolver(registry: windowRegistry)
         let windowManager = WindowManager(
             registry: windowRegistry,
-            dockTargetResolver: dockTargetResolver
+            dockTargetResolver: dockTargetResolver,
+            settingsStore: settingsStore
         )
         let layoutEngine = WindowLayoutEngine()
         let windowActionRunner = WindowActionRunner(

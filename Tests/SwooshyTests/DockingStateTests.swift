@@ -25,6 +25,7 @@ struct DockingStateTests {
         var frames: [CGRect] = []
         var confirmations = 0
         var cacheWrites = 0
+        let clock = DockingAnimationClock()
         let session = SmoothDockingSession(
             originalFrame: original, desktopFrame: desktop, baseSizeConstraints: .init(),
             canResize: false,
@@ -35,7 +36,8 @@ struct DockingStateTests {
                 current.origin = frame.origin
                 frames.append(current)
             },
-            animationSleep: { await Task.yield() },
+            animationNow: { clock.now },
+            animationSleep: { try await clock.sleep(until: $0) },
             applyFrame: { frame in
                 confirmations += 1
                 return try await WindowFrameSettler().apply(
@@ -70,14 +72,16 @@ struct DockingStateTests {
         var confirmations = 0
         var reads = 0
         var accepted = 0
+        let clock = DockingAnimationClock()
         var session: SmoothDockingSession!
         session = SmoothDockingSession(
             originalFrame: original, desktopFrame: desktop, baseSizeConstraints: .init(),
             loadCurrentFrame: { reads += 1; return current },
             animateFrame: { frames.append($0); current = $0 },
-            animationSleep: {
+            animationNow: { clock.now },
+            animationSleep: { deadline in
                 session.update(action: .bottomRightQuarter)
-                await Task.yield()
+                try await clock.sleep(until: deadline)
             },
             applyFrame: { confirmations += 1; current = $0; return $0 },
             recordAcceptedFrame: { _ in accepted += 1 }
@@ -106,6 +110,7 @@ struct DockingStateTests {
         var confirmations = 0
         var retargeted = false
         var enhancedUI = true
+        let clock = DockingAnimationClock()
         let animationControl = WindowFrameAnimationControl(
             readEnabled: { _ in enhancedUI },
             writeEnabled: { _, enabled in enhancedUI = enabled; return .success }
@@ -119,12 +124,13 @@ struct DockingStateTests {
                 frames.append($0)
                 current = $0
             },
-            animationSleep: {
-                if !retargeted {
+            animationNow: { clock.now },
+            animationSleep: { deadline in
+                if !retargeted && !frames.isEmpty {
                     retargeted = true
                     session.update(action: .topLeftQuarter)
                 }
-                await Task.yield()
+                try await clock.sleep(until: deadline)
             },
             beginTransition: { try animationControl.begin(for: 42) },
             endTransition: { animationControl.end(for: 42) },

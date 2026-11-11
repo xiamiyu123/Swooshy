@@ -68,6 +68,7 @@ struct WindowFrameSettlerTests {
         )
         var frames: [CGRect] = []
         var observations = 0
+        let clock = DockingAnimationClock()
         let session = SmoothDockingSession(
             originalFrame: desktop, desktopFrame: desktop, baseSizeConstraints: .init(),
             loadCurrentFrame: { desktop },
@@ -78,7 +79,8 @@ struct WindowFrameSettlerTests {
                 window.move(to: axTarget.origin)
                 frames.append(window.presented)
             },
-            animationSleep: { await Task.yield() },
+            animationNow: { clock.now },
+            animationSleep: { try await clock.sleep(until: $0) },
             beginTransition: { try animationControl.begin(for: 66517) },
             endTransition: { animationControl.end(for: 66517) },
             applyFrame: { target in

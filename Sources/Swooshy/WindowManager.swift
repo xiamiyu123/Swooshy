@@ -45,6 +45,7 @@ protocol WindowManaging {
 /// higher-level actions exposed to gestures and keyboard shortcuts.
 final class WindowManager: WindowManaging {
     private let registry: WindowRegistry
+    private let settingsStore: SettingsStore
     private let dockTargetResolver: DockTargetResolving
     private let windowOrdering = WindowOrdering()
     private let cycleSessions = WindowCycleSessionStore<AXUIElement>(areEqual: AXAttributeReader.sameElement)
@@ -68,9 +69,11 @@ final class WindowManager: WindowManaging {
 
     init(
         registry: WindowRegistry,
-        dockTargetResolver: DockTargetResolving
+        dockTargetResolver: DockTargetResolving,
+        settingsStore: SettingsStore
     ) {
         self.registry = registry
+        self.settingsStore = settingsStore
         self.dockTargetResolver = dockTargetResolver
     }
 
@@ -934,6 +937,7 @@ final class WindowManager: WindowManaging {
                 try self.writeAnimationFrame(frame, from: lastAnimationAXFrame, for: window, canResize: canResize)
                 lastAnimationAXFrame = frame
             },
+            animationDuration: { .milliseconds(self.settingsStore.dockingAnimationDurationMilliseconds) },
             beginTransition: { try self.frameAnimationControl.begin(for: application.processIdentifier) },
             endTransition: { self.frameAnimationControl.end(for: application.processIdentifier) },
             applyFrame: { [window] targetAppKitFrame in
